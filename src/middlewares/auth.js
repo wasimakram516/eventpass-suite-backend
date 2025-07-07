@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const env = require("../config/env");
 const response = require("../utils/response");
+const { MODULES } = require("../constants/modules"); 
 
 /**
  * Auth Middleware: protect
@@ -9,17 +10,19 @@ const response = require("../utils/response");
 const protect = (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(" ")[1];
-
-    if (!token) {
-      return response(res, 401, "Unauthorized - No token provided");
-    }
+    if (!token) return response(res, 401, "Unauthorized - No token provided");
 
     const decoded = jwt.verify(token, env.jwt.secret);
     req.user = decoded;
-
     next();
   } catch (error) {
-    return response(res, 401, "Unauthorized - Invalid token", null, error.message);
+    return response(
+      res,
+      401,
+      "Unauthorized - Invalid token",
+      null,
+      error.message
+    );
   }
 };
 
@@ -41,10 +44,7 @@ const adminOnly = (req, res, next) => {
 const checkPermission = (moduleKey) => (req, res, next) => {
   try {
     const user = req.user;
-
-    if (!user) {
-      return response(res, 401, "Unauthorized - No user found");
-    }
+    if (!user) return response(res, 401, "Unauthorized - No user found");
 
     if (
       user.role === "admin" ||
@@ -53,11 +53,19 @@ const checkPermission = (moduleKey) => (req, res, next) => {
       return next();
     }
 
-    return response(res, 403, "Forbidden - No permission to access this module");
+    return response(
+      res,
+      403,
+      "Forbidden - No permission to access this module"
+    );
   } catch (err) {
     return response(res, 500, "Permission check failed", null, err.message);
   }
 };
+
+MODULES.forEach(({ key }) => {
+  checkPermission[key] = checkPermission(key);
+});
 
 module.exports = {
   protect,

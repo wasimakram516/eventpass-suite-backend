@@ -6,25 +6,27 @@ const { uploadToCloudinary } = require("../utils/uploadToCloudinary");
 // Create Global Config
 exports.createConfig = asyncHandler(async (req, res) => {
   const existing = await GlobalConfig.findOne();
-  if (existing) return response(res, 400, "Global configuration already exists");
+  if (existing)
+    return response(res, 400, "Global configuration already exists");
 
   const {
     appName,
-    contact,
-    support,
-    socialLinks,
+    contactEmail,
+    contactPhone,
+    supportEmail,
+    supportPhone,
+    facebook,
+    instagram,
+    linkedin,
+    website,
+    poweredByText,
   } = req.body;
-
-  const poweredByText =
-    req.body["poweredBy[text]"] ??
-    req.body.poweredByText ??
-    (req.body.poweredBy && req.body.poweredBy.text) ??
-    "";
 
   let companyLogoUrl = "";
   let brandingMediaUrl = "";
   let poweredByMediaUrl = "";
 
+  // Upload files
   if (req.files?.companyLogo) {
     const uploaded = await uploadToCloudinary(
       req.files.companyLogo[0].buffer,
@@ -49,15 +51,27 @@ exports.createConfig = asyncHandler(async (req, res) => {
     poweredByMediaUrl = uploaded.secure_url;
   }
 
+  // Construct object fields
   const config = await GlobalConfig.create({
     appName,
-    contact,
-    support,
-    socialLinks,
+    contact: {
+      email: contactEmail ?? "",
+      phone: contactPhone ?? "",
+    },
+    support: {
+      email: supportEmail ?? "",
+      phone: supportPhone ?? "",
+    },
+    socialLinks: {
+      facebook: facebook ?? "",
+      instagram: instagram ?? "",
+      linkedin: linkedin ?? "",
+      website: website ?? "",
+    },
     companyLogoUrl,
     brandingMediaUrl,
     poweredBy: {
-      text: poweredByText,
+      text: poweredByText ?? "",
       mediaUrl: poweredByMediaUrl,
     },
   });
@@ -78,23 +92,42 @@ exports.updateConfig = asyncHandler(async (req, res) => {
 
   const {
     appName,
-    contact,
-    support,
-    socialLinks,
+    contactEmail,
+    contactPhone,
+    supportEmail,
+    supportPhone,
+    poweredByText,
+    facebook,
+    instagram,
+    linkedin,
+    website,
   } = req.body;
-  
-  const poweredByText =
-    req.body["poweredBy[text]"] ??
-    req.body.poweredByText ??
-    (req.body.poweredBy && req.body.poweredBy.text) ??
-    "";
 
-  if (appName) config.appName = appName;
-  if (contact) config.contact = { ...config.contact, ...contact };
-  if (support) config.support = { ...config.support, ...support };
-  if (socialLinks) config.socialLinks = { ...config.socialLinks, ...socialLinks };
-  if (poweredByText) config.poweredBy.text = poweredByText;
+  if (appName !== undefined) config.appName = appName;
 
+  config.contact = {
+    email: contactEmail ?? "",
+    phone: contactPhone ?? "",
+  };
+
+  config.support = {
+    email: supportEmail ?? "",
+    phone: supportPhone ?? "",
+  };
+
+  config.poweredBy = {
+    ...config.poweredBy,
+    text: poweredByText ?? "",
+  };
+
+  config.socialLinks = {
+    facebook: facebook ?? "",
+    instagram: instagram ?? "",
+    linkedin: linkedin ?? "",
+    website: website ?? "",
+  };
+
+  // Image uploads remain unchanged
   if (req.files?.companyLogo) {
     const uploaded = await uploadToCloudinary(
       req.files.companyLogo[0].buffer,

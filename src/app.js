@@ -8,10 +8,17 @@ const seedAdmin = require("./seeder/adminSeeder");
 
 // Routes
 const moduleRoutes = require("./routes/moduleRoutes");
+const translateRoutes = require("./routes/translateRoutes");
+
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const globalConfigRoutes = require("./routes/globalConfigRoutes");
 const businessRoutes = require("./routes/businessRoutes");
+const gameRoutes = require("./routes/quiznest/gameRoutes");
+const playerRoutes = require("./routes/quiznest/playerRoutes");
+const questionRoutes = require("./routes/quiznest/questionRoutes");
+const pollRoutes = require("./routes/votecast/pollRoutes");
+
 
 const app = express();
 app.use(morgan("dev"));
@@ -47,10 +54,19 @@ initializeApp();
 
 // Routes
 app.use("/api/modules", moduleRoutes);
+app.use("/api/translate", translateRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/global-config", globalConfigRoutes );
 app.use("/api/businesses", businessRoutes );
+
+// Quiznest Routes
+app.use("/api/quiznest/games", gameRoutes);
+app.use("/api/quiznest/players", playerRoutes);
+app.use("/api/quiznest/questions", questionRoutes);
+
+// Votecast Routes
+app.use("/api/votecast/polls", pollRoutes);
 
 // Health Check
 app.get("/", (req, res) => {
