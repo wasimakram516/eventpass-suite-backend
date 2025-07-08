@@ -1,10 +1,13 @@
 const multer = require("multer");
 
 // ✅ Allowed file types
-
+const allowedExcelTypes = [
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+];
 const allowedImageTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
 const allowedVideoTypes = ["video/mp4", "video/mpeg", "video/quicktime"];
-const allowedTypes = [...allowedImageTypes, ...allowedVideoTypes];
+const allowedTypes = [...allowedImageTypes, ...allowedVideoTypes,...allowedExcelTypes];
 
 // ✅ Multer storage (stores file in memory)
 const storage = multer.memoryStorage();
