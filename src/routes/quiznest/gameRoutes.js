@@ -5,7 +5,6 @@ const { protect, adminOnly, checkPermission } = require("../../middlewares/auth"
 const upload = require("../../middlewares/uploadMiddleware");
 
 const quiznestAccess = [protect, checkPermission.quiznest];
-const quiznestAdmin = [protect, checkPermission.quiznest, adminOnly];
 
 // Upload up to 3 images: cover, name, background
 const gameImageUpload = upload.fields([
@@ -14,12 +13,12 @@ const gameImageUpload = upload.fields([
   { name: "background", maxCount: 1 },
 ]);
 
-router.post("/", quiznestAdmin, gameImageUpload, gameController.createGame);
+router.post("/", quiznestAccess, gameImageUpload, gameController.createGame);
 router.get("/business/:slug", gameController.getGamesByBusinessSlug);
 router.get("/", quiznestAccess, gameController.getAllGames);
 router.get("/:id", quiznestAccess, gameController.getGameById);
 router.get("/slug/:slug", gameController.getGameBySlug);
-router.put("/:id", quiznestAdmin, gameImageUpload, gameController.updateGame);
-router.delete("/:id", quiznestAdmin, gameController.deleteGame);
+router.put("/:id", quiznestAccess, gameImageUpload, gameController.updateGame);
+router.delete("/:id", quiznestAccess, gameController.deleteGame);
 
 module.exports = router;

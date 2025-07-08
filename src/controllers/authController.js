@@ -10,6 +10,8 @@ const generateTokens = (user) => {
   const payload = {
     id: user._id,
     role: user.role,
+    modulePermissions: user.modulePermissions || [],
+    business: user.business?._id || null,
   };
 
   const accessToken = jwt.sign(payload, env.jwt.secret, {
