@@ -18,6 +18,10 @@ const gameRoutes = require("./routes/quiznest/gameRoutes");
 const playerRoutes = require("./routes/quiznest/playerRoutes");
 const questionRoutes = require("./routes/quiznest/questionRoutes");
 const pollRoutes = require("./routes/votecast/pollRoutes");
+const eventRegEventRoutes = require("./routes/EventReg/eventRoutes");
+const eventRegRegistrationRoutes = require("./routes/EventReg/registrationRoutes");
+const CheckInEventRoutes = require("./routes/CheckIn/eventRoutes");
+const CheckInRegistrationRoutes = require("./routes/CheckIn/registrationRoutes");
 
 
 const app = express();
@@ -68,9 +72,17 @@ app.use("/api/quiznest/questions", questionRoutes);
 // Votecast Routes
 app.use("/api/votecast/polls", pollRoutes);
 
+// EventReg Routes
+app.use("/api/eventreg/events", eventRegEventRoutes);
+app.use("/api/eventreg/registrations", eventRegRegistrationRoutes);
+
+// CheckIn Routes
+app.use("/api/checkin/events", CheckInEventRoutes);
+app.use("/api/checkin/registrations", CheckInRegistrationRoutes);
+
 // Health Check
 app.get("/", (req, res) => {
-  res.status(200).send("📡 Server is running...");
+  res.status(200).send("📡 EventPass Suite Server is running...");
 });
 
 // Error Handler

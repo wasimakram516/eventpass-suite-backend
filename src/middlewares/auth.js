@@ -45,7 +45,6 @@ const checkPermission = (moduleKey) => (req, res, next) => {
   try {
     const user = req.user;
     if (!user) return response(res, 401, "Unauthorized - No user found");
-    console.log("Decoded user:", req.user);
     if (
       user.role === "admin" ||
       (user.modulePermissions && user.modulePermissions.includes(moduleKey))
