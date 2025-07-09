@@ -10,7 +10,7 @@ const response = require("../../utils/response");
 
 // Get all events for a business
 exports.getEventDetails = asyncHandler(async (req, res) => {
-  const { businessId } = req.body;
+  const { businessId } = req.query;
 
   if (!mongoose.Types.ObjectId.isValid(businessId)) {
     return response(res, 400, "Invalid business ID");
