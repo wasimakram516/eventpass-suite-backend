@@ -18,7 +18,7 @@ exports.getPolls = asyncHandler(async (req, res) => {
     filter.business = business._id;
   } else if (user.role === "business") {
     const businesses = await Business.find({ owner: user.id });
-    filter.business = { $in: businesses.map(b => b._id) };
+    filter.business = { $in: businesses.map((b) => b._id) };
   }
 
   const polls = await Poll.find(filter).populate("business", "name slug");
@@ -30,8 +30,19 @@ exports.createPoll = asyncHandler(async (req, res) => {
   const { question, options, businessId, status, type } = req.body;
   const user = req.user;
 
-  if (!question || !options || options.length < 2) {
-    return response(res, 400, "Question and at least 2 options are required");
+  if (!question || !options) {
+    return response(res, 400, "Question and options are required");
+  }
+
+  let parsedOptions;
+  try {
+    parsedOptions = JSON.parse(options);
+  } catch {
+    return response(res, 400, "Options must be a valid JSON array");
+  }
+
+  if (!Array.isArray(parsedOptions) || parsedOptions.length < 2) {
+    return response(res, 400, "At least 2 options are required");
   }
 
   if (type && !["options", "slider"].includes(type)) {
@@ -41,15 +52,39 @@ exports.createPoll = asyncHandler(async (req, res) => {
   let business;
   if (user.role === "business") {
     business = await Business.findOne({ owner: user.id });
-    if (!business) return response(res, 403, "You don’t have a business account");
+    if (!business)
+      return response(res, 403, "You don’t have a business account");
   } else {
     business = await Business.findById(businessId);
     if (!business) return response(res, 404, "Business not found");
   }
 
+  const files = req.files || [];
+
+  const enrichedOptions = await Promise.all(
+    parsedOptions.map(async (opt, idx) => {
+      if (!opt.text) throw new Error("Each option must have text");
+
+      let imageUrl = "";
+      if (files[idx]) {
+        const uploaded = await uploadToCloudinary(
+          files[idx].buffer,
+          files[idx].mimetype
+        );
+        imageUrl = uploaded.secure_url;
+      }
+
+      return {
+        text: opt.text,
+        imageUrl,
+        votes: 0,
+      };
+    })
+  );
+
   const poll = await Poll.create({
     question,
-    options,
+    options: enrichedOptions,
     business: business._id,
     status: status || "active",
     type: type || "options",
@@ -72,13 +107,48 @@ exports.updatePoll = asyncHandler(async (req, res) => {
   if (!isAdmin && !isOwner) return response(res, 403, "Permission denied");
 
   if (question !== undefined) poll.question = question;
-  if (options !== undefined) poll.options = options;
   if (status !== undefined) poll.status = status;
+
   if (type !== undefined) {
     if (!["options", "slider"].includes(type)) {
       return response(res, 400, "Invalid poll type");
     }
     poll.type = type;
+  }
+
+  if (options !== undefined) {
+    let parsedOptions;
+    try {
+      parsedOptions = JSON.parse(options);
+    } catch {
+      return response(res, 400, "Options must be a valid JSON array");
+    }
+
+    if (!Array.isArray(parsedOptions) || parsedOptions.length < 2) {
+      return response(res, 400, "At least 2 options are required");
+    }
+
+    const files = req.files || [];
+
+    poll.options = await Promise.all(
+      parsedOptions.map(async (opt, idx) => {
+        let imageUrl = opt.imageUrl || "";
+
+        if (files[idx]) {
+          const uploaded = await uploadToCloudinary(
+            files[idx].buffer,
+            files[idx].mimetype
+          );
+          imageUrl = uploaded.secure_url;
+        }
+
+        return {
+          text: opt.text,
+          imageUrl,
+          votes: typeof opt.votes === "number" ? opt.votes : 0,
+        };
+      })
+    );
   }
 
   await poll.save();
@@ -111,7 +181,7 @@ exports.clonePoll = asyncHandler(async (req, res) => {
   const clonedPoll = new Poll({
     business: existingPoll.business,
     question: existingPoll.question + " (Copy)",
-    options: existingPoll.options.map(opt => ({
+    options: existingPoll.options.map((opt) => ({
       text: opt.text,
       imageUrl: opt.imageUrl,
     })),
@@ -132,7 +202,11 @@ exports.voteOnPoll = asyncHandler(async (req, res) => {
   if (!poll) return response(res, 404, "Poll not found");
   if (poll.status !== "active") return response(res, 403, "Poll is not active");
 
-  if (typeof optionIndex !== "number" || optionIndex < 0 || optionIndex >= poll.options.length) {
+  if (
+    typeof optionIndex !== "number" ||
+    optionIndex < 0 ||
+    optionIndex >= poll.options.length
+  ) {
     return response(res, 400, "Invalid option index");
   }
 
@@ -155,10 +229,12 @@ exports.resetVotes = asyncHandler(async (req, res) => {
   const polls = await Poll.find(filter);
   if (polls.length === 0) return response(res, 404, "No polls found");
 
-  await Promise.all(polls.map(async (poll) => {
-    poll.options.forEach(opt => opt.votes = 0);
-    await poll.save();
-  }));
+  await Promise.all(
+    polls.map(async (poll) => {
+      poll.options.forEach((opt) => (opt.votes = 0));
+      await poll.save();
+    })
+  );
 
   return response(res, 200, "Votes reset successfully");
 });
@@ -180,7 +256,7 @@ exports.getActivePollsByBusiness = asyncHandler(async (req, res) => {
 
 // Poll Results
 exports.getPollResults = asyncHandler(async (req, res) => {
-  const { businessSlug, status } = req.query;  // e.g., ?businessSlug=oabc&status=active
+  const { businessSlug, status } = req.query; // e.g., ?businessSlug=oabc&status=active
 
   if (!businessSlug) return response(res, 400, "businessSlug is required");
 
@@ -192,10 +268,11 @@ exports.getPollResults = asyncHandler(async (req, res) => {
 
   const polls = await Poll.find(filter);
 
-  const resultData = polls.map(poll => {
-    const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes, 0) || 1;
+  const resultData = polls.map((poll) => {
+    const totalVotes =
+      poll.options.reduce((sum, opt) => sum + opt.votes, 0) || 1;
 
-    const options = poll.options.map(opt => ({
+    const options = poll.options.map((opt) => ({
       text: opt.text,
       imageUrl: opt.imageUrl,
       votes: opt.votes,
@@ -205,7 +282,10 @@ exports.getPollResults = asyncHandler(async (req, res) => {
     return {
       _id: poll._id,
       question: poll.question,
-      totalVotes: totalVotes === 1 && poll.options.every(opt => opt.votes === 0) ? 0 : totalVotes,
+      totalVotes:
+        totalVotes === 1 && poll.options.every((opt) => opt.votes === 0)
+          ? 0
+          : totalVotes,
       options,
     };
   });
@@ -226,7 +306,7 @@ exports.exportPollsToExcel = asyncHandler(async (req, res) => {
   const polls = await Poll.find(filter);
   if (polls.length === 0) return response(res, 404, "No polls found");
 
-  const maxOptions = Math.max(...polls.map(p => p.options.length));
+  const maxOptions = Math.max(...polls.map((p) => p.options.length));
 
   const headerRow1 = ["Business", "Status", "Question"];
   const headerRow2 = ["", "", ""];
@@ -240,12 +320,14 @@ exports.exportPollsToExcel = asyncHandler(async (req, res) => {
 
   const wsData = [headerRow1, headerRow2];
 
-  polls.forEach(poll => {
+  polls.forEach((poll) => {
     const totalVotes = poll.options.reduce((sum, o) => sum + o.votes, 0);
     const row = [business.slug, poll.status, poll.question];
 
-    poll.options.forEach(option => {
-      const percent = totalVotes ? ((option.votes / totalVotes) * 100).toFixed(2) : "0.00";
+    poll.options.forEach((option) => {
+      const percent = totalVotes
+        ? ((option.votes / totalVotes) * 100).toFixed(2)
+        : "0.00";
       row.push(option.text, option.votes, percent);
     });
 
@@ -270,7 +352,13 @@ exports.exportPollsToExcel = asyncHandler(async (req, res) => {
 
   const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
-  res.setHeader("Content-Disposition", `attachment; filename="${business.slug}-polls.xlsx"`);
-  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${business.slug}-polls.xlsx"`
+  );
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
   return res.status(200).send(buffer);
 });
