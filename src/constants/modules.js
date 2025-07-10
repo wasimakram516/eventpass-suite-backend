@@ -2,8 +2,8 @@ const MODULES = [
   {
     key: "quiznest",
     labels: {
-      en: "Quiznest",
-      ar: "كويز نيست",
+      en: "QuizNest",
+      ar: "QuizNest",
     },
     descriptions: {
       en: "Create and manage single-player quiz games.",
@@ -21,7 +21,7 @@ const MODULES = [
     key: "eventduel",
     labels: {
       en: "Event Duel",
-      ar: "مبارزة الفعالية",
+      ar: "Event Duel",
     },
     descriptions: {
       en: "Run real-time 1v1 quiz competitions.",
@@ -39,7 +39,7 @@ const MODULES = [
     key: "votecast",
     labels: {
       en: "VoteCast",
-      ar: "تصويت كاست",
+      ar: "VoteCast",
     },
     descriptions: {
       en: "Create and track audience polls.",
@@ -57,7 +57,7 @@ const MODULES = [
     key: "stageq",
     labels: {
       en: "StageQ",
-      ar: "ستيج كيو",
+      ar: "StageQ",
     },
     descriptions: {
       en: "Display visitor-submitted questions as bubbles.",
@@ -75,7 +75,7 @@ const MODULES = [
     key: "mosaicwall",
     labels: {
       en: "MosaicWall",
-      ar: "جدار الفسيفساء",
+      ar: "MosaicWall",
     },
     descriptions: {
       en: "Show photo & text submissions in real time.",
@@ -93,7 +93,7 @@ const MODULES = [
     key: "eventreg",
     labels: {
       en: "Event Reg",
-      ar: "تسجيل الفعالية",
+      ar: "Event Reg",
     },
     descriptions: {
       en: "Build custom registration forms for events.",
@@ -111,7 +111,7 @@ const MODULES = [
     key: "checkin",
     labels: {
       en: "Check-In",
-      ar: "تسجيل الدخول",
+      ar: "Check-In",
     },
     descriptions: {
       en: "Track and verify guest entries.",
@@ -129,7 +129,7 @@ const MODULES = [
     key: "eventwheel",
     labels: {
       en: "Event Wheel",
-      ar: "عجلة الجوائز",
+      ar: "Event Wheel",
     },
     descriptions: {
       en: "Spin-to-win prize game for attendees.",

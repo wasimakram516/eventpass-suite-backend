@@ -11,14 +11,26 @@ const response = require("../../utils/response");
 
 // GET all employee events
 exports.getEventDetails = asyncHandler(async (req, res) => {
-  const { businessId } = req.query;
+  const { businessSlug } = req.query;
 
-  if (!mongoose.Types.ObjectId.isValid(businessId)) {
-    return response(res, 400, "Invalid business ID");
+  if (!businessSlug) {
+    return response(res, 400, "Business slug is required");
   }
 
-  const events = await Event.find({ businessId, eventType: "employee" }).sort({ date: -1 });
-  return response(res, 200, "Events fetched successfully", {
+  // Find the business by slug
+  const business = await Business.findOne({ slug: businessSlug });
+  if (!business) {
+    return response(res, 404, "Business not found");
+  }
+
+  const businessId = business._id;
+
+  const events = await Event.find({
+      businessId,
+      eventType: "employee",
+    }).sort({ date: -1 });
+
+  return response(res, 200, "CheckIn Events fetched successfully", {
     events,
     totalEvents: events.length,
   });
@@ -54,18 +66,18 @@ exports.getEventById = asyncHandler(async (req, res) => {
 
 // CREATE employee event
 exports.createEvent = asyncHandler(async (req, res) => {
-  const { name, slug, date, venue, description, businessId } = req.body;
+  const { name, slug, date, venue, description, businessSlug } = req.body;
   let { capacity } = req.body;
 
-  if (!name || !slug || !date || !venue || !businessId) {
+  if (!name || !slug || !date || !venue || !businessSlug) {
     return response(res, 400, "Missing required fields");
   }
 
-  const business = await Business.findById(businessId);
+  const business = await Business.findOne({ slug: businessSlug });
   if (!business) {
     return response(res, 404, "Business not found");
   }
-
+  const businessId = business._id;
   const uniqueSlug = await generateUniqueSlug(Event, "slug", slug);
   if (!capacity || isNaN(Number(capacity)) || Number(capacity) <= 0) {
     capacity = 999;
@@ -152,8 +164,15 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     }
   }
 
-  const updatedEvent = await Event.findByIdAndUpdate(id, updates, { new: true });
-  return response(res, 200, "Employee event updated successfully", updatedEvent);
+  const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
+    new: true,
+  });
+  return response(
+    res,
+    200,
+    "Employee event updated successfully",
+    updatedEvent
+  );
 });
 
 // DELETE employee event
@@ -171,7 +190,11 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
 
   const registrationsCount = await Registration.countDocuments({ eventId: id });
   if (registrationsCount > 0) {
-    return response(res, 400, "Cannot delete an event with existing registrations");
+    return response(
+      res,
+      400,
+      "Cannot delete an event with existing registrations"
+    );
   }
 
   if (event.logoUrl) {

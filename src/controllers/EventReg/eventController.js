@@ -10,13 +10,24 @@ const response = require("../../utils/response");
 
 // Get all events for a business
 exports.getEventDetails = asyncHandler(async (req, res) => {
-  const { businessId } = req.query;
+  const { businessSlug } = req.query;
 
-  if (!mongoose.Types.ObjectId.isValid(businessId)) {
-    return response(res, 400, "Invalid business ID");
+  if (!businessSlug) {
+    return response(res, 400, "Business slug is required");
   }
 
-  const events = await Event.find({ businessId }).sort({ date: -1 });
+  // Find the business by slug
+  const business = await Business.findOne({ slug: businessSlug });
+  if (!business) {
+    return response(res, 404, "Business not found");
+  }
+
+  const businessId = business._id;
+
+  const events = await Event.find({
+    businessId,
+    eventType: "public",
+  }).sort({ date: -1 });
 
   return response(res, 200, "Events fetched successfully.", {
     events,
@@ -54,18 +65,19 @@ exports.getEventById = asyncHandler(async (req, res) => {
 
 // CREATE event (only public)
 exports.createEvent = asyncHandler(async (req, res) => {
-  const { name, slug, date, venue, description, businessId } = req.body;
+  const { name, slug, date, venue, description, businessSlug } = req.body;
   let { capacity } = req.body;
 
-  if (!name || !slug || !date || !venue || !businessId) {
+  if (!name || !slug || !date || !venue || !businessSlug) {
     return response(res, 400, "Missing required fields");
   }
 
-  const business = await Business.findById(businessId);
+  const business = await Business.findOne({ slug: businessSlug });
   if (!business) {
     return response(res, 404, "Business not found");
   }
 
+  const businessId = business._id;
   const uniqueSlug = await generateUniqueSlug(Event, "slug", slug);
 
   if (!capacity || isNaN(Number(capacity)) || Number(capacity) <= 0) {
@@ -142,7 +154,7 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
   }
 
   const event = await Event.findById(id);
- if (!event || event.eventType !== "public") {
+  if (!event || event.eventType !== "public") {
     return response(res, 404, "Public event not found");
   }
 
