@@ -30,7 +30,7 @@ app.use(morgan("dev"));
 // Middleware
 app.use(
   cors({
-    origin: ["http://localhost:3000","http://192.168.100.7:3000"],
+    origin: ["http://localhost:3000","https://eventpass-whitewall.vercel.app/"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: [
