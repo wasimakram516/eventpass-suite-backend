@@ -25,12 +25,21 @@ const generateTokens = (user) => {
   return { accessToken, refreshToken };
 };
 
-// Register Business User
-exports.registerBusinessUser = asyncHandler(async (req, res) => {
-  const { name, email, password } = req.body;
+// Register Business or Staff User
+exports.registerUser = asyncHandler(async (req, res) => {
+  const { name, email, password, role = 'business', business } = req.body;
 
   if (!name || !email || !password) {
     return response(res, 400, "Name, email, and password are required");
+  }
+
+  if (!['business', 'staff'].includes(role)) {
+    return response(res, 400, "Invalid role. Must be 'business' or 'staff'");
+  }
+
+  // For staff, business is required
+  if (role === 'staff' && !business) {
+    return response(res, 400, "Business ID is required for staff users");
   }
 
   const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -42,9 +51,9 @@ exports.registerBusinessUser = asyncHandler(async (req, res) => {
     name,
     email: email.toLowerCase(),
     password,
-    role: "business",
-    business: null,   // Will be set after business profile is created
-    modulePermissions: [] // Admin will assign later
+    role,
+    business: role === 'staff' ? business : null,
+    modulePermissions: role === 'staff' ? ['eventreg'] : [] 
   });
 
   await user.save();
@@ -54,13 +63,13 @@ exports.registerBusinessUser = asyncHandler(async (req, res) => {
     name: user.name,
     email: user.email,
     role: user.role,
-    business: null,
-    modulePermissions: [],
+    business: user.business,
+    modulePermissions: user.modulePermissions,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
 
-  return response(res, 201, "Registered successfully", { user: userSafe });
+  return response(res, 201, "User registered successfully", { user: userSafe });
 });
 
 // Login

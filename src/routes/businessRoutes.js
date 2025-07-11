@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const businessController = require("../controllers/businessController");
+
 const { protect, adminOnly } = require("../middlewares/auth");
 const upload = require("../middlewares/uploadMiddleware");
 

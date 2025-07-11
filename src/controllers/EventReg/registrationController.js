@@ -1,8 +1,11 @@
 const mongoose = require("mongoose");
+const QRCode = require("qrcode");
 const Registration = require("../../models/Registration");
+const WalkIn = require("../../models/WalkIn");
 const Event = require("../../models/Event");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
+const sendEmail = require("../../utils/emailService");
 
 // CREATE public registration
 exports.createRegistration = asyncHandler(async (req, res) => {
@@ -47,6 +50,26 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   event.registrations += 1;
   await event.save();
 
+  const qrCodeDataUrl = await QRCode.toDataURL(newRegistration.token);
+
+  // Prepare HTML email
+  const emailHtml = `
+  <p>Hi ${fullName},</p>
+  <p>You’ve successfully registered for <strong>${event.name}</strong>.</p>
+  <p>Please show this QR code at the venue for check-in:</p>
+  {{qrImage}}
+  <p><strong>${newRegistration.token}</strong></p>
+  <p>Thank you,<br/><strong>${event.name}</strong> Team</p>
+`;
+
+  // Send email
+  await sendEmail(
+    email,
+    `Registration Confirmed: ${event.name}`,
+    emailHtml,
+    qrCodeDataUrl
+  );
+
   return response(res, 201, "Registration successful", newRegistration);
 });
 
@@ -75,6 +98,8 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
     email: reg.email,
     phone: reg.phone,
     company: reg.company,
+    token: reg.token,
+    createdAt: reg.createdAt,
   }));
 
   return response(res, 200, "Registrations fetched", {
@@ -84,6 +109,47 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
       totalPages: Math.ceil(totalRegistrations / limit) || 1,
       currentPage: Number(page),
       perPage: Number(limit),
+    },
+  });
+});
+
+// VERIFY registration by QR token and create a WalkIn
+exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
+  const { token } = req.query;
+  const staffUser = req.user; 
+
+  if (!token) {
+    return response(res, 400, "Token is required");
+  }
+
+  const registration = await Registration.findOne({ token }).populate("eventId");
+
+  if (!registration) {
+    return response(res, 404, "Registration not found");
+  }
+
+  // Create a WalkIn record
+  const walkin = new WalkIn({
+    registrationId: registration._id,
+    eventId: registration.eventId?._id,
+    scannedBy: staffUser._id,
+  });
+
+  await walkin.save();
+
+  return response(res, 200, "Registration verified and walk-in recorded", {
+    fullName: registration.fullName,
+    email: registration.email,
+    phone: registration.phone,
+    company: registration.company,
+    eventName: registration.eventId?.name || "Unknown Event",
+    eventId: registration.eventId?._id,
+    createdAt: registration.createdAt,
+    walkinId: walkin._id,
+    scannedAt: walkin.scannedAt,
+    scannedBy: {
+      _id: staffUser._id,
+      name: staffUser.name || staffUser.email,
     },
   });
 });

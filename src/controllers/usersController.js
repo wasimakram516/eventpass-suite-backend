@@ -2,6 +2,7 @@ const User = require("../models/User");
 const Business = require("../models/Business");
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
+const sanitizeUser = require("../utils/sanitizeUser");
 
 // Get all users (admin)
 exports.getAllUsers = asyncHandler(async (req, res) => {
@@ -9,25 +10,60 @@ exports.getAllUsers = asyncHandler(async (req, res) => {
     .populate("business", "name slug logoUrl")
     .sort({ createdAt: -1 });
 
-  return response(res, 200, "All users fetched", users);
+  const safeUsers = users.map(sanitizeUser);
+
+  return response(res, 200, "All users fetched", safeUsers);
+});
+
+// Get all staff members of business (excluding logged in business user)
+exports.getAllStaffUsersByBusiness = asyncHandler(async (req, res) => {
+  const businessId = req.user.business;
+  const currentUserId = req.user.id; // ID of the logged-in user
+
+  if (!businessId) {
+    return response(res, 400, "User is not associated with any business");
+  }
+
+  // Verify the business exists
+  const businessExists = await Business.exists({ _id: businessId });
+  if (!businessExists) {
+    return response(res, 404, "Associated business not found in database");
+  }
+  
+  // Find all users in the same business EXCEPT the current user
+  const users = await User.find({ 
+    business: businessId,
+    role: "staff", // Only fetch staff members
+    _id: { $ne: currentUserId } // Exclude current user
+  })
+  .populate("business", "name slug logoUrl")
+  .sort({ createdAt: -1 });
+
+  const safeUsers = users.map(user => sanitizeUser(user));
+  return response(res, 200, "Business staff members fetched successfully", safeUsers);
 });
 
 // Get users without assigned business (for admin use)
 exports.getUnassignedUsers = asyncHandler(async (req, res) => {
   const users = await User.find({ role: "business", business: null });
-  return response(res, 200, "Unassigned users fetched", users);
+  const safeUsers = users.map(sanitizeUser);
+  return response(res, 200, "Unassigned users fetched", safeUsers);
 });
 
 // Get user by ID
 exports.getUserById = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id).populate("business", "name slug logoUrl");
+  const user = await User.findById(req.params.id).populate(
+    "business",
+    "name slug logoUrl"
+  );
   if (!user) return response(res, 404, "User not found");
-  return response(res, 200, "User found", user);
+  return response(res, 200, "User found", sanitizeUser(user));
 });
 
 // Update user (admin)
 exports.updateUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role, businessId, modulePermissions } = req.body;
+  const { name, email, password, role, businessId, modulePermissions } =
+    req.body;
   const user = await User.findById(req.params.id);
   if (!user) return response(res, 404, "User not found");
 
@@ -48,7 +84,7 @@ exports.updateUser = asyncHandler(async (req, res) => {
   }
 
   await user.save();
-  return response(res, 200, "User updated", user);
+  return response(res, 200, "User updated", sanitizeUser(user));
 });
 
 // Delete user (admin only)
@@ -59,4 +95,3 @@ exports.deleteUser = asyncHandler(async (req, res) => {
   await user.deleteOne();
   return response(res, 200, "User deleted");
 });
-

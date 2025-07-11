@@ -1,6 +1,6 @@
 const express = require("express");
 const {
-  registerBusinessUser,
+  registerUser,
   login,
   refreshToken,
   logout
@@ -10,7 +10,7 @@ const { protect } = require("../middlewares/auth");
 const router = express.Router();
 
 // Public
-router.post("/register", registerBusinessUser);
+router.post("/register", registerUser);
 router.post("/login", login);
 router.post("/refresh", refreshToken);
 
