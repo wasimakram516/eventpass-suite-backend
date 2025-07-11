@@ -116,13 +116,19 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
 // VERIFY registration by QR token and create a WalkIn
 exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   const { token } = req.query;
-  const staffUser = req.user; 
+  const staffUser = req.user;
 
   if (!token) {
     return response(res, 400, "Token is required");
   }
 
-  const registration = await Registration.findOne({ token }).populate("eventId");
+  if (!staffUser?.id) {
+    return response(res, 401, "Unauthorized – no scanner info");
+  }
+
+  const registration = await Registration.findOne({ token }).populate(
+    "eventId"
+  );
 
   if (!registration) {
     return response(res, 404, "Registration not found");
@@ -132,7 +138,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   const walkin = new WalkIn({
     registrationId: registration._id,
     eventId: registration.eventId?._id,
-    scannedBy: staffUser._id,
+    scannedBy: staffUser.id,
   });
 
   await walkin.save();
@@ -148,7 +154,6 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     walkinId: walkin._id,
     scannedAt: walkin.scannedAt,
     scannedBy: {
-      _id: staffUser._id,
       name: staffUser.name || staffUser.email,
     },
   });
