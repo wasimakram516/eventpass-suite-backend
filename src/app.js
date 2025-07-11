@@ -27,10 +27,23 @@ const CheckInRegistrationRoutes = require("./routes/CheckIn/registrationRoutes")
 const app = express();
 app.use(morgan("dev"));
 
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://eventpass-whitewall.vercel.app",
+];
+
 // Middleware
 app.use(
   cors({
-    origin: ["http://localhost:3000","https://eventpass-whitewall.vercel.app/"],
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like curl/postman)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS: " + origin));
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: [
@@ -41,6 +54,7 @@ app.use(
     ],
   })
 );
+
 app.use(express.json());
 app.use(cookieParser());
 
