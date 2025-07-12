@@ -73,7 +73,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   return response(res, 201, "Registration successful", newRegistration);
 });
 
-// GET paginated registrations by event using slug
+// GET paginated registrations by event using slug (includes walk-ins)
 exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const { page = 1, limit = 10 } = req.query;
@@ -92,15 +92,26 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
     .skip((page - 1) * limit)
     .limit(Number(limit));
 
-  const enhanced = registrations.map((reg) => ({
-    _id: reg._id,
-    fullName: reg.fullName,
-    email: reg.email,
-    phone: reg.phone,
-    company: reg.company,
-    token: reg.token,
-    createdAt: reg.createdAt,
-  }));
+  const enhanced = await Promise.all(
+    registrations.map(async (reg) => {
+      const walkIns = await WalkIn.find({ registrationId: reg._id })
+        .populate("scannedBy", "name email")
+        .sort({ scannedAt: -1 });
+      return {
+        _id: reg._id,
+        fullName: reg.fullName,
+        email: reg.email,
+        phone: reg.phone,
+        company: reg.company,
+        token: reg.token,
+        createdAt: reg.createdAt,
+        walkIns: walkIns.map((w) => ({
+          scannedAt: w.scannedAt,
+          scannedBy: w.scannedBy,
+        })),
+      };
+    })
+  );
 
   return response(res, 200, "Registrations fetched", {
     data: enhanced,
