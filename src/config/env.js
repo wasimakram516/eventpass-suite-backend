@@ -29,6 +29,17 @@ const env = {
     adminPassword: validateEnv("ADMIN_PASSWORD"),
     masterKey: validateEnv("MASTER_KEY"),
   },
+  notifications:{
+    email:{
+      emailUser: validateEnv("EMAIL_USER"),
+      emailPass: validateEnv("EMAIL_PASS"),
+    },
+    whatsapp:{
+      accountSid: validateEnv("TWILIO_ACCOUNT_SID"),
+      authToken: validateEnv("TWILIO_AUTH_TOKEN"),
+      whatsappFrom: validateEnv("TWILIO_WHATSAPP_FROM"), // e.g., 'whatsapp:+14155238886'
+    }
+  },
   cloudinary: {
     cloudName: validateEnv("CLOUDINARY_CLOUD_NAME"),
     apiKey: validateEnv("CLOUDINARY_API_KEY"),

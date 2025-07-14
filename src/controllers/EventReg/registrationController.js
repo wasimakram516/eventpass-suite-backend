@@ -1,11 +1,13 @@
 const mongoose = require("mongoose");
+const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
 const QRCode = require("qrcode");
 const Registration = require("../../models/Registration");
 const WalkIn = require("../../models/WalkIn");
 const Event = require("../../models/Event");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
-const sendEmail = require("../../utils/emailService");
+const sendEmail = require("../../services/emailService");
+const sendWhatsappMessage = require("../../services/whatsappService");
 
 // CREATE public registration
 exports.createRegistration = asyncHandler(async (req, res) => {
@@ -54,12 +56,33 @@ exports.createRegistration = asyncHandler(async (req, res) => {
 
   // Prepare HTML email
   const emailHtml = `
-  <p>Hi ${fullName},</p>
-  <p>You’ve successfully registered for <strong>${event.name}</strong>.</p>
-  <p>Please show this QR code at the venue for check-in:</p>
-  {{qrImage}}
-  <p><strong>${newRegistration.token}</strong></p>
-  <p>Thank you,<br/><strong>${event.name}</strong> Team</p>
+  <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; background-color: #f9f9f9;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+      <div style="background-color: #007BFF; color: #ffffff; padding: 20px; text-align: center;">
+        <h2 style="margin: 0;">You're Registered!</h2>
+      </div>
+      <div style="padding: 30px;">
+        <p style="font-size: 16px;">Hi <strong>${fullName}</strong>,</p>
+        <p style="font-size: 16px;">You’ve successfully registered for <strong>${
+          event.name
+        }</strong>.</p>
+        <p style="font-size: 16px;">Please show this QR code at the venue for check-in:</p>
+        <div style="text-align: center; margin: 20px 0;">
+          {{qrImage}}
+        </div>
+        <p style="font-size: 14px; text-align: center; color: #888;">QR Token: <strong style="font-size: 18px;">${
+          newRegistration.token
+        }</strong></p>
+        <hr style="margin: 30px 0;" />
+        <p style="font-size: 14px;">Thank you,<br /><strong>${
+          event.name
+        }</strong> Team</p>
+      </div>
+    </div>
+    <div style="text-align: center; font-size: 12px; color: #aaa; margin-top: 20px;">
+      &copy; ${new Date().getFullYear()} EventPass. All rights reserved.
+    </div>
+  </div>
 `;
 
   // Send email
@@ -69,6 +92,17 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     emailHtml,
     qrCodeDataUrl
   );
+
+  // Generate QR code buffer
+  const qrCodeBuffer = await QRCode.toBuffer(newRegistration.token);
+
+  // Upload QR to Cloudinary
+  const qrUploadResult = await uploadToCloudinary(qrCodeBuffer, "image/png");
+  const qrImageUrl = qrUploadResult.secure_url;
+
+  // Send WhatsApp message
+  const whatsappText = `Hi ${fullName}, you’ve successfully registered for "${event.name}". Please show this QR code at check-in:`;
+  await sendWhatsappMessage(phone, whatsappText, qrImageUrl);
 
   return response(res, 201, "Registration successful", newRegistration);
 });
