@@ -66,7 +66,9 @@ exports.createRegistration = asyncHandler(async (req, res) => {
         <p style="font-size: 16px;">You’ve successfully registered for <strong>${
           event.name
         }</strong>.</p>
-        <p style="font-size: 16px;">Please show this QR code at the venue for check-in:</p>
+        <p style="font-size: 16px;">Please show this QR code at the <strong>${
+          event.venue
+        }</strong> for check-in:</p>
         <div style="text-align: center; margin: 20px 0;">
           {{qrImage}}
         </div>
