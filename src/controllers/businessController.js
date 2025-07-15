@@ -1,5 +1,14 @@
 const Business = require("../models/Business");
 const User = require("../models/User");
+const Game = require("../models/Game");
+const Player = require("../models/Player");
+const Event = require("../models/Event");
+const Registration = require("../models/Registration");
+const WalkIn = require("../models/WalkIn");
+const Poll = require("../models/Poll");
+const EventQuestion = require("../models/EventQuestion");
+const Visitor = require("../models/Visitor");
+
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
 const { uploadToCloudinary } = require("../utils/uploadToCloudinary");
@@ -114,13 +123,43 @@ exports.deleteBusiness = asyncHandler(async (req, res) => {
   const business = await Business.findById(req.params.id);
   if (!business) return response(res, 404, "Business not found");
 
+  // Delete logo
   if (business.logoUrl) {
     await deleteImage(business.logoUrl);
   }
 
-  // Unlink the user who owned this business
-  await User.findOneAndUpdate({ business: business._id }, { business: null });
+  const businessId = business._id;
 
+  // Remove associated Games and Players
+  const games = await Game.find({ businessId });
+  const gameIds = games.map((g) => g._id);
+  await Player.deleteMany({ gameId: { $in: gameIds } });
+  await Game.deleteMany({ _id: { $in: gameIds } });
+
+  // Remove associated Events and their Registrations & WalkIns
+  const events = await Event.find({ businessId });
+  const eventIds = events.map((e) => e._id);
+  await WalkIn.deleteMany({ eventId: { $in: eventIds } });
+  await Registration.deleteMany({ eventId: { $in: eventIds } });
+  await Event.deleteMany({ _id: { $in: eventIds } });
+
+  // Remove Polls
+  await Poll.deleteMany({ business: businessId });
+
+  // Remove EventQuestions
+  await EventQuestion.deleteMany({ business: businessId });
+
+  // Remove business from visitors' eventHistory
+  await Visitor.updateMany(
+    {},
+    { $pull: { eventHistory: { business: businessId } } }
+  );
+
+  // Unlink user
+  await User.updateMany({ business: businessId }, { $set: { business: null } });
+
+  // Finally, delete business
   await business.deleteOne();
-  return response(res, 200, "Business deleted successfully");
+
+  return response(res, 200, "Business and related data deleted successfully");
 });

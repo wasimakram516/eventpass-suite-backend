@@ -1,5 +1,14 @@
 const User = require("../models/User");
 const Business = require("../models/Business");
+const Game = require("../models/Game");
+const Player = require("../models/Player");
+const Event = require("../models/Event");
+const Registration = require("../models/Registration");
+const WalkIn = require("../models/WalkIn");
+const Poll = require("../models/Poll");
+const EventQuestion = require("../models/EventQuestion");
+const Visitor = require("../models/Visitor");
+const { deleteImage } = require("../config/cloudinary");
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
 const sanitizeUser = require("../utils/sanitizeUser");
@@ -87,11 +96,58 @@ exports.updateUser = asyncHandler(async (req, res) => {
   return response(res, 200, "User updated", sanitizeUser(user));
 });
 
-// Delete user (admin only)
+// Delete user (soft delete)
 exports.deleteUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return response(res, 404, "User not found");
 
+  const userId = user._id;
+
+  // If user is a "business" role, delete all their businesses and related data
+  if (user.role === "business") {
+    const businesses = await Business.find({ owner: userId });
+
+    for (const business of businesses) {
+      const businessId = business._id;
+
+      // Delete business logo if exists
+      if (business.logoUrl) {
+        await deleteImage(business.logoUrl);
+      }
+
+      // Delete Games & Players
+      const games = await Game.find({ businessId });
+      const gameIds = games.map((g) => g._id);
+      await Player.deleteMany({ gameId: { $in: gameIds } });
+      await Game.deleteMany({ _id: { $in: gameIds } });
+
+      // Delete Events & Registrations & WalkIns
+      const events = await Event.find({ businessId });
+      const eventIds = events.map((e) => e._id);
+      await WalkIn.deleteMany({ eventId: { $in: eventIds } });
+      await Registration.deleteMany({ eventId: { $in: eventIds } });
+      await Event.deleteMany({ _id: { $in: eventIds } });
+
+      // Delete Polls & EventQuestions
+      await Poll.deleteMany({ business: businessId });
+      await EventQuestion.deleteMany({ business: businessId });
+
+      // Pull this business from visitor histories
+      await Visitor.updateMany(
+        {},
+        { $pull: { eventHistory: { business: businessId } } }
+      );
+
+      // Finally, delete the business
+      await business.deleteOne();
+    }
+  } else {
+  // If he is a staff user, so delete WalkIns scanned by this user
+    await WalkIn.deleteMany({ scannedBy: userId });
+  }
+
+  // Finally, delete the user
   await user.deleteOne();
-  return response(res, 200, "User deleted");
+
+  return response(res, 200, "User and related associations deleted successfully");
 });
