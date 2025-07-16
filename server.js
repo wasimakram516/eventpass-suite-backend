@@ -2,7 +2,8 @@ const http = require("http");
 const { Server } = require("socket.io");
 const app = require("./src/app");
 const env = require("./src/config/env");
-const socketHandler = require("./src/socket/socketEvents");
+const mosaicWallSocketEvents = require("./src/socket/modules/mosaicWallSocketEvents");
+const MosaicWallDisplayMediaController = require("./src/controllers/mosaicwall/displayMediaController"); 
 
 const PORT = env.server.port;
 
@@ -15,7 +16,10 @@ const io = new Server(server, {
 });
 
 // WebSocket handlers
-socketHandler(io);
+mosaicWallSocketEvents(io);
+
+// Set io in displayMediaController to enable emitMediaUpdate()
+MosaicWallDisplayMediaController.setSocketIo(io);
 
 module.exports = { server, io };
 

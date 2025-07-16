@@ -24,6 +24,8 @@ const CheckInEventRoutes = require("./routes/CheckIn/eventRoutes");
 const CheckInRegistrationRoutes = require("./routes/CheckIn/registrationRoutes");
 const stageqQuestionRoutes = require("./routes/stageq/questionRoutes");
 const stageqVisitorRoutes = require("./routes/stageq/visitorRoutes");
+const mosaicWallWallConfigRoutes = require("./routes/mosaicwall/wallConfigRoutes");
+const mosaicWallDisplayMediaRoutes = require("./routes/mosaicwall/displayMediaRoutes");
 
 const app = express();
 app.use(morgan("dev"));
@@ -98,6 +100,10 @@ app.use("/api/checkin/registrations", CheckInRegistrationRoutes);
 // StageQ Routes
 app.use("/api/stageq/questions", stageqQuestionRoutes);
 app.use("/api/stageq/visitors", stageqVisitorRoutes);
+
+// MosaicWall Routes
+app.use("/api/mosaicwall/wall-configs", mosaicWallWallConfigRoutes);
+app.use("/api/mosaicwall/display-media", mosaicWallDisplayMediaRoutes);
 
 // Health Check
 app.get("/", (req, res) => {
