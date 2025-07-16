@@ -56,35 +56,60 @@ exports.createRegistration = asyncHandler(async (req, res) => {
 
   // Prepare HTML email
   const emailHtml = `
-  <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; background-color: #f9f9f9;">
-    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
-      <div style="background-color: #007BFF; color: #ffffff; padding: 20px; text-align: center;">
-        <h2 style="margin: 0;">You're Registered!</h2>
-      </div>
-      <div style="padding: 30px;">
-        <p style="font-size: 16px;">Hi <strong>${fullName}</strong>,</p>
-        <p style="font-size: 16px;">You’ve successfully registered for <strong>${
-          event.name
-        }</strong>.</p>
-        <p style="font-size: 16px;">Please show this QR code at the <strong>${
-          event.venue
-        }</strong> for check-in:</p>
-        <div style="text-align: center; margin: 20px 0;">
-          {{qrImage}}
-        </div>
-        <p style="font-size: 14px; text-align: center; color: #888;">QR Token: <strong style="font-size: 18px;">${
-          newRegistration.token
-        }</strong></p>
-        <hr style="margin: 30px 0;" />
-        <p style="font-size: 14px;">Thank you,<br /><strong>${
-          event.name
-        }</strong> Team</p>
-      </div>
+<div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f4; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 0 8px rgba(0,0,0,0.1); overflow: hidden;">
+    <div style="background-color: #007BFF; padding: 20px; text-align: center;">
+      <h2 style="color: #fff; margin: 0;">Welcome to ${event.name}</h2>
     </div>
-    <div style="text-align: center; font-size: 12px; color: #aaa; margin-top: 20px;">
-      &copy; ${new Date().getFullYear()} EventPass. All rights reserved.
+    <div style="padding: 30px;">
+      <p style="font-size: 16px;">Hi <strong>${fullName}</strong>,</p>
+      <p style="font-size: 16px;">We are excited to confirm your registration for the event <strong>${
+        event.name
+      }</strong>!</p>
+
+      ${
+        event.logoUrl
+          ? `<div style="text-align: center; margin: 20px 0;">
+               <img src="${event.logoUrl}" alt="Event Logo" style="max-width: 180px; max-height: 100px;" />
+             </div>`
+          : ""
+      }
+
+      <p style="font-size: 16px;">Here are the event details:</p>
+      <ul style="font-size: 15px; line-height: 1.6; padding-left: 20px;">
+        <li><strong>Date:</strong> ${event.date.toDateString()}</li>
+        <li><strong>Venue:</strong> ${event.venue}</li>
+        ${
+          event.description
+            ? `<li><strong>About the Event:</strong> ${event.description}</li>`
+            : ""
+        }
+      </ul>
+
+      <p style="font-size: 16px;">Please present the following QR code at the entrance for check-in:</p>
+
+      <div style="text-align: center; margin: 25px 0;">
+        {{qrImage}}
+      </div>
+
+      <p style="text-align: center; font-size: 14px; color: #555;">Your Unique Token:</p>
+      <p style="text-align: center; font-size: 20px; font-weight: bold; color: #000;">${
+        newRegistration.token
+      }</p>
+
+      <hr style="margin: 30px 0;" />
+
+      <p style="font-size: 14px;">If you have any questions or need support, feel free to reply to this email.</p>
+      <p style="font-size: 14px;">We look forward to seeing you there!</p>
+      <p style="font-size: 14px;">Warm regards,<br /><strong>${
+        event.name
+      }</strong> Team</p>
     </div>
   </div>
+  <div style="text-align: center; font-size: 12px; color: #aaa; margin-top: 20px;">
+    &copy; ${new Date().getFullYear()} EventPass. All rights reserved.
+  </div>
+</div>
 `;
 
   // Send email
