@@ -5,6 +5,7 @@ const connectDB = require("./config/db");
 const morgan = require("morgan");
 const errorHandler = require("./middlewares/errorHandler");
 const seedAdmin = require("./seeder/adminSeeder");
+const response = require("./utils/response");
 
 // Routes
 const moduleRoutes = require("./routes/moduleRoutes");
@@ -29,6 +30,8 @@ const mosaicWallDisplayMediaRoutes = require("./routes/mosaicwall/displayMediaRo
 const eventduelGameRoutes = require("./routes/eventduel/gameRoutes");
 const eventduelSessionRoutes = require("./routes/eventduel/gameSessionRoutes");
 const eventduelQuestionRoutes = require("./routes/eventduel/questionRoutes");
+const spinWheelRoutes = require("./routes/eventWheel/spinWheelRoutes");
+const spinWheelParticipantRoutes = require("./routes/eventWheel/spinWheelParticipantRoutes");
 
 const app = express();
 app.use(morgan("dev"));
@@ -113,9 +116,18 @@ app.use("/api/eventduel/games", eventduelGameRoutes);
 app.use("/api/eventduel/sessions", eventduelSessionRoutes);
 app.use("/api/eventduel/questions", eventduelQuestionRoutes);
 
+// EventWheel Routes
+app.use("/api/eventwheel/wheels", spinWheelRoutes);
+app.use("/api/eventwheel/participants", spinWheelParticipantRoutes);
+
 // Health Check
 app.get("/", (req, res) => {
   res.status(200).send("📡 EventPass Suite Server is running...");
+});
+
+// 404 handler
+app.use((req, res, next) => {
+  return response(res, 404, `Route not found: ${req.originalUrl}`);
 });
 
 // Error Handler
