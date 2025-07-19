@@ -56,7 +56,7 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
   if (!req.file) return response(res, 400, "No file uploaded");
 
   const game = await Game.findById(gameId);
-  if (!game) return response(res, 404, "Game not found");
+  if (!game || game.mode !== "pvp") return response(res, 404, "PvP game not found");
 
   const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -68,37 +68,18 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
     const questionText = row["Question"]?.toString().trim();
     const choicesCount = game.choicesCount;
 
-    if (!questionText) {
-      throw new Error(`Row ${index + 2}: Missing or invalid Question`);
-    }
+    if (!questionText) throw new Error(`Row ${index + 2}: Missing Question`);
 
     const answers = [];
     for (let i = 1; i <= choicesCount; i++) {
-      const optionKey = `Option${i}`;
-      const value = row[optionKey];
-      if (value === undefined || value === null || value.toString().trim() === "") {
-        throw new Error(
-          `Row "${questionText}": Missing or invalid ${optionKey}`
-        );
-      }
+      const value = row[`Option${i}`];
+      if (!value) throw new Error(`Row ${index + 2}: Missing Option${i}`);
       answers.push(value.toString().trim());
     }
 
-    const correctAnswerRaw = row["CorrectAnswer"];
-    const correctAnswer = correctAnswerRaw?.toString().trim();
-
-    if (!correctAnswer) {
-      throw new Error(
-        `Row "${questionText}": Missing or invalid CorrectAnswer`
-      );
-    }
-
+    const correctAnswer = row["CorrectAnswer"]?.toString().trim();
     const correctIndex = answers.findIndex((a) => a === correctAnswer);
-    if (correctIndex === -1) {
-      throw new Error(
-        `Row "${questionText}": CorrectAnswer "${correctAnswer}" does not match any of the ${choicesCount} options`
-      );
-    }
+    if (correctIndex === -1) throw new Error(`Row ${index + 2}: Invalid CorrectAnswer`);
 
     const hint = row["Hint"]?.toString().trim() || "";
 
@@ -113,15 +94,14 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
   game.questions = questions;
   await game.save();
 
-  return response(res, 200, "Questions uploaded successfully", {
-    count: questions.length,
-  });
+  return response(res, 200, "Questions uploaded", { count: questions.length });
 });
+
 
 // Get all questions for a game
 exports.getQuestions = asyncHandler(async (req, res) => {
   const game = await Game.findById(req.params.gameId);
-  if (!game) return response(res, 404, "Game not found");
+  if (!game || game.mode !== "pvp") return response(res, 404, "PvP game not found");
 
   return response(res, 200, "Questions retrieved", game.questions);
 });
@@ -135,7 +115,7 @@ exports.addQuestion = asyncHandler(async (req, res) => {
   }
 
   const game = await Game.findById(req.params.gameId);
-  if (!game) return response(res, 404, "Game not found");
+  if (!game || game.mode !== "pvp") return response(res, 404, "PvP game not found");
 
   if (answers.length !== game.choicesCount) {
     return response(
@@ -162,7 +142,7 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
   const { question, answers, correctAnswerIndex, hint } = req.body;
 
   const game = await Game.findById(req.params.gameId);
-  if (!game) return response(res, 404, "Game not found");
+  if (!game || game.mode !== "pvp") return response(res, 404, "PvP game not found");
 
   const q = game.questions.id(req.params.questionId);
   if (!q) return response(res, 404, "Question not found");
@@ -187,7 +167,7 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
 // Delete a question
 exports.deleteQuestion = asyncHandler(async (req, res) => {
   const game = await Game.findById(req.params.gameId);
-  if (!game) return response(res, 404, "Game not found");
+  if (!game || game.mode !== "pvp") return response(res, 404, "PvP game not found");
 
   const questionIndex = game.questions.findIndex(
     (q) => q._id.toString() === req.params.questionId

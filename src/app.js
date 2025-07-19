@@ -26,6 +26,9 @@ const stageqQuestionRoutes = require("./routes/stageq/questionRoutes");
 const stageqVisitorRoutes = require("./routes/stageq/visitorRoutes");
 const mosaicWallWallConfigRoutes = require("./routes/mosaicwall/wallConfigRoutes");
 const mosaicWallDisplayMediaRoutes = require("./routes/mosaicwall/displayMediaRoutes");
+const eventduelGameRoutes = require("./routes/eventduel/gameRoutes");
+const eventduelSessionRoutes = require("./routes/eventduel/gameSessionRoutes");
+const eventduelQuestionRoutes = require("./routes/eventduel/questionRoutes");
 
 const app = express();
 app.use(morgan("dev"));
@@ -104,6 +107,11 @@ app.use("/api/stageq/visitors", stageqVisitorRoutes);
 // MosaicWall Routes
 app.use("/api/mosaicwall/wall-configs", mosaicWallWallConfigRoutes);
 app.use("/api/mosaicwall/display-media", mosaicWallDisplayMediaRoutes);
+
+// EventDuel (PvP) Routes
+app.use("/api/eventduel/games", eventduelGameRoutes);
+app.use("/api/eventduel/sessions", eventduelSessionRoutes);
+app.use("/api/eventduel/questions", eventduelQuestionRoutes);
 
 // Health Check
 app.get("/", (req, res) => {

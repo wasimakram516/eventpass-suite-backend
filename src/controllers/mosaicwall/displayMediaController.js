@@ -4,27 +4,7 @@ const response = require("../../utils/response");
 const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
 const { deleteImage } = require("../../config/cloudinary");
 const asyncHandler = require("../../middlewares/asyncHandler");
-
-let io;
-
-// Set WebSocket instance
-exports.setSocketIo = (socketIoInstance) => {
-  io = socketIoInstance;
-};
-
-const emitMediaUpdate = async (wallId, wallSlug) => {
-  try {
-    if (!io) throw new Error("WebSocket instance not initialized.");
-    if (!wallId || !wallSlug) throw new Error("Missing wallId or wallSlug");
-
-    const media = await DisplayMedia.find({ wall: wallId }).sort({
-      createdAt: -1,
-    });
-    io.to(wallSlug).emit("mediaUpdate", media);
-  } catch (err) {
-    console.error("❌ Failed to emit media update:", err.message);
-  }
-};
+const { emitToRoom } = require("../../utils/socketUtils");
 
 // Get all media
 exports.getDisplayMedia = asyncHandler(async (req, res) => {
@@ -65,7 +45,8 @@ exports.createDisplayMedia = asyncHandler(async (req, res) => {
     wall: wall._id,
   });
 
-  await emitMediaUpdate(wall._id, wall.slug);
+  const updatedMediaList = await DisplayMedia.find({ wall: wall._id }).sort({ createdAt: -1 });
+  emitToRoom(wall.slug, "mediaUpdate", updatedMediaList);
 
   return response(res, 201, "Media created successfully.", media);
 });
@@ -79,16 +60,15 @@ exports.updateDisplayMedia = asyncHandler(async (req, res) => {
 
   if (req.file) {
     await deleteImage(item.imageUrl);
-    const uploaded = await uploadToCloudinary(
-      req.file.buffer,
-      req.file.mimetype
-    );
+    const uploaded = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
     item.imageUrl = uploaded.secure_url;
   }
 
   await item.save();
+
   const wall = await WallConfig.findById(item.wall);
-  await emitMediaUpdate(wall._id, wall.slug);
+  const updatedMediaList = await DisplayMedia.find({ wall: wall._id }).sort({ createdAt: -1 });
+  emitToRoom(wall.slug, "mediaUpdate", updatedMediaList);
 
   return response(res, 200, "Media updated successfully.", item);
 });
@@ -102,7 +82,8 @@ exports.deleteDisplayMedia = asyncHandler(async (req, res) => {
   await item.deleteOne();
 
   const wall = await WallConfig.findById(item.wall);
-  await emitMediaUpdate(wall._id, wall.slug);
+  const updatedMediaList = await DisplayMedia.find({ wall: wall._id }).sort({ createdAt: -1 });
+  emitToRoom(wall.slug, "mediaUpdate", updatedMediaList);
 
   return response(res, 200, "Media deleted successfully.");
 });

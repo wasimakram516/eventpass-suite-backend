@@ -2,8 +2,8 @@ const http = require("http");
 const { Server } = require("socket.io");
 const app = require("./src/app");
 const env = require("./src/config/env");
-const mosaicWallSocketEvents = require("./src/socket/modules/mosaicWallSocketEvents");
-const MosaicWallDisplayMediaController = require("./src/controllers/mosaicwall/displayMediaController"); 
+const registerAllSocketModules = require("./src/socket/modules");
+const { setSocketIo } = require("./src/utils/socketUtils");
 
 const PORT = env.server.port;
 
@@ -15,11 +15,8 @@ const io = new Server(server, {
   cors: { origin: "*", credentials: true },
 });
 
-// WebSocket handlers
-mosaicWallSocketEvents(io);
-
-// Set io in displayMediaController to enable emitMediaUpdate()
-MosaicWallDisplayMediaController.setSocketIo(io);
+setSocketIo(io);
+registerAllSocketModules(io);
 
 module.exports = { server, io };
 

@@ -6,8 +6,8 @@ const { protect, checkPermission } = require("../../middlewares/auth");
 const quiznestAccess = [protect, checkPermission.quiznest];
 
 // Public routes
-router.post("/:gameId", playerController.joinGame);
-router.patch("/:id", playerController.submitResult);
+router.post("/:gameId/start-solo", playerController.joinGame);
+router.patch("/:sessionId/:playerId/submit", playerController.submitResult);
 
 // Protected routes
 router.get("/leaderboard/:gameId", quiznestAccess, playerController.getLeaderboard);
