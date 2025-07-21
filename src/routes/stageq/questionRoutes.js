@@ -14,7 +14,7 @@ const { protect } = require("../../middlewares/auth");
 router.post("/:businessSlug", submitQuestion);
 
 // Business or Admin
-router.get("/:businessSlug", protect, getQuestionsByBusiness);
+router.get("/:businessSlug", getQuestionsByBusiness);
 router.put("/vote/:questionId", voteQuestion);
 router.put("/:questionId", protect, updateQuestion);
 router.delete("/:questionId", protect, deleteQuestion);
