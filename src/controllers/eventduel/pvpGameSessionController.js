@@ -3,19 +3,41 @@ const GameSession = require("../../models/GameSession");
 const Player = require("../../models/Player");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
-const { emitUpdate } = require("../../utils/socketUtils");
+const { emitToRoom } = require("../../utils/socketUtils");
 
-// Get all sessions
+// Get all sessions for a specific game by slug
 exports.getGameSessions = asyncHandler(async (req, res) => {
-  const sessions = await GameSession.find()
+  const { gameSlug } = req.query;
+
+  if (!gameSlug) {
+    return response(res, 400, "Missing gameSlug in query");
+  }
+
+  const game = await Game.findOne({ slug: gameSlug });
+  if (!game) {
+    return response(res, 404, "Game not found");
+  }
+
+  const sessions = await GameSession.find({ gameId: game._id })
     .populate("players.playerId winner gameId")
     .sort({ createdAt: -1 });
+
   return response(res, 200, "Sessions retrieved", sessions);
 });
 
 // Start a new session
 exports.startGameSession = asyncHandler(async (req, res) => {
-  const { gameId } = req.body;
+  const { gameSlug } = req.body;
+  if (!gameSlug) {
+    return response(res, 400, "Missing gameSlug in request body");
+  }
+
+  const game = await Game.findOne({ slug: gameSlug });
+  if (!game || game.mode !== "pvp") {
+    return response(res, 404, "Game not found");
+  }
+
+  const gameId = game._id;
 
   const existing = await GameSession.findOne({
     gameId,
@@ -24,10 +46,6 @@ exports.startGameSession = asyncHandler(async (req, res) => {
   if (existing)
     return response(res, 400, "Session already in progress for this game.");
 
-  const game = await Game.findById(gameId);
-  if (!game || game.mode !== "pvp")
-    return response(res, 400, "Invalid or non-PvP game.");
-
   const session = await GameSession.create({
     gameId,
     players: [],
@@ -35,22 +53,35 @@ exports.startGameSession = asyncHandler(async (req, res) => {
     status: "pending",
   });
 
-  // Emit updated sessions list
-  const allSessions = await GameSession.find()
-    .populate("players.playerId winner gameId")
-    .sort({ createdAt: -1 });
- 
-  emitUpdate("pvpSessionsUpdate", allSessions);
+  const populatedSession = await GameSession.findById(session._id).populate(
+    "players.playerId winner gameId"
+  );
+
+  // Emit single session creation
+  emitToRoom(game.slug, "pvpCurrentSession", populatedSession);
 
   return response(res, 201, "New PvP session started", session);
 });
 
 // Join session
 exports.joinGameSession = asyncHandler(async (req, res) => {
-  const { gameId, name, company, playerType } = req.body;
+  const { gameSlug, name, company, playerType } = req.body;
+  if (!gameSlug || !name || !playerType) {
+    return response(
+      res,
+      400,
+      "Missing required fields: gameSlug, name, playerType"
+    );
+  }
 
   if (!["p1", "p2"].includes(playerType))
     return response(res, 400, "Invalid playerType. It should be 'p1' or 'p2'.");
+
+  const game = await Game.findOne({ slug: gameSlug });
+  if (!game || game.mode !== "pvp")
+    return response(res, 400, "Invalid or non-PvP game.");
+
+  const gameId = game._id;
 
   const session = await GameSession.findOne({ gameId, status: "pending" });
   if (!session) return response(res, 404, "No pending session for this game.");
@@ -70,7 +101,18 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
 
   await session.save();
 
-  emitUpdate("pvpSessionUpdate", session);
+  // Re-fetch all sessions and emit updated list
+  const allSessions = await GameSession.find({ gameId: session.gameId })
+    .populate("players.playerId winner gameId")
+    .sort({ createdAt: -1 });
+
+  emitToRoom(game.slug, "pvpAllSessions", allSessions);
+
+  const populatedSession = await GameSession.findById(session._id).populate(
+    "players.playerId winner gameId"
+  );
+  emitToRoom(game.slug, "pvpCurrentSession", populatedSession);
+
   return response(res, 201, `${name} joined as ${playerType}`, {
     player,
     session,
@@ -81,10 +123,10 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
 exports.activateGameSession = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
 
-  const session = await GameSession.findById(sessionId).populate("gameId");
+  let session = await GameSession.findById(sessionId).populate("gameId");
   if (!session) return response(res, 404, "Session not found");
 
-  const game = session.gameId;
+  const game = await Game.findById(session.gameId);
   if (!game || game.mode !== "pvp")
     return response(res, 400, "Invalid PvP game");
 
@@ -98,6 +140,7 @@ exports.activateGameSession = asyncHandler(async (req, res) => {
     return [...Array(length).keys()].sort(() => Math.random() - 0.5);
   };
 
+  // Assign randomized question indexes
   session.questionsAssigned.Player1 = generateRandomOrder(total);
   session.questionsAssigned.Player2 = generateRandomOrder(total);
 
@@ -109,8 +152,26 @@ exports.activateGameSession = asyncHandler(async (req, res) => {
 
   await session.save();
 
-  // Emit updated session
-  emitUpdate("pvpSessionUpdate", session);
+  // Map question indexes to actual questions
+  const mapIndexesToQuestions = (indexes) =>
+    indexes.map((i) => game.questions[i]);
+
+  const player1Questions = mapIndexesToQuestions(
+    session.questionsAssigned.Player1 || []
+  );
+  const player2Questions = mapIndexesToQuestions(
+    session.questionsAssigned.Player2 || []
+  );
+
+  const populatedSession = await GameSession.findById(session._id).populate(
+    "players.playerId winner gameId"
+  );
+
+  emitToRoom(game.slug, "pvpCurrentSession", {
+    populatedSession,
+    player1Questions,
+    player2Questions,
+  });
 
   return response(res, 200, "Session activated", session);
 });
@@ -123,6 +184,10 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
   const session = await GameSession.findById(sessionId);
   if (!session) return response(res, 404, "Session not found");
 
+  const game = await Game.findById(session.gameId);
+  if (!game || game.mode !== "pvp")
+    return response(res, 400, "Invalid or non-PvP game.");
+
   const playerStats = session.players.find(
     (p) => p.playerId.toString() === playerId
   );
@@ -134,8 +199,10 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
 
   await session.save();
 
-  // Emit session update to reflect new stats
-  emitUpdate("pvpSessionUpdate", session);
+  const populatedSession = await GameSession.findById(session._id).populate(
+    "players.playerId winner gameId"
+  );
+  emitToRoom(game.slug, "pvpCurrentSession", populatedSession);
 
   return response(res, 200, "Player result saved", playerStats);
 });
@@ -146,6 +213,10 @@ exports.endGameSession = asyncHandler(async (req, res) => {
 
   const session = await GameSession.findById(sessionId);
   if (!session) return response(res, 404, "Session not found");
+
+  const game = await Game.findById(session.gameId);
+  if (!game || game.mode !== "pvp")
+    return response(res, 400, "Invalid or non-PvP game.");
 
   const [p1, p2] = session.players;
 
@@ -158,30 +229,61 @@ exports.endGameSession = asyncHandler(async (req, res) => {
 
   await session.save();
 
-  // Emit to update session view
-  emitUpdate("pvpSessionEnded", session);
-
-  // Also emit full list refresh
-  const allSessions = await GameSession.find()
-    .populate("players.playerId winner gameId")
-    .sort({ createdAt: -1 });
-
-  emitUpdate("pvpSessionsUpdate", allSessions);
+  const populatedSession = await GameSession.findById(session._id).populate(
+    "players.playerId winner gameId"
+  );
+  emitToRoom(game.slug, "pvpCurrentSession", populatedSession);
 
   return response(res, 200, "Session completed", session);
 });
 
-// Export all player results to Excel
-exports.exportResults = asyncHandler(async (req, res) => {
-  const gameId = req.params.gameId;
+// Reset all sessions for a given gameSlug
+exports.resetGameSessions = asyncHandler(async (req, res) => {
+  const { gameSlug } = req.body;
 
-  if (!mongoose.Types.ObjectId.isValid(gameId)) {
-    return response(res, 400, "Invalid game ID");
+  if (!gameSlug) {
+    return response(res, 400, "Missing gameSlug in request body");
   }
 
-  const game = await Game.findById(gameId).populate("businessId", "name");
+  const game = await Game.findOne({ slug: gameSlug });
+  if (!game || game.mode !== "pvp") {
+    return response(res, 404, "Game not found");
+  }
+
+  const gameId = game._id;
+
+  // Find all sessions for the game
+  const sessions = await GameSession.find({ gameId });
+
+  // Collect all playerIds used in these sessions
+  const allPlayerIds = sessions.flatMap((session) =>
+    session.players.map((p) => p.playerId)
+  );
+
+  // Delete all sessions
+  await GameSession.deleteMany({ gameId });
+
+  // Delete related players (safe even if playerIds are empty)
+  await Player.deleteMany({ _id: { $in: allPlayerIds } });
+
+  // Emit session update to room
+  emitToRoom(gameSlug, "pvpCurrentSession", null);
+  emitToRoom(gameSlug, "pvpAllSessions", []);
+
+  return response(res, 200, "All sessions and players reset for this game");
+});
+
+// Export all player results to Excel
+exports.exportResults = asyncHandler(async (req, res) => {
+  const gameSlug = req.params.gameSlug;
+
+  const game = await Game.findOne({ slug: gameSlug }).populate(
+    "businessId",
+    "name"
+  );
   if (!game) return response(res, 404, "Game not found");
 
+  const gameId = game._id;
   const sessions = await GameSession.find({
     gameId,
     status: "completed",
@@ -232,8 +334,14 @@ exports.exportResults = asyncHandler(async (req, res) => {
 
 // Get leaderboard for a game
 exports.getLeaderboard = asyncHandler(async (req, res) => {
-  const gameId = req.params.gameId;
+  const gameSlug = req.params.gameSlug;
 
+  const game = await Game.findOne({ slug: gameSlug });
+  if (!game) return response(res, 404, "Game not found");
+  if (game.mode !== "pvp") {
+    return response(res, 400, "Leaderboard only available for PvP games");
+  }
+  const gameId = game._id;
   const sessions = await GameSession.find({
     gameId,
     status: "completed",

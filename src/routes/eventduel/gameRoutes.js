@@ -17,7 +17,7 @@ router.post("/", eventduelAccess, gameImageUpload, gameController.createGame);
 router.get("/business/:slug", eventduelAccess, gameController.getGamesByBusinessSlug);
 router.get("/", eventduelAccess, gameController.getGamesByBusinessSlug);
 router.get("/:id", eventduelAccess, gameController.getGameById);
-router.get("/slug/:slug", eventduelAccess, gameController.getGameBySlug);
+router.get("/slug/:slug", gameController.getGameBySlug);
 router.put("/:id", eventduelAccess, gameImageUpload, gameController.updateGame);
 router.delete("/:id", eventduelAccess, gameController.deleteGame);
 
