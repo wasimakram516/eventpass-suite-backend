@@ -17,7 +17,6 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
     return response(res, 400, "Business slug is required");
   }
 
-  // Find the business by slug
   const business = await Business.findOne({ slug: businessSlug });
   if (!business) {
     return response(res, 404, "Business not found");
@@ -26,9 +25,9 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
   const businessId = business._id;
 
   const events = await Event.find({
-      businessId,
-      eventType: "employee",
-    }).sort({ date: -1 });
+    businessId,
+    eventType: "employee",
+  }).sort({ startDate: -1 });
 
   return response(res, 200, "CheckIn Events fetched successfully", {
     events,
@@ -66,11 +65,22 @@ exports.getEventById = asyncHandler(async (req, res) => {
 
 // CREATE employee event
 exports.createEvent = asyncHandler(async (req, res) => {
-  const { name, slug, date, venue, description, businessSlug } = req.body;
+  const { name, slug, startDate, endDate, venue, description, businessSlug } = req.body;
   let { capacity } = req.body;
 
-  if (!name || !slug || !date || !venue || !businessSlug) {
+  if (!name || !slug || !startDate || !endDate || !venue || !businessSlug) {
     return response(res, 400, "Missing required fields");
+  }
+
+  const parsedStartDate = new Date(startDate);
+  const parsedEndDate = new Date(endDate);
+
+  if (isNaN(parsedStartDate.getTime()) || isNaN(parsedEndDate.getTime())) {
+    return response(res, 400, "Invalid start or end date");
+  }
+
+  if (parsedEndDate < parsedStartDate) {
+    return response(res, 400, "End date must be greater than or equal to start date");
   }
 
   const business = await Business.findOne({ slug: businessSlug });
@@ -109,7 +119,8 @@ exports.createEvent = asyncHandler(async (req, res) => {
   const newEvent = await Event.create({
     name,
     slug: uniqueSlug,
-    date,
+    startDate: parsedStartDate,
+    endDate: parsedEndDate,
     venue,
     description,
     logoUrl,
@@ -125,7 +136,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
 // UPDATE employee event
 exports.updateEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { name, slug, date, venue, description, capacity } = req.body;
+  const { name, slug, startDate, endDate, venue, description, capacity } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return response(res, 400, "Invalid Event ID");
@@ -136,7 +147,25 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     return response(res, 404, "Employee event not found");
   }
 
-  const updates = { name, date, venue, description };
+  let parsedStartDate = startDate ? new Date(startDate) : event.startDate;
+  let parsedEndDate = endDate ? new Date(endDate) : event.endDate;
+
+  if (isNaN(parsedStartDate.getTime()) || isNaN(parsedEndDate.getTime())) {
+    return response(res, 400, "Invalid start or end date");
+  }
+
+  if (parsedEndDate < parsedStartDate) {
+    return response(res, 400, "End date must be greater than or equal to start date");
+  }
+
+  const updates = {
+    name,
+    startDate: parsedStartDate,
+    endDate: parsedEndDate,
+    venue,
+    description,
+  };
+
   if (capacity && Number(capacity) > 0) updates.capacity = capacity;
 
   if (slug && slug !== event.slug) {
@@ -167,12 +196,8 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
     new: true,
   });
-  return response(
-    res,
-    200,
-    "Employee event updated successfully",
-    updatedEvent
-  );
+
+  return response(res, 200, "Employee event updated successfully", updatedEvent);
 });
 
 // DELETE employee event

@@ -15,24 +15,45 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   if (!event || event.eventType !== "employee") {
     return response(res, 404, "Employee event not found");
   }
+  const now = new Date();
+  const endOfDay = new Date(event.endDate);
+  endOfDay.setUTCHours(23, 59, 59, 999);
+
+  if (event.endDate && now > endOfDay) {
+    return response(
+      res,
+      400,
+      "Registration is closed. This event has already ended."
+    );
+  }
 
   if (event.registrations >= event.capacity) {
     return response(res, 400, "Event capacity is full");
   }
 
-  const employee = event.employeeData.find(emp => emp.employeeId === employeeId);
+  const employee = event.employeeData.find(
+    (emp) => emp.employeeId === employeeId
+  );
   if (!employee) {
     return response(res, 400, "Invalid Employee ID");
   }
 
-  const existing = await Registration.findOne({ eventId: event._id, employeeId });
+  const existing = await Registration.findOne({
+    eventId: event._id,
+    employeeId,
+  });
   if (existing) {
-    return response(res, 200, `Already registered. Table: ${employee.tableNumber}`, {
-      employeeId: existing.employeeId,
-      employeeName: employee.employeeName,
-      tableNumber: employee.tableNumber,
-      tableImage: employee.tableImage,
-    });
+    return response(
+      res,
+      200,
+      `Already registered. Table: ${employee.tableNumber}`,
+      {
+        employeeId: existing.employeeId,
+        employeeName: employee.employeeName,
+        tableNumber: employee.tableNumber,
+        tableImage: employee.tableImage,
+      }
+    );
   }
 
   await Registration.create({ eventId: event._id, employeeId });
@@ -65,13 +86,14 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
     .limit(Number(limit));
 
   const data = registrations.map((reg) => {
-    const emp = event.employeeData.find(e => e.employeeId === reg.employeeId);
+    const emp = event.employeeData.find((e) => e.employeeId === reg.employeeId);
     return {
       _id: reg._id,
       employeeId: reg.employeeId,
       employeeName: emp?.employeeName || `Employee ${reg.employeeId}`,
       tableNumber: emp?.tableNumber || null,
       tableImage: emp?.tableImage || null,
+      createdAt: reg.createdAt,
     };
   });
 

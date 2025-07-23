@@ -1,31 +1,42 @@
 const mongoose = require("mongoose");
 let nanoid;
 (async () => {
-  const { nanoid: _nanoid } = await import('nanoid');
+  const { nanoid: _nanoid } = await import("nanoid");
   nanoid = _nanoid;
 })();
 
-const RegistrationSchema = new mongoose.Schema({
-  eventId: { type: mongoose.Schema.Types.ObjectId, ref: "Event", required: true },
+const RegistrationSchema = new mongoose.Schema(
+  {
+    eventId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Event",
+      required: true,
+    },
+    employeeId: { type: String, default: null }, // For employee events
 
-  employeeId: { type: String, default: null }, // Used if eventType is 'employee'
-  fullName: { type: String, default: null },   // Used if eventType is 'public'
-  email: { type: String, default: null },
-  phone: { type: String, default: null },
-  company: { type: String, default: null },
+    fullName: { type: String, default: null }, // Fallback for public events if custom fields are not provided
+    email: { type: String, default: null },
+    phone: { type: String, default: null },
+    company: { type: String, default: null },
 
-  // For QR tracking and verification
-  token: { type: String, required: true, unique: true }, // Unique ID used in QR code
+    customFields: {
+      type: Map,
+      of: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
 
-}, {
-  timestamps: true
-});
+    token: { type: String, required: true, unique: true }, // For QR
+  },
+  { timestamps: true }
+);
 
-RegistrationSchema.pre('validate', function (next) {
+RegistrationSchema.pre("validate", function (next) {
   if (!this.token) {
-    this.token = nanoid(10); 
+    this.token = nanoid(10);
   }
   next();
 });
 
-module.exports = mongoose.models.Registration || mongoose.model("Registration", RegistrationSchema);
+module.exports =
+  mongoose.models.Registration ||
+  mongoose.model("Registration", RegistrationSchema);

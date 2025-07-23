@@ -8,140 +8,206 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const sendEmail = require("../../services/emailService");
 const sendWhatsappMessage = require("../../services/whatsappService");
+const {
+  pickCustom,
+  pickFullName,
+  pickEmail,
+  pickPhone,
+  pickCompany,
+} = require("../../utils/customFieldUtils");
 
 // CREATE public registration
 exports.createRegistration = asyncHandler(async (req, res) => {
-  const { slug, fullName, email, phone, company } = req.body;
-
+  const { slug } = req.body;
   if (!slug) return response(res, 400, "Event slug is required");
 
   const event = await Event.findOne({ slug });
   if (!event) return response(res, 404, "Event not found");
-
-  if (event.eventType !== "public") {
+  if (event.eventType !== "public")
     return response(res, 400, "This event is not open for public registration");
+
+  const now = new Date();
+  const endOfDay = new Date(event.endDate);
+  endOfDay.setUTCHours(23, 59, 59, 999);
+  if (event.endDate && now > endOfDay) {
+    return response(
+      res,
+      400,
+      "Registration is closed. This event has already ended."
+    );
   }
 
-  if (event.registrations >= event.capacity) {
+  if (event.registrations >= event.capacity)
     return response(res, 400, "Event capacity is full");
-  }
 
   const eventId = event._id;
+  const formFields = event.formFields || [];
+  const customFields = {};
 
-  if (!fullName || !email || !phone) {
-    return response(res, 400, "Full name, email, and phone are required");
+  // 1) Process dynamic customFields (unchanged)…
+  if (formFields.length > 0) {
+    for (const field of formFields) {
+      const value = req.body[field.inputName];
+      if (field.required && (value == null || value === "")) {
+        return response(res, 400, `Missing required field: ${field.inputName}`);
+      }
+      if (
+        ["radio", "list"].includes(field.inputType) &&
+        value &&
+        !field.values.includes(value)
+      ) {
+        return response(
+          res,
+          400,
+          `Invalid value for ${field.inputName}. Allowed: ${field.values.join(
+            ", "
+          )}`
+        );
+      }
+      if (value != null) {
+        customFields[field.inputName] = value;
+      }
+    }
   }
 
-  const duplicate = await Registration.findOne({
-    $or: [{ email }, { phone }],
-    eventId,
-  });
+  // 2) Extract core props from either classic or custom:
+  let fullName = req.body.fullName || pickFullName(customFields);
+  let email = req.body.email || pickEmail(customFields);
+  let phone = req.body.phone || pickPhone(customFields);
+  let company = req.body.company || pickCompany(customFields);
 
-  if (duplicate) {
-    return response(res, 409, "Already registered with this email or phone");
+  // 3) If no formFields, enforce classic fields:
+  if (!formFields.length) {
+    if (!fullName || !email || !phone) {
+      return response(res, 400, "Full name, email, and phone are required");
+    }
   }
 
+  // 4) Prevent duplicates (only include clauses for fields you actually have)
+  const orClauses = [];
+  if (email) orClauses.push({ email });
+  if (phone) orClauses.push({ phone });
+
+  if (orClauses.length) {
+    const dup = await Registration.findOne({
+      eventId,
+      $or: orClauses,
+    });
+    if (dup) {
+      return response(res, 409, "Already registered with this email or phone");
+    }
+  }
+
+  // 5) Create registration…
   const newRegistration = await Registration.create({
     eventId,
     fullName,
     email,
     phone,
     company,
+    customFields,
   });
 
+  // 6) Increment counter
   event.registrations += 1;
   await event.save();
 
+  // 7) Generate QR
   const qrCodeDataUrl = await QRCode.toDataURL(newRegistration.token);
+  const qrBuffer = await QRCode.toBuffer(newRegistration.token);
+  const qrUpload = await uploadToCloudinary(qrBuffer, "image/png");
 
-  // Prepare HTML email
+  // 8) Build displayName fallback
+  const displayName = fullName || "Guest";
+
+  // 9) Build customFields summary HTML
+  let customFieldHtml = "";
+  if (formFields.length && Object.keys(customFields).length) {
+    const items = formFields
+      .map((f) => {
+        const v = customFields[f.inputName];
+        return v ? `<li><strong>${f.inputName}:</strong> ${v}</li>` : "";
+      })
+      .filter(Boolean)
+      .join("");
+    if (items) {
+      customFieldHtml = `
+        <p style="font-size:16px;">Here are your submitted details:</p>
+        <ul style="font-size:15px; line-height:1.6; padding-left:20px;">
+          ${items}
+        </ul>
+      `;
+    }
+  }
+
+  // 10) Email HTML (uses displayName & custom summary)
   const emailHtml = `
-<div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f4; color: #333;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 0 8px rgba(0,0,0,0.1); overflow: hidden;">
-    <div style="background-color: #007BFF; padding: 20px; text-align: center;">
-      <h2 style="color: #fff; margin: 0;">Welcome to ${event.name}</h2>
+<div style="font-family:Arial,sans-serif;padding:20px;background:#f4f4f4;color:#333">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden">
+    <div style="background:#007BFF;padding:20px;text-align:center">
+      <h2 style="color:#fff;margin:0">Welcome to ${event.name}</h2>
     </div>
-    <div style="padding: 30px;">
-      <p style="font-size: 16px;">Hi <strong>${fullName}</strong>,</p>
-      <p style="font-size: 16px;">We are excited to confirm your registration for the event <strong>${
-        event.name
-      }</strong>!</p>
-
+    <div style="padding:30px">
+      <p>Hi <strong>${displayName}</strong>,</p>
+      <p>You’re confirmed for <strong>${event.name}</strong>!</p>
       ${
         event.logoUrl
-          ? `<div style="text-align: center; margin: 20px 0;">
-               <img src="${event.logoUrl}" alt="Event Logo" style="max-width: 180px; max-height: 100px;" />
+          ? `<div style="text-align:center;margin:20px 0">
+               <img src="${event.logoUrl}" style="max-width:180px;max-height:100px"/>
              </div>`
           : ""
       }
-
-      <p style="font-size: 16px;">Here are the event details:</p>
-      <ul style="font-size: 15px; line-height: 1.6; padding-left: 20px;">
-        <li><strong>Date:</strong> ${event.date.toDateString()}</li>
+      <p>Event Details:</p>
+      <ul style="padding-left:20px">
+        <li><strong>Date:</strong> ${event.startDate.toDateString()}${
+    event.endDate && event.endDate.getTime() !== event.startDate.getTime()
+      ? ` to ${event.endDate.toDateString()}`
+      : ""
+  }</li>
         <li><strong>Venue:</strong> ${event.venue}</li>
         ${
           event.description
-            ? `<li><strong>About the Event:</strong> ${event.description}</li>`
+            ? `<li><strong>About:</strong> ${event.description}</li>`
             : ""
         }
       </ul>
-
-      <p style="font-size: 16px;">Please present the following QR code at the entrance for check-in:</p>
-
-      <div style="text-align: center; margin: 25px 0;">
-        {{qrImage}}
-      </div>
-
-      <p style="text-align: center; font-size: 14px; color: #555;">Your Unique Token:</p>
-      <p style="text-align: center; font-size: 20px; font-weight: bold; color: #000;">${
-        newRegistration.token
-      }</p>
-
-      <hr style="margin: 30px 0;" />
-
-      <p style="font-size: 14px;">If you have any questions or need support, feel free to reply to this email.</p>
-      <p style="font-size: 14px;">We look forward to seeing you there!</p>
-      <p style="font-size: 14px;">Warm regards,<br /><strong>${
-        event.name
-      }</strong> Team</p>
+      ${customFieldHtml}
+      <p>Please present this QR at check-in:</p>
+      <div style="text-align:center;margin:25px 0">{{qrImage}}</div>
+      <p>Your Token: <strong>${newRegistration.token}</strong></p>
+      <hr/>
+      <p>Questions? Reply to this email.</p>
+      <p>See you soon!</p>
     </div>
-  </div>
-  <div style="text-align: center; font-size: 12px; color: #aaa; margin-top: 20px;">
-    &copy; ${new Date().getFullYear()} EventPass. All rights reserved.
   </div>
 </div>
 `;
 
-  // Send email
-  await sendEmail(
-    email,
-    `Registration Confirmed: ${event.name}`,
-    emailHtml,
-    qrCodeDataUrl
-  );
-
-  // Generate QR code buffer
-  const qrCodeBuffer = await QRCode.toBuffer(newRegistration.token);
-
-  // Upload QR to Cloudinary
-  const qrUploadResult = await uploadToCloudinary(qrCodeBuffer, "image/png");
-  const qrImageUrl = qrUploadResult.secure_url;
-
-  // Send WhatsApp message
-  const whatsappText = `Hi ${fullName}, you’ve successfully registered for "${event.name}". Please show this QR code at check-in:`;
-  await sendWhatsappMessage(phone, whatsappText, qrImageUrl);
+  // 11) Send Email & WhatsApp if we have address/number
+  if (email) {
+    await sendEmail(
+      email,
+      `Registration Confirmed: ${event.name}`,
+      emailHtml,
+      qrCodeDataUrl
+    );
+  }
+  if (phone) {
+    const whatsappText = `Hi ${displayName}, you’re registered for "${event.name}". Show this QR at check-in:`;
+    // await sendWhatsappMessage(phone, whatsappText, qrUpload.secure_url);
+  }
 
   return response(res, 201, "Registration successful", newRegistration);
 });
 
-// GET paginated registrations by event using slug (includes walk-ins)
+// GET paginated registrations by event using slug (includes walk-ins + customFields)
 exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const { page = 1, limit = 10 } = req.query;
+  const page = Number(req.query.page) || 1;
+  const limit = Number(req.query.limit) || 10;
 
   const event = await Event.findOne({ slug });
   if (!event) return response(res, 404, "Event not found");
-
   if (event.eventType !== "public") {
     return response(res, 400, "This event is not public");
   }
@@ -151,21 +217,28 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
 
   const registrations = await Registration.find({ eventId })
     .skip((page - 1) * limit)
-    .limit(Number(limit));
+    .limit(limit);
 
   const enhanced = await Promise.all(
     registrations.map(async (reg) => {
       const walkIns = await WalkIn.find({ registrationId: reg._id })
         .populate("scannedBy", "name email")
         .sort({ scannedAt: -1 });
+
       return {
         _id: reg._id,
+        token: reg.token,
+        createdAt: reg.createdAt,
+
+        // classic top‐level values (may be null if you used custom fields)
         fullName: reg.fullName,
         email: reg.email,
         phone: reg.phone,
         company: reg.company,
-        token: reg.token,
-        createdAt: reg.createdAt,
+
+        // your entire customFields object
+        customFields: reg.customFields || {},
+
         walkIns: walkIns.map((w) => ({
           scannedAt: w.scannedAt,
           scannedBy: w.scannedBy,
@@ -178,9 +251,9 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
     data: enhanced,
     pagination: {
       totalRegistrations,
-      totalPages: Math.ceil(totalRegistrations / limit) || 1,
-      currentPage: Number(page),
-      perPage: Number(limit),
+      totalPages: Math.max(1, Math.ceil(totalRegistrations / limit)),
+      currentPage: page,
+      perPage: limit,
     },
   });
 });

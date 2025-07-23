@@ -16,7 +16,6 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
     return response(res, 400, "Business slug is required");
   }
 
-  // Find the business by slug
   const business = await Business.findOne({ slug: businessSlug });
   if (!business) {
     return response(res, 404, "Business not found");
@@ -27,7 +26,7 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
   const events = await Event.find({
     businessId,
     eventType: "public",
-  }).sort({ date: -1 });
+  }).sort({ startDate: -1 });
 
   return response(res, 200, "Events fetched successfully.", {
     events,
@@ -55,7 +54,7 @@ exports.getEventById = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid Event ID");
   }
 
-  let event = await Event.findById(id);
+  const event = await Event.findById(id);
   if (!event || event.eventType !== "public") {
     return response(res, 400, "Public event not found");
   }
@@ -65,11 +64,28 @@ exports.getEventById = asyncHandler(async (req, res) => {
 
 // CREATE event (only public)
 exports.createEvent = asyncHandler(async (req, res) => {
-  const { name, slug, date, venue, description, businessSlug } = req.body;
-  let { capacity } = req.body;
+  const { name, slug, startDate, endDate, venue, description, businessSlug } =
+    req.body;
 
-  if (!name || !slug || !date || !venue || !businessSlug) {
+  let { capacity, formFields } = req.body;
+
+  if (!name || !slug || !startDate || !endDate || !venue || !businessSlug) {
     return response(res, 400, "Missing required fields");
+  }
+
+  const parsedStartDate = new Date(startDate);
+  const parsedEndDate = new Date(endDate);
+
+  if (isNaN(parsedStartDate.getTime()) || isNaN(parsedEndDate.getTime())) {
+    return response(res, 400, "Invalid start or end date");
+  }
+
+  if (parsedEndDate < parsedStartDate) {
+    return response(
+      res,
+      400,
+      "End date must be greater than or equal to start date"
+    );
   }
 
   const business = await Business.findOne({ slug: businessSlug });
@@ -93,15 +109,41 @@ exports.createEvent = asyncHandler(async (req, res) => {
     logoUrl = uploadResult.secure_url;
   }
 
+  // Parse and validate formFields (stringified JSON from FormData)
+  let parsedFormFields = [];
+  if (formFields) {
+    try {
+      const rawFields =
+        typeof formFields === "string" ? JSON.parse(formFields) : formFields;
+      if (Array.isArray(rawFields)) {
+        parsedFormFields = rawFields.map((field) => ({
+          inputName: field.inputName,
+          inputType: field.inputType,
+          values:
+            ["radio", "list"].includes(field.inputType) &&
+            Array.isArray(field.values)
+              ? field.values
+              : [],
+          required: field.required === true,
+        }));
+      }
+    } catch (err) {
+      console.error("Invalid formFields:", err);
+      return response(res, 400, "Invalid format for formFields");
+    }
+  }
+
   const newEvent = await Event.create({
     name,
     slug: uniqueSlug,
-    date,
+    startDate: parsedStartDate,
+    endDate: parsedEndDate,
     venue,
     description,
     logoUrl,
     capacity,
     businessId,
+    formFields: parsedFormFields,
   });
 
   return response(res, 201, "Event created successfully", newEvent);
@@ -110,7 +152,16 @@ exports.createEvent = asyncHandler(async (req, res) => {
 // UPDATE event (only public)
 exports.updateEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { name, slug, date, venue, description, capacity } = req.body;
+  const {
+    name,
+    slug,
+    startDate,
+    endDate,
+    venue,
+    description,
+    capacity,
+    formFields,
+  } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return response(res, 400, "Invalid Event ID.");
@@ -121,8 +172,32 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     return response(res, 404, "Event not found");
   }
 
-  const updates = { name, date, venue, description };
-  if (capacity && Number(capacity) > 0) updates.capacity = capacity;
+  const parsedStartDate = startDate ? new Date(startDate) : event.startDate;
+  const parsedEndDate = endDate ? new Date(endDate) : event.endDate;
+
+  if (isNaN(parsedStartDate.getTime()) || isNaN(parsedEndDate.getTime())) {
+    return response(res, 400, "Invalid start or end date");
+  }
+
+  if (parsedEndDate < parsedStartDate) {
+    return response(
+      res,
+      400,
+      "End date must be greater than or equal to start date"
+    );
+  }
+
+  const updates = {
+    name,
+    startDate: parsedStartDate,
+    endDate: parsedEndDate,
+    venue,
+    description,
+  };
+
+  if (capacity && Number(capacity) > 0) {
+    updates.capacity = Number(capacity);
+  }
 
   if (slug && slug !== event.slug) {
     const uniqueSlug = await generateUniqueSlug(Event, "slug", slug);
@@ -130,13 +205,41 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   }
 
   if (req.files?.logo) {
-    if (event.logoUrl) await deleteImage(event.logoUrl);
+    if (event.logoUrl) {
+      await deleteImage(event.logoUrl);
+    }
     const uploadResult = await uploadToCloudinary(
       req.files.logo[0].buffer,
       req.files.logo[0].mimetype
     );
     updates.logoUrl = uploadResult.secure_url;
   }
+
+  // Handle updated formFields (string or array)
+  let parsedFormFields = [];
+  if (formFields) {
+    try {
+      const rawFields =
+        typeof formFields === "string" ? JSON.parse(formFields) : formFields;
+      if (Array.isArray(rawFields)) {
+        parsedFormFields = rawFields.map((field) => ({
+          inputName: field.inputName,
+          inputType: field.inputType,
+          values:
+            ["radio", "list"].includes(field.inputType) &&
+            Array.isArray(field.values)
+              ? field.values
+              : [],
+          required: field.required === true,
+        }));
+      }
+    } catch (err) {
+      console.error("Invalid formFields format:", err);
+      return response(res, 400, "Invalid format for formFields");
+    }
+  }
+
+  updates.formFields = parsedFormFields;
 
   const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
     new: true,
