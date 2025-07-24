@@ -13,20 +13,44 @@ const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
 const sanitizeUser = require("../utils/sanitizeUser");
 
-// Get all users (admin)
+// Get all users
 exports.getAllUsers = asyncHandler(async (req, res) => {
-  const users = await User.find()
-    .populate("business", "name slug logoUrl")
-    .sort({ createdAt: -1 });
+  const users = await User.find().populate("business", "name slug logoUrl");
 
-  const safeUsers = users.map(sanitizeUser);
+  const admins = [];
+  const businessMap = new Map();
+  const orphanStaff = [];
+
+  for (const user of users) {
+    if (user.role === "admin") {
+      admins.push(user);
+    } else if (user.role === "business") {
+      businessMap.set(user._id.toString(), { owner: user, staff: [] });
+    } else if (user.role === "staff") {
+      const businessId = user.business?._id?.toString();
+      if (businessId && businessMap.has(businessId)) {
+        businessMap.get(businessId).staff.push(user);
+      } else {
+        orphanStaff.push(user);
+      }
+    }
+  }
+
+  // Now prepare final list
+  const groupedUsers = [
+    ...admins,
+    ...Array.from(businessMap.values()).flatMap((group) => [group.owner, ...group.staff]),
+    ...orphanStaff,
+  ];
+
+  const safeUsers = groupedUsers.map(sanitizeUser);
 
   return response(res, 200, "All users fetched", safeUsers);
 });
 
 // Get all staff members of business (excluding logged in business user)
 exports.getAllStaffUsersByBusiness = asyncHandler(async (req, res) => {
-  const businessId = req.user.business;
+  const businessId = req.params.businessId;
   const currentUserId = req.user.id; // ID of the logged-in user
 
   if (!businessId) {

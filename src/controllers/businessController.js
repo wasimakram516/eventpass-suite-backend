@@ -155,8 +155,14 @@ exports.deleteBusiness = asyncHandler(async (req, res) => {
     { $pull: { eventHistory: { business: businessId } } }
   );
 
-  // Unlink user
-  await User.updateMany({ business: businessId }, { $set: { business: null } });
+  // Unlink business from owner
+  await User.updateMany(
+    { business: businessId, role: { $ne: "staff" } },
+    { $set: { business: null } }
+  );
+
+  // Delete staff members
+  await User.deleteMany({ business: businessId, role: "staff" });
 
   // Finally, delete business
   await business.deleteOne();
