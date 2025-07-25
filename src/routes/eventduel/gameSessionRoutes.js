@@ -17,14 +17,13 @@ const eventduelAccess = [protect, checkPermission.eventduel];
 
 // Public session info
 router.get("/", getGameSessions);
+router.patch("/:sessionId/:playerId/submit", submitPvPResult);
+router.post("/join", joinGameSession);
 
 // PvP session flow
 router.post("/start", eventduelAccess, startGameSession);
-router.post("/join", joinGameSession);
 router.put("/:sessionId/activate", eventduelAccess, activateGameSession);
 router.put("/:sessionId/end", eventduelAccess, endGameSession);
-router.patch("/:sessionId/:playerId/submit", eventduelAccess, submitPvPResult);
-
 router.get("/leaderboard/:gameSlug", eventduelAccess, getLeaderboard);
 router.get("/export/:gameSlug", eventduelAccess, exportResults);
 

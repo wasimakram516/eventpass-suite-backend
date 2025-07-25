@@ -4,6 +4,7 @@ const Player = require("../../models/Player");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const { emitToRoom } = require("../../utils/socketUtils");
+const { emitPvpSessionWithQuestions } = require("../../utils/pvpUtils");
 
 // Get all sessions for a specific game by slug
 exports.getGameSessions = asyncHandler(async (req, res) => {
@@ -127,51 +128,12 @@ exports.activateGameSession = asyncHandler(async (req, res) => {
   if (!session) return response(res, 404, "Session not found");
 
   const game = await Game.findById(session.gameId);
-  if (!game || game.mode !== "pvp")
-    return response(res, 400, "Invalid PvP game");
+  if (!game || game.mode !== "pvp") return response(res, 400, "Invalid PvP game");
 
   if (session.players.length < 2)
     return response(res, 400, "Both players required");
 
-  const total = game.questions.length;
-  if (total < 5) return response(res, 400, "Not enough questions (min 5)");
-
-  const generateRandomOrder = (length) => {
-    return [...Array(length).keys()].sort(() => Math.random() - 0.5);
-  };
-
-  // Assign randomized question indexes
-  session.questionsAssigned.Player1 = generateRandomOrder(total);
-  session.questionsAssigned.Player2 = generateRandomOrder(total);
-
-  session.status = "active";
-  session.startTime = new Date();
-  session.endTime = new Date(
-    session.startTime.getTime() + game.gameSessionTimer * 1000
-  );
-
-  await session.save();
-
-  // Map question indexes to actual questions
-  const mapIndexesToQuestions = (indexes) =>
-    indexes.map((i) => game.questions[i]);
-
-  const player1Questions = mapIndexesToQuestions(
-    session.questionsAssigned.Player1 || []
-  );
-  const player2Questions = mapIndexesToQuestions(
-    session.questionsAssigned.Player2 || []
-  );
-
-  const populatedSession = await GameSession.findById(session._id).populate(
-    "players.playerId winner gameId"
-  );
-
-  emitToRoom(game.slug, "pvpCurrentSession", {
-    populatedSession,
-    player1Questions,
-    player2Questions,
-  });
+  await emitPvpSessionWithQuestions(session, game, emitToRoom, "pvpCurrentSession", GameSession);
 
   return response(res, 200, "Session activated", session);
 });
@@ -185,8 +147,7 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
   if (!session) return response(res, 404, "Session not found");
 
   const game = await Game.findById(session.gameId);
-  if (!game || game.mode !== "pvp")
-    return response(res, 400, "Invalid or non-PvP game.");
+  if (!game || game.mode !== "pvp") return response(res, 400, "Invalid or non-PvP game.");
 
   const playerStats = session.players.find(
     (p) => p.playerId.toString() === playerId
@@ -199,10 +160,21 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
 
   await session.save();
 
+  // Re-emit session update (no need to reassign questions!)
+  const mapIndexesToQuestions = (indexes) => indexes.map((i) => game.questions[i]);
+
+  const player1Questions = mapIndexesToQuestions(session.questionsAssigned.Player1 || []);
+  const player2Questions = mapIndexesToQuestions(session.questionsAssigned.Player2 || []);
+
   const populatedSession = await GameSession.findById(session._id).populate(
     "players.playerId winner gameId"
   );
-  emitToRoom(game.slug, "pvpCurrentSession", populatedSession);
+
+  emitToRoom(game.slug, "pvpCurrentSession", {
+    populatedSession,
+    player1Questions,
+    player2Questions,
+  });
 
   return response(res, 200, "Player result saved", playerStats);
 });
