@@ -8,7 +8,7 @@ const { emitPvpSessionWithQuestions } = require("../../utils/pvpUtils");
 
 // Get all sessions for a specific game by slug
 exports.getGameSessions = asyncHandler(async (req, res) => {
-  const { gameSlug } = req.query;
+  const { gameSlug, page = 1, limit = 5 } = req.query;
 
   if (!gameSlug) {
     return response(res, 400, "Missing gameSlug in query");
@@ -19,11 +19,24 @@ exports.getGameSessions = asyncHandler(async (req, res) => {
     return response(res, 404, "Game not found");
   }
 
+  const pageNumber = parseInt(page);
+  const pageSize = parseInt(limit);
+  const skip = (pageNumber - 1) * pageSize;
+
+  const totalCount = await GameSession.countDocuments({ gameId: game._id });
+
   const sessions = await GameSession.find({ gameId: game._id })
     .populate("players.playerId winner gameId")
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(pageSize);
 
-  return response(res, 200, "Sessions retrieved", sessions);
+  return response(res, 200, "Sessions retrieved", {
+    sessions,
+    totalCount,
+    totalPages: Math.ceil(totalCount / pageSize),
+    currentPage: pageNumber,
+  });
 });
 
 // Start a new session
