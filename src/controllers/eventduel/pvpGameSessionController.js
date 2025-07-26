@@ -25,7 +25,7 @@ exports.getGameSessions = asyncHandler(async (req, res) => {
 
   const totalCount = await GameSession.countDocuments({ gameId: game._id });
 
-  const sessions = await GameSession.find({ gameId: game._id })
+  const sessions = await GameSession.find({ gameId: game._id, status:"completed" })
     .populate("players.playerId winner gameId")
     .sort({ createdAt: -1 })
     .skip(skip)
