@@ -39,6 +39,8 @@ app.use(morgan("dev"));
 const allowedOrigins = [
   "http://localhost:3000",
   "https://eventpass-whitewall.vercel.app",
+  "https://www.whitewall.solutions",
+  "https://eventpass.whitewall.solutions",
 ];
 
 // Middleware
