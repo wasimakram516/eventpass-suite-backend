@@ -5,6 +5,7 @@ const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const XLSX = require("xlsx");
 const mongoose = require("mongoose");
+const moment = require("moment");
 
 // Export all player results to Excel
 exports.exportResults = asyncHandler(async (req, res) => {
@@ -19,7 +20,6 @@ exports.exportResults = asyncHandler(async (req, res) => {
 
   const sessions = await GameSession.find({
     gameId,
-    status: "completed",
   }).populate("players.playerId");
 
   const exportData = sessions.flatMap((session) =>
@@ -29,12 +29,12 @@ exports.exportResults = asyncHandler(async (req, res) => {
       Score: p.score,
       TimeTaken: p.timeTaken,
       AttemptedQuestions: p.attemptedQuestions,
-      SubmittedAt: session.updatedAt.toISOString(),
+      SubmittedAt: moment(session.updatedAt).format("YYYY-MM-DD hh:mm A"),
     }))
   );
 
   if (!exportData.length) {
-    return response(res, 404, "No completed sessions to export");
+    return response(res, 404, "No Game sessions to export");
   }
 
   const worksheet = XLSX.utils.json_to_sheet(exportData);

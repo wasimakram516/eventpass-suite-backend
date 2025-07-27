@@ -1,3 +1,5 @@
+const XLSX = require("xlsx");
+const moment = require("moment");
 const Game = require("../../models/Game");
 const GameSession = require("../../models/GameSession");
 const Player = require("../../models/Player");
@@ -118,10 +120,11 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
 
   await session.save();
 
-  // Re-fetch all sessions and emit updated list
+  // Re-fetch latest 5 sessions and emit updated list
   const allSessions = await GameSession.find({ gameId: session.gameId })
     .populate("players.playerId winner gameId")
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .limit(5);
 
   emitToRoom(game.slug, "pvpAllSessions", allSessions);
 
@@ -211,7 +214,7 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
 // End session & decide winner
 exports.endGameSession = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
-
+  
   const session = await GameSession.findById(sessionId);
   if (!session) return response(res, 404, "Session not found");
 
@@ -219,11 +222,29 @@ exports.endGameSession = asyncHandler(async (req, res) => {
   if (!game || game.mode !== "pvp")
     return response(res, 400, "Invalid or non-PvP game.");
 
+  // Wait 500ms to allow clients to submit their stats
+  emitToRoom(game.slug, "forceSubmitPvP", { sessionId });
+  await new Promise((r) => setTimeout(r, 500));
+
   const [p1, p2] = session.players;
 
   let winner = null;
-  if (p1?.score > p2?.score) winner = p1.playerId;
-  else if (p2?.score > p1?.score) winner = p2.playerId;
+
+  if (p1?.score > p2?.score) {
+    winner = p1.playerId;
+  } else if (p2?.score > p1?.score) {
+    winner = p2.playerId;
+  } else {
+    // If scores are equal, decide by lower time taken
+    if (p1?.timeTaken < p2?.timeTaken) {
+      winner = p1.playerId;
+    } else if (p2?.timeTaken < p1?.timeTaken) {
+      winner = p2.playerId;
+    } else {
+      // Scores and time taken are equal — it's a draw
+      winner = null;
+    }
+  }
 
   session.winner = winner;
   session.status = "completed";
@@ -278,36 +299,56 @@ exports.resetGameSessions = asyncHandler(async (req, res) => {
 exports.exportResults = asyncHandler(async (req, res) => {
   const gameSlug = req.params.gameSlug;
 
-  const game = await Game.findOne({ slug: gameSlug }).populate(
-    "businessId",
-    "name"
-  );
+  const game = await Game.findOne({ slug: gameSlug }).populate("businessId", "name");
   if (!game) return response(res, 404, "Game not found");
 
-  const gameId = game._id;
-  const sessions = await GameSession.find({
-    gameId,
-    status: "completed",
-  }).populate("players.playerId");
+  const sessions = await GameSession.find({ gameId: game._id, status: "completed" })
+    .populate("players.playerId");
 
-  const exportData = sessions.flatMap((session) =>
-    session.players.map((p) => ({
-      Name: p.playerId?.name || "Unknown",
-      Company: p.playerId?.company || "-",
-      Score: p.score,
-      TimeTaken: p.timeTaken,
-      AttemptedQuestions: p.attemptedQuestions,
-      SubmittedAt: session.updatedAt.toISOString(),
-    }))
-  );
+  if (!sessions.length) return response(res, 404, "No completed sessions");
 
-  if (!exportData.length) {
-    return response(res, 404, "No completed sessions to export");
-  }
+  const allSessionData = [];
 
-  const worksheet = XLSX.utils.json_to_sheet(exportData);
+  sessions.forEach((session) => {
+    const p1 = session.players.find((p) => p.playerType === "p1");
+    const p2 = session.players.find((p) => p.playerType === "p2");
+
+    allSessionData.push({
+      "Session ID": session._id.toString(),
+      "Submitted At": moment(session.updatedAt).format("YYYY-MM-DD hh:mm A"),
+
+      "Player 1 Name": p1?.playerId?.name || "Unknown",
+      "Player 1 Company": p1?.playerId?.company || "-",
+      "Player 1 Score": p1?.score ?? "-",
+      "Player 1 Time Taken (sec)": p1?.timeTaken ?? "-",
+      "Player 1 Attempted": p1?.attemptedQuestions ?? "-",
+
+      "Player 2 Name": p2?.playerId?.name || "Unknown",
+      "Player 2 Company": p2?.playerId?.company || "-",
+      "Player 2 Score": p2?.score ?? "-",
+      "Player 2 Time Taken (sec)": p2?.timeTaken ?? "-",
+      "Player 2 Attempted": p2?.attemptedQuestions ?? "-",
+    });
+  });
+
+  const summary = [
+    ["Game Title", game.title],
+    ["Business Name", game.businessId.name],
+    ["Total PvP Sessions", sessions.length],
+    ["Exported At", moment().format("YYYY-MM-DD hh:mm A")],
+    [], // blank row before table
+  ];
+
+  const summarySheet = XLSX.utils.aoa_to_sheet(summary);
+  XLSX.utils.sheet_add_json(summarySheet, allSessionData, { origin: -1 });
+
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Results");
+  XLSX.utils.book_append_sheet(workbook, summarySheet, "PvP Results");
+
+  const sanitizeFilename = (name) => name.replace(/[^\w\u0600-\u06FF-]/g, "_");
+  const safeCompany = sanitizeFilename(game.businessId.name);
+  const safeTitle = sanitizeFilename(game.title);
+  const filename = `${safeCompany}-${safeTitle}-results.xlsx`;
 
   const buffer = XLSX.write(workbook, {
     type: "buffer",
@@ -315,16 +356,10 @@ exports.exportResults = asyncHandler(async (req, res) => {
     compression: true,
   });
 
-  const sanitizeFilename = (name) => name.replace(/[^\w\u0600-\u06FF-]/g, "_");
-  const safeCompany = sanitizeFilename(game.businessId.name);
-  const safeTitle = sanitizeFilename(game.title);
-  const filename = `${safeCompany}-${safeTitle}-results.xlsx`;
-
   res.setHeader(
     "Content-Disposition",
     `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`
   );
-
   res.setHeader(
     "Content-Type",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8"
