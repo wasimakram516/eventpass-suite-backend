@@ -8,6 +8,11 @@ const WalkIn = require("../models/WalkIn");
 const Poll = require("../models/Poll");
 const EventQuestion = require("../models/EventQuestion");
 const Visitor = require("../models/Visitor");
+const SpinWheel = require("../models/SpinWheel");
+const SpinWheelParticipant = require("../models/SpinWheelParticipant");
+const WallConfig = require("../models/WallConfig");
+const DisplayMedia = require("../models/DisplayMedia");
+
 const { deleteImage } = require("../config/cloudinary");
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
@@ -39,7 +44,10 @@ exports.getAllUsers = asyncHandler(async (req, res) => {
   // Now prepare final list
   const groupedUsers = [
     ...admins,
-    ...Array.from(businessMap.values()).flatMap((group) => [group.owner, ...group.staff]),
+    ...Array.from(businessMap.values()).flatMap((group) => [
+      group.owner,
+      ...group.staff,
+    ]),
     ...orphanStaff,
   ];
 
@@ -62,18 +70,23 @@ exports.getAllStaffUsersByBusiness = asyncHandler(async (req, res) => {
   if (!businessExists) {
     return response(res, 404, "Associated business not found in database");
   }
-  
+
   // Find all users in the same business EXCEPT the current user
-  const users = await User.find({ 
+  const users = await User.find({
     business: businessId,
     role: "staff", // Only fetch staff members
-    _id: { $ne: currentUserId } // Exclude current user
+    _id: { $ne: currentUserId }, // Exclude current user
   })
-  .populate("business", "name slug logoUrl")
-  .sort({ createdAt: -1 });
+    .populate("business", "name slug logoUrl")
+    .sort({ createdAt: -1 });
 
-  const safeUsers = users.map(user => sanitizeUser(user));
-  return response(res, 200, "Business staff members fetched successfully", safeUsers);
+  const safeUsers = users.map((user) => sanitizeUser(user));
+  return response(
+    res,
+    200,
+    "Business staff members fetched successfully",
+    safeUsers
+  );
 });
 
 // Get users without assigned business (for admin use)
@@ -162,16 +175,32 @@ exports.deleteUser = asyncHandler(async (req, res) => {
         { $pull: { eventHistory: { business: businessId } } }
       );
 
+      // Delete SpinWheels & Participants
+      const wheels = await SpinWheel.find({ business: businessId });
+      const wheelIds = wheels.map((w) => w._id);
+      await SpinWheelParticipant.deleteMany({ spinWheel: { $in: wheelIds } });
+      await SpinWheel.deleteMany({ _id: { $in: wheelIds } });
+
+      // Delete WallConfigs & DisplayMedia
+      const walls = await WallConfig.find({ business: businessId });
+      const wallIds = walls.map((w) => w._id);
+      await DisplayMedia.deleteMany({ wall: { $in: wallIds } });
+      await WallConfig.deleteMany({ _id: { $in: wallIds } });
+
       // Finally, delete the business
       await business.deleteOne();
     }
   } else {
-  // If he is a staff user, so delete WalkIns scanned by this user
+    // If he is a staff user, so delete WalkIns scanned by this user
     await WalkIn.deleteMany({ scannedBy: userId });
   }
 
   // Finally, delete the user
   await user.deleteOne();
 
-  return response(res, 200, "User and related associations deleted successfully");
+  return response(
+    res,
+    200,
+    "User and related associations deleted successfully"
+  );
 });

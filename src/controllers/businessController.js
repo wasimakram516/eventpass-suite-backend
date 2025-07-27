@@ -8,6 +8,10 @@ const WalkIn = require("../models/WalkIn");
 const Poll = require("../models/Poll");
 const EventQuestion = require("../models/EventQuestion");
 const Visitor = require("../models/Visitor");
+const SpinWheel = require("../models/SpinWheel");
+const SpinWheelParticipant = require("../models/SpinWheelParticipant");
+const WallConfig = require("../models/WallConfig");
+const DisplayMedia = require("../models/DisplayMedia");
 
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
@@ -56,9 +60,8 @@ exports.createBusiness = asyncHandler(async (req, res) => {
 });
 // Get All Businesses
 exports.getAllBusinesses = asyncHandler(async (req, res) => {
-  const businesses = await Business
-    .find()
-    .populate("owner", "name email role")  
+  const businesses = await Business.find()
+    .populate("owner", "name email role")
     .sort({ createdAt: -1 });
 
   return response(res, 200, "Fetched all businesses", businesses);
@@ -66,9 +69,10 @@ exports.getAllBusinesses = asyncHandler(async (req, res) => {
 
 // Get Business by ID (with owner populated)
 exports.getBusinessById = asyncHandler(async (req, res) => {
-  const business = await Business
-    .findById(req.params.id)
-    .populate("owner", "name email role");
+  const business = await Business.findById(req.params.id).populate(
+    "owner",
+    "name email role"
+  );
 
   if (!business) return response(res, 404, "Business not found");
   return response(res, 200, "Business found", business);
@@ -76,9 +80,10 @@ exports.getBusinessById = asyncHandler(async (req, res) => {
 
 // Get Business by Slug (with owner populated)
 exports.getBusinessBySlug = asyncHandler(async (req, res) => {
-  const business = await Business
-    .findOne({ slug: req.params.slug })
-    .populate("owner", "name email role");
+  const business = await Business.findOne({ slug: req.params.slug }).populate(
+    "owner",
+    "name email role"
+  );
 
   if (!business) return response(res, 404, "Business not found");
   return response(res, 200, "Business found", business);
@@ -154,6 +159,18 @@ exports.deleteBusiness = asyncHandler(async (req, res) => {
     {},
     { $pull: { eventHistory: { business: businessId } } }
   );
+
+  // Remove Spin Wheels & Participants
+  const wheels = await SpinWheel.find({ business: businessId });
+  const wheelIds = wheels.map((w) => w._id);
+  await SpinWheelParticipant.deleteMany({ spinWheel: { $in: wheelIds } });
+  await SpinWheel.deleteMany({ _id: { $in: wheelIds } });
+
+  // Remove WallConfigs and DisplayMedia
+  const walls = await WallConfig.find({ business: businessId });
+  const wallIds = walls.map((w) => w._id);
+  await DisplayMedia.deleteMany({ wall: { $in: wallIds } });
+  await WallConfig.deleteMany({ _id: { $in: wallIds } });
 
   // Unlink business from owner
   await User.updateMany(
