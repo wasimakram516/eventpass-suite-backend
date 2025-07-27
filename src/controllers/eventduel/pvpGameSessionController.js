@@ -25,7 +25,10 @@ exports.getGameSessions = asyncHandler(async (req, res) => {
 
   const totalCount = await GameSession.countDocuments({ gameId: game._id });
 
-  const sessions = await GameSession.find({ gameId: game._id, status:"completed" })
+  const sessions = await GameSession.find({
+    gameId: game._id,
+    status: "completed",
+  })
     .populate("players.playerId winner gameId")
     .sort({ createdAt: -1 })
     .skip(skip)
@@ -141,12 +144,19 @@ exports.activateGameSession = asyncHandler(async (req, res) => {
   if (!session) return response(res, 404, "Session not found");
 
   const game = await Game.findById(session.gameId);
-  if (!game || game.mode !== "pvp") return response(res, 400, "Invalid PvP game");
+  if (!game || game.mode !== "pvp")
+    return response(res, 400, "Invalid PvP game");
 
   if (session.players.length < 2)
     return response(res, 400, "Both players required");
 
-  await emitPvpSessionWithQuestions(session, game, emitToRoom, "pvpCurrentSession", GameSession);
+  await emitPvpSessionWithQuestions(
+    session,
+    game,
+    emitToRoom,
+    "pvpCurrentSession",
+    GameSession
+  );
 
   return response(res, 200, "Session activated", session);
 });
@@ -160,7 +170,8 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
   if (!session) return response(res, 404, "Session not found");
 
   const game = await Game.findById(session.gameId);
-  if (!game || game.mode !== "pvp") return response(res, 400, "Invalid or non-PvP game.");
+  if (!game || game.mode !== "pvp")
+    return response(res, 400, "Invalid or non-PvP game.");
 
   const playerStats = session.players.find(
     (p) => p.playerId.toString() === playerId
@@ -174,10 +185,15 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
   await session.save();
 
   // Re-emit session update (no need to reassign questions!)
-  const mapIndexesToQuestions = (indexes) => indexes.map((i) => game.questions[i]);
+  const mapIndexesToQuestions = (indexes) =>
+    indexes.map((i) => game.questions[i]);
 
-  const player1Questions = mapIndexesToQuestions(session.questionsAssigned.Player1 || []);
-  const player2Questions = mapIndexesToQuestions(session.questionsAssigned.Player2 || []);
+  const player1Questions = mapIndexesToQuestions(
+    session.questionsAssigned.Player1 || []
+  );
+  const player2Questions = mapIndexesToQuestions(
+    session.questionsAssigned.Player2 || []
+  );
 
   const populatedSession = await GameSession.findById(session._id).populate(
     "players.playerId winner gameId"
@@ -237,8 +253,8 @@ exports.resetGameSessions = asyncHandler(async (req, res) => {
 
   const gameId = game._id;
 
-  // Find all sessions for the game
-  const sessions = await GameSession.find({ gameId });
+  // Find all Completed sessions for the game
+  const sessions = await GameSession.find({ gameId, status: "completed" });
 
   // Collect all playerIds used in these sessions
   const allPlayerIds = sessions.flatMap((session) =>
