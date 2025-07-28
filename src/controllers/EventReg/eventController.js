@@ -64,8 +64,16 @@ exports.getEventById = asyncHandler(async (req, res) => {
 
 // CREATE event (only public)
 exports.createEvent = asyncHandler(async (req, res) => {
-  const { name, slug, startDate, endDate, venue, description, businessSlug } =
-    req.body;
+  const {
+    name,
+    slug,
+    startDate,
+    endDate,
+    venue,
+    description,
+    businessSlug,
+    showQrAfterRegistration,
+  } = req.body;
 
   let { capacity, formFields } = req.body;
 
@@ -144,6 +152,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     capacity,
     businessId,
     formFields: parsedFormFields,
+    showQrAfterRegistration,
   });
 
   return response(res, 201, "Event created successfully", newEvent);
@@ -161,6 +170,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     description,
     capacity,
     formFields,
+    showQrAfterRegistration,
   } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -240,6 +250,10 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   }
 
   updates.formFields = parsedFormFields;
+
+  if (typeof showQrAfterRegistration === "boolean" || showQrAfterRegistration === "true" || showQrAfterRegistration === "false") {
+  updates.showQrAfterRegistration = showQrAfterRegistration === "true" || showQrAfterRegistration === true;
+}
 
   const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
     new: true,
