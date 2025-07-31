@@ -38,6 +38,7 @@ app.use(morgan("dev"));
 
 const allowedOrigins = [
   "http://localhost:3000",
+  "http://localhost:3001",
   "https://eventpass-whitewall.vercel.app",
   "https://www.whitewall.solutions",
   "https://whitewall.solutions",
@@ -87,8 +88,8 @@ app.use("/api/modules", moduleRoutes);
 app.use("/api/translate", translateRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
-app.use("/api/global-config", globalConfigRoutes );
-app.use("/api/businesses", businessRoutes );
+app.use("/api/global-config", globalConfigRoutes);
+app.use("/api/businesses", businessRoutes);
 
 // Quiznest Routes
 app.use("/api/quiznest/games", gameRoutes);

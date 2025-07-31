@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Registration = require("../../models/Registration");
 const Event = require("../../models/Event");
+const WalkIn = require("../../models/WalkIn");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 
@@ -132,4 +133,32 @@ exports.deleteRegistration = asyncHandler(async (req, res) => {
   });
 
   return response(res, 200, "Registration deleted successfully");
+});
+
+// GET all registrations by event using slug (for export)
+exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+
+  const event = await Event.findOne({ slug });
+  if (!event || event.eventType !== "employee") {
+    return response(res, 404, "Employee event not found");
+  }
+
+  const eventId = event._id;
+
+  const registrations = await Registration.find({ eventId });
+
+  const enhanced = registrations.map((reg) => {
+    const emp = event.employeeData.find((e) => e.employeeId === reg.employeeId);
+    return {
+      _id: reg._id,
+      employeeId: reg.employeeId,
+      employeeName: emp?.employeeName || `Employee ${reg.employeeId}`,
+      tableNumber: emp?.tableNumber || null,
+      tableImage: emp?.tableImage || null,
+      createdAt: reg.createdAt,
+    };
+  });
+
+  return response(res, 200, "All check-in registrations fetched", enhanced);
 });
