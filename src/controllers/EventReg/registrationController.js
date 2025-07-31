@@ -258,6 +258,50 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 });
 
+// GET all registrations by event using slug (for export)
+exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+
+  const event = await Event.findOne({ slug });
+  if (!event) return response(res, 404, "Event not found");
+  if (event.eventType !== "public") {
+    return response(res, 400, "This event is not public");
+  }
+
+  const eventId = event._id;
+
+  const registrations = await Registration.find({ eventId });
+
+  const enhanced = await Promise.all(
+    registrations.map(async (reg) => {
+      const walkIns = await WalkIn.find({ registrationId: reg._id })
+        .populate("scannedBy", "name email")
+        .sort({ scannedAt: -1 });
+
+      return {
+        _id: reg._id,
+        token: reg.token,
+        createdAt: reg.createdAt,
+
+        // classic fields
+        fullName: reg.fullName,
+        email: reg.email,
+        phone: reg.phone,
+        company: reg.company,
+
+        // customFields and walk-ins
+        customFields: reg.customFields || {},
+        walkIns: walkIns.map((w) => ({
+          scannedAt: w.scannedAt,
+          scannedBy: w.scannedBy,
+        })),
+      };
+    })
+  );
+
+  return response(res, 200, "All public registrations fetched", enhanced);
+});
+
 // VERIFY registration by QR token and create a WalkIn
 exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   const { token } = req.query;
