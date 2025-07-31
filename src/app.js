@@ -38,7 +38,6 @@ app.use(morgan("dev"));
 
 const allowedOrigins = [
   "http://localhost:3000",
-  "http://localhost:3001",
   "https://eventpass-whitewall.vercel.app",
   "https://www.whitewall.solutions",
   "https://whitewall.solutions",
