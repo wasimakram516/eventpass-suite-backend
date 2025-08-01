@@ -87,8 +87,8 @@ app.use("/api/modules", moduleRoutes);
 app.use("/api/translate", translateRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
-app.use("/api/global-config", globalConfigRoutes );
-app.use("/api/businesses", businessRoutes );
+app.use("/api/global-config", globalConfigRoutes);
+app.use("/api/businesses", businessRoutes);
 
 // Quiznest Routes
 app.use("/api/quiznest/games", gameRoutes);
