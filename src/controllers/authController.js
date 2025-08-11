@@ -4,6 +4,8 @@ const jwt = require("jsonwebtoken");
 const env = require("../config/env");
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
+const { MODULES } = require("../constants/modules");
+const VALID_MODULE_KEYS = MODULES.map((m) => m.key);
 
 // Generate Access & Refresh Tokens
 const generateTokens = (user) => {
@@ -27,18 +29,24 @@ const generateTokens = (user) => {
 
 // Register Business or Staff User
 exports.registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role = 'business', business } = req.body;
+  const {
+    name,
+    email,
+    password,
+    role = "business",
+    business, 
+    modulePermissions = [],
+  } = req.body;
 
   if (!name || !email || !password) {
     return response(res, 400, "Name, email, and password are required");
   }
 
-  if (!['business', 'staff'].includes(role)) {
+  if (!["business", "staff"].includes(role)) {
     return response(res, 400, "Invalid role. Must be 'business' or 'staff'");
   }
 
-  // For staff, business is required
-  if (role === 'staff' && !business) {
+  if (role === "staff" && !business) {
     return response(res, 400, "Business ID is required for staff users");
   }
 
@@ -47,13 +55,29 @@ exports.registerUser = asyncHandler(async (req, res) => {
     return response(res, 400, "User with this email already exists");
   }
 
+  // Normalize and validate permissions
+  const normalizedPerms = Array.isArray(modulePermissions)
+    ? modulePermissions.map(String)
+    : [];
+
+  const invalidPerms = normalizedPerms.filter(
+    (key) => !VALID_MODULE_KEYS.includes(key)
+  );
+  if (invalidPerms.length > 0) {
+    return response(
+      res,
+      400,
+      `Invalid module permission keys: ${invalidPerms.join(", ")}`
+    );
+  }
+
   const user = new User({
     name,
     email: email.toLowerCase(),
     password,
     role,
-    business: role === 'staff' ? business : null,
-    modulePermissions: role === 'staff' ? ['eventreg'] : [] 
+    business: role === "staff" ? business : null,
+    modulePermissions: normalizedPerms, 
   });
 
   await user.save();
