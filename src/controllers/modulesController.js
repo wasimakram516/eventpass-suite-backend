@@ -1,6 +1,9 @@
-const { MODULES } = require("../constants/modules");
+const { getModulesForRole } = require("../constants/modules");
 const response = require("../utils/response");
 
 exports.getAllModules = (req, res) => {
-  return response(res, 200, "Modules fetched", MODULES);
+  const role = (req.query.role || "").toLowerCase() || "staff";
+
+  const data = getModulesForRole(role);
+  return response(res, 200, "Modules fetched", data);
 };

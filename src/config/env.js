@@ -24,6 +24,10 @@ const env = {
     port: validateEnv("PORT"),
     node_env: validateEnv("NODE_ENV"),
   },
+  client:{
+    url: validateEnv("FRONTEND_BASE_URL"),
+    surveyGuru: validateEnv("SURVEYGURU_PUBLIC_PATH"),
+  },
   auth: {
     adminEmail: validateEnv("ADMIN_EMAIL"),
     adminPassword: validateEnv("ADMIN_PASSWORD"),

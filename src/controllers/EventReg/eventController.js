@@ -62,6 +62,43 @@ exports.getEventById = asyncHandler(async (req, res) => {
   return response(res, 200, "Event fetched successfully.", event);
 });
 
+// Get all events by Business ID
+exports.getEventsByBusinessId = asyncHandler(async (req, res) => {
+  const { businessId } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(businessId)) {
+    return response(res, 400, "Invalid businessId");
+  }
+
+  const events = await Event.find({
+    businessId,
+    eventType: "public",
+  }).sort({ startDate: -1 });
+
+  return response(res, 200, "Events fetched successfully.", {
+    events,
+    totalEvents: events.length,
+  });
+});
+
+// Get all events by Business Slug
+exports.getEventsByBusinessSlug = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+  const business = await Business.findOne({ slug });
+  if (!business) {
+    return response(res, 404, "Business not found");
+  }
+
+  const events = await Event.find({
+    businessId: business._id,
+    eventType: "public",
+  }).sort({ startDate: -1 });
+
+  return response(res, 200, "Events fetched successfully.", {
+    events,
+    totalEvents: events.length,
+  });
+});
+
 // CREATE event (only public)
 exports.createEvent = asyncHandler(async (req, res) => {
   const {

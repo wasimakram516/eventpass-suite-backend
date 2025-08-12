@@ -4,6 +4,8 @@ const {
   getEventDetails,
   getEventById,
   getEventBySlug,
+  getEventsByBusinessId,
+  getEventsByBusinessSlug,
   createEvent,
   updateEvent,
   deleteEvent,
@@ -21,6 +23,12 @@ router.get("/slug/:slug", getEventBySlug);
 
 // GET a single event by ID
 router.get("/:id", getEventById);
+
+// GET events by Business Id
+router.get("/business/:businessId", getEventsByBusinessId);
+
+// GET events by Business Slug
+router.get("/business/slug/:slug", getEventsByBusinessSlug);
 
 // CREATE public event
 router.post("/", eventRegAccess, upload.fields([{ name: "logo", maxCount: 1 }]), createEvent);

@@ -21,6 +21,9 @@ const questionRoutes = require("./routes/quiznest/questionRoutes");
 const pollRoutes = require("./routes/votecast/pollRoutes");
 const eventRegEventRoutes = require("./routes/EventReg/eventRoutes");
 const eventRegRegistrationRoutes = require("./routes/EventReg/registrationRoutes");
+const surveyRecipientRoutes = require("./routes/surveyguru/surveyRecipientRoutes");
+const surveyFormRoutes = require("./routes/surveyguru/surveyFormRoutes");
+const surveyResponseRoutes = require("./routes/surveyguru/surveyResponseRoutes");
 const CheckInEventRoutes = require("./routes/CheckIn/eventRoutes");
 const CheckInRegistrationRoutes = require("./routes/CheckIn/registrationRoutes");
 const stageqQuestionRoutes = require("./routes/stageq/questionRoutes");
@@ -101,6 +104,11 @@ app.use("/api/votecast/polls", pollRoutes);
 // EventReg Routes
 app.use("/api/eventreg/events", eventRegEventRoutes);
 app.use("/api/eventreg/registrations", eventRegRegistrationRoutes);
+
+// SurveyGuru Routes
+app.use("/api/surveyguru", surveyRecipientRoutes);
+app.use("/api/surveyguru", surveyFormRoutes);
+app.use("/api/surveyguru", surveyResponseRoutes);
 
 // CheckIn Routes
 app.use("/api/checkin/events", CheckInEventRoutes);
