@@ -21,24 +21,24 @@ exports.listRecipients = asyncHandler(async (req, res) => {
   return response(res, 200, "Recipients fetched", recipients );
 });
 
-// Pull all registrations for form's eventId and save/update recipients
+// Pull all registrations for a form's eventId and save/update recipients
 exports.syncFromEventRegistrations = asyncHandler(async (req, res) => {
-  const { eventId } = req.params;
+  const { formId } = req.params;
 
-  if (!mongoose.Types.ObjectId.isValid(eventId)) {
-    return response(res, 400, "Invalid eventId");
+  if (!mongoose.Types.ObjectId.isValid(formId)) {
+    return response(res, 400, "Invalid formId");
   }
 
-  // Ensure event exists
-  const event = await Event.findById(eventId).select("_id name");
-  if (!event) return response(res, 404, "Event not found");
-
-  // Ensure there is a form linked to this event
-  const form = await SurveyForm.findOne({ eventId })
+  // Ensure form exists
+  const form = await SurveyForm.findById(formId)
     .select("_id businessId eventId")
     .lean();
-  if (!form) return response(res, 404, "No survey form found for this event");
+  if (!form) return response(res, 404, "Form not found");
   if (!form.eventId) return response(res, 400, "Form is missing eventId");
+
+  // Ensure event exists
+  const event = await Event.findById(form.eventId).select("_id name").lean();
+  if (!event) return response(res, 404, "Event not found");
 
   // Pull all event registrations
   const regs = await Registration.find({ eventId: form.eventId })
@@ -68,8 +68,9 @@ exports.syncFromEventRegistrations = asyncHandler(async (req, res) => {
       pickCompany(reg.customFields) ||
       "";
 
-    const token = reg.token;
+    const token = reg.token || "";
 
+    // Recipient is keyed by (formId, email)
     const existing = await SurveyRecipient.findOne({
       formId: form._id,
       email,
