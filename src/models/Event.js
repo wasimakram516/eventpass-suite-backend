@@ -18,6 +18,7 @@ const EventSchema = new mongoose.Schema({
   venue: { type: String, required: true },
   description: { type: String },
   logoUrl: { type: String },
+  brandingMediaUrl: { type: String },
   capacity: { type: Number, default: 999 },
   showQrAfterRegistration: { type: Boolean, default: false },
   registrations: { type: Number, default: 0 },
