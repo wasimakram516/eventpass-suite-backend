@@ -10,15 +10,33 @@ const SurveyForm = require("../../models/SurveyForm");
 const SurveyRecipient = require("../../models/SurveyRecipient");
 const env = require("../../config/env");
 
-// GET /surveyguru/recipients?formId=...
+// recipientController.js
 exports.listRecipients = asyncHandler(async (req, res) => {
-  const { formId } = req.query;
+  const { formId, q = "", status = "" } = req.query;
+
   if (!formId || !mongoose.Types.ObjectId.isValid(formId)) {
     return response(res, 400, "Valid formId is required");
   }
 
-  const recipients = await SurveyRecipient.find({ formId }).sort({ createdAt: -1 }).lean();
-  return response(res, 200, "Recipients fetched", recipients );
+  const match = { formId };
+
+  // optional status filter
+  if (typeof status === "string" && status.trim()) {
+    match.status = status.trim().toLowerCase(); // e.g., "queued" | "responded"
+  }
+
+  const qTrim = String(q || "").trim();
+  if (qTrim) {
+    const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rx = new RegExp(escape(qTrim), "i");
+    match.$or = [{ fullName: rx }, { email: rx }, { company: rx }];
+  }
+
+  const recipients = await SurveyRecipient.find(match)
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return response(res, 200, "Recipients fetched", recipients);
 });
 
 // Pull all registrations for a form's eventId and save/update recipients
