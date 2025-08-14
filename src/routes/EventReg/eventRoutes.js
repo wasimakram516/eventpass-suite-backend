@@ -14,7 +14,10 @@ const { protect, checkPermission } = require("../../middlewares/auth");
 const upload = require("../../middlewares/uploadMiddleware");
 
 const eventRegAccess = [protect, checkPermission.eventreg];
-
+const multiUpload = upload.fields([
+  { name: "logo", maxCount: 1 },
+  { name: "brandingMedia", maxCount: 1 }
+]);
 // GET all events for a business
 router.get("/", eventRegAccess, getEventDetails);
 
@@ -31,10 +34,10 @@ router.get("/business/:businessId", getEventsByBusinessId);
 router.get("/business/slug/:slug", getEventsByBusinessSlug);
 
 // CREATE public event
-router.post("/", eventRegAccess, upload.fields([{ name: "logo", maxCount: 1 }]), createEvent);
+router.post("/", eventRegAccess, multiUpload, createEvent);
 
 // UPDATE public event
-router.put("/:id", eventRegAccess, upload.fields([{ name: "logo", maxCount: 1 }]), updateEvent);
+router.put("/:id", eventRegAccess, multiUpload, updateEvent);
 
 // DELETE public event
 router.delete("/:id", eventRegAccess, deleteEvent);
