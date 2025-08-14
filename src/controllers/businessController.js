@@ -4,6 +4,9 @@ const Game = require("../models/Game");
 const Player = require("../models/Player");
 const Event = require("../models/Event");
 const Registration = require("../models/Registration");
+const SurveyForm = require("../models/SurveyForm");
+const SurveyRecipient = require("../models/SurveyRecipient");
+const SurveyResponse = require("../models/SurveyResponse");
 const WalkIn = require("../models/WalkIn");
 const Poll = require("../models/Poll");
 const EventQuestion = require("../models/EventQuestion");
@@ -134,6 +137,15 @@ exports.deleteBusiness = asyncHandler(async (req, res) => {
   }
 
   const businessId = business._id;
+
+  // ====== SURVEY DATA CLEANUP ======
+  const forms = await SurveyForm.find({ businessId });
+  const formIds = forms.map((f) => f._id);
+
+  await SurveyResponse.deleteMany({ formId: { $in: formIds } });
+  await SurveyRecipient.deleteMany({ formId: { $in: formIds } });
+  await SurveyForm.deleteMany({ _id: { $in: formIds } });
+  // =================================
 
   // Remove associated Games and Players
   const games = await Game.find({ businessId });

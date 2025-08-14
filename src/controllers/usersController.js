@@ -4,6 +4,9 @@ const Game = require("../models/Game");
 const Player = require("../models/Player");
 const Event = require("../models/Event");
 const Registration = require("../models/Registration");
+const SurveyForm = require("../models/SurveyForm");
+const SurveyRecipient = require("../models/SurveyRecipient");
+const SurveyResponse = require("../models/SurveyResponse");
 const WalkIn = require("../models/WalkIn");
 const Poll = require("../models/Poll");
 const EventQuestion = require("../models/EventQuestion");
@@ -133,14 +136,13 @@ exports.updateUser = asyncHandler(async (req, res) => {
   return response(res, 200, "User updated", sanitizeUser(user));
 });
 
-// Delete user (soft delete)
+// Delete user (hard delete with full cascade for business owners)
 exports.deleteUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return response(res, 404, "User not found");
 
   const userId = user._id;
 
-  // If user is a "business" role, delete all their businesses and related data
   if (user.role === "business") {
     const businesses = await Business.find({ owner: userId });
 
@@ -152,20 +154,34 @@ exports.deleteUser = asyncHandler(async (req, res) => {
         await deleteImage(business.logoUrl);
       }
 
-      // Delete Games & Players
+      // ====== SURVEY DATA CLEANUP (forms -> responses/recipients -> forms) ======
+      const forms = await SurveyForm.find({ businessId });
+      const formIds = forms.map((f) => f._id);
+      if (formIds.length) {
+        await SurveyResponse.deleteMany({ formId: { $in: formIds } });
+        await SurveyRecipient.deleteMany({ formId: { $in: formIds } });
+        await SurveyForm.deleteMany({ _id: { $in: formIds } });
+      }
+      // ========================================================================
+
+      // Games & Players
       const games = await Game.find({ businessId });
       const gameIds = games.map((g) => g._id);
-      await Player.deleteMany({ gameId: { $in: gameIds } });
-      await Game.deleteMany({ _id: { $in: gameIds } });
+      if (gameIds.length) {
+        await Player.deleteMany({ gameId: { $in: gameIds } });
+        await Game.deleteMany({ _id: { $in: gameIds } });
+      }
 
-      // Delete Events & Registrations & WalkIns
+      // Events, Registrations, WalkIns
       const events = await Event.find({ businessId });
       const eventIds = events.map((e) => e._id);
-      await WalkIn.deleteMany({ eventId: { $in: eventIds } });
-      await Registration.deleteMany({ eventId: { $in: eventIds } });
-      await Event.deleteMany({ _id: { $in: eventIds } });
+      if (eventIds.length) {
+        await WalkIn.deleteMany({ eventId: { $in: eventIds } });
+        await Registration.deleteMany({ eventId: { $in: eventIds } });
+        await Event.deleteMany({ _id: { $in: eventIds } });
+      }
 
-      // Delete Polls & EventQuestions
+      // Polls & EventQuestions
       await Poll.deleteMany({ business: businessId });
       await EventQuestion.deleteMany({ business: businessId });
 
@@ -175,27 +191,38 @@ exports.deleteUser = asyncHandler(async (req, res) => {
         { $pull: { eventHistory: { business: businessId } } }
       );
 
-      // Delete SpinWheels & Participants
+      // SpinWheels & Participants
       const wheels = await SpinWheel.find({ business: businessId });
       const wheelIds = wheels.map((w) => w._id);
-      await SpinWheelParticipant.deleteMany({ spinWheel: { $in: wheelIds } });
-      await SpinWheel.deleteMany({ _id: { $in: wheelIds } });
+      if (wheelIds.length) {
+        await SpinWheelParticipant.deleteMany({ spinWheel: { $in: wheelIds } });
+        await SpinWheel.deleteMany({ _id: { $in: wheelIds } });
+      }
 
-      // Delete WallConfigs & DisplayMedia
+      // WallConfigs & DisplayMedia
       const walls = await WallConfig.find({ business: businessId });
       const wallIds = walls.map((w) => w._id);
-      await DisplayMedia.deleteMany({ wall: { $in: wallIds } });
-      await WallConfig.deleteMany({ _id: { $in: wallIds } });
+      if (wallIds.length) {
+        await DisplayMedia.deleteMany({ wall: { $in: wallIds } });
+        await WallConfig.deleteMany({ _id: { $in: wallIds } });
+      }
 
-      // Finally, delete the business
+      // Unlink non-staff users from this business and delete staff accounts
+      await User.updateMany(
+        { business: businessId, role: { $ne: "staff" } },
+        { $set: { business: null } }
+      );
+      await User.deleteMany({ business: businessId, role: "staff" });
+
+      // Finally, delete the business doc
       await business.deleteOne();
     }
   } else {
-    // If he is a staff user, so delete WalkIns scanned by this user
+    // For staff (or any non-business role): remove walk-ins they scanned
     await WalkIn.deleteMany({ scannedBy: userId });
   }
 
-  // Finally, delete the user
+  // Finally, delete the user itself
   await user.deleteOne();
 
   return response(
