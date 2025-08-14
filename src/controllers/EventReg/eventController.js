@@ -153,7 +153,14 @@ exports.createEvent = asyncHandler(async (req, res) => {
     );
     logoUrl = uploadResult.secure_url;
   }
-
+  let brandingMediaUrl = null;
+  if (req.files?.brandingMedia) {
+    const uploadResult = await uploadToCloudinary(
+      req.files.brandingMedia[0].buffer,
+      req.files.brandingMedia[0].mimetype
+    );
+    brandingMediaUrl = uploadResult.secure_url;
+  }
   // Parse and validate formFields (stringified JSON from FormData)
   let parsedFormFields = [];
   if (formFields) {
@@ -186,6 +193,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     venue,
     description,
     logoUrl,
+    brandingMediaUrl,
     capacity,
     businessId,
     formFields: parsedFormFields,
@@ -261,9 +269,18 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     );
     updates.logoUrl = uploadResult.secure_url;
   }
-
+  if (req.files?.brandingMedia) {
+    if (event.brandingMediaUrl) {
+      await deleteImage(event.brandingMediaUrl);
+    }
+    const uploadResult = await uploadToCloudinary(
+      req.files.brandingMedia[0].buffer,
+      req.files.brandingMedia[0].mimetype
+    );
+    updates.brandingMediaUrl = uploadResult.secure_url;
+  }
   // Handle updated formFields (string or array)
-  let parsedFormFields = [];
+  let parsedFormFields =[];
   if (formFields) {
     try {
       const rawFields =
@@ -324,7 +341,9 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
   if (event.logoUrl) {
     await deleteImage(event.logoUrl);
   }
-
+  if (event.brandingMediaUrl) {
+    await deleteImage(event.brandingMediaUrl);
+  }
   await Event.findByIdAndDelete(id);
   return response(res, 200, "Event deleted successfully");
 });
