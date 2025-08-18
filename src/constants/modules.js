@@ -55,9 +55,10 @@ const BASE = [
       ar: "أرسل رسالة شكر أو استبيانًا لجميع حضور فعالية محددة.",
     },
     buttonsByRole: {
-      admin: { en: "Send Thank You", ar: "إرسال الشكر" },
+      admin: { en: "Request Feedback", ar: "طلب الملاحظات" },
       staff: { en: "Not available", ar: "غير متاح" },
     },
+
     icon: "email",
     color: "#1565c0",
     routes: { admin: "/cms/modules/surveyguru", staff: null },
@@ -152,32 +153,28 @@ function roleKey(role) {
 function getModulesForRole(role = "admin") {
   const rk = roleKey(role);
 
-  return BASE
-    .map((m) => {
-      const route = m.routes?.[rk]; // either string or null
+  return BASE.map((m) => {
+    const route = m.routes?.[rk]; // either string or null
 
-      // hide if admin-only and not admin
-      if (m.requiresAdmin && rk !== "admin") return null;
+    // hide if admin-only and not admin
+    if (m.requiresAdmin && rk !== "admin") return null;
 
-      // hide if this role's route is null
-      if (!route) return null;
+    // hide if this role's route is null
+    if (!route) return null;
 
-      const buttons =
-        m.buttonsByRole?.[rk] ||
-        m.buttonsByRole?.admin ||
-        { en: "Open", ar: "فتح" };
+    const buttons = m.buttonsByRole?.[rk] ||
+      m.buttonsByRole?.admin || { en: "Open", ar: "فتح" };
 
-      return {
-        key: m.key,
-        labels: m.labels,
-        descriptions: m.descriptions,
-        buttons,
-        icon: m.icon,
-        color: m.color,
-        route,
-      };
-    })
-    .filter(Boolean);
+    return {
+      key: m.key,
+      labels: m.labels,
+      descriptions: m.descriptions,
+      buttons,
+      icon: m.icon,
+      color: m.color,
+      route,
+    };
+  }).filter(Boolean);
 }
 
 const MODULES = getModulesForRole("admin");
