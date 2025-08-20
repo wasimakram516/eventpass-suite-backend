@@ -1,5 +1,6 @@
 const Game = require("../../models/Game");
 const Business = require("../../models/Business");
+const Player = require("../../models/Player");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
@@ -24,7 +25,7 @@ exports.createGame = asyncHandler(async (req, res) => {
   const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
 
   // Find business by slug
-  const business = await Business.findOne({ slug: businessSlug });
+  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
   const businessId = business._id;
@@ -127,7 +128,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
 
 // Get Games by Business Slug
 exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
-  const business = await Business.findOne({ slug: req.params.slug });
+  const business = await Business.findOne({ slug: req.params.slug }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
   const games = await Game.find({ businessId: business._id, mode: "solo" })
@@ -138,42 +139,54 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
 
 // Get All Games
 exports.getAllGames = asyncHandler(async (req, res) => {
-  const games = await Game.find().populate("businessId", "name slug");
+  const games = await Game.find().notDeleted().populate("businessId", "name slug");
   return response(res, 200, "All games fetched", games);
 });
 
 // Get Game by ID
 exports.getGameById = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id);
+  const game = await Game.findById(req.params.id).notDeleted();
   if (!game) return response(res, 404, "Game not found");
   return response(res, 200, "Game found", game);
 });
 
 // Get game by slug
 exports.getGameBySlug = asyncHandler(async (req, res) => {
-  const game = await Game.findOne({ slug: req.params.slug });
+  const game = await Game.findOne({ slug: req.params.slug }).notDeleted();
   if (!game) return response(res, 404, "Game not found");
   return response(res, 200, "Game found", game);
 });
 
 // Delete Game
-const Player = require("../../models/Player");
-
 exports.deleteGame = asyncHandler(async (req, res) => {
   const game = await Game.findById(req.params.id);
   if (!game) return response(res, 404, "Game not found");
 
-  // Check if any players exist under this game
   const playersExist = await Player.exists({ gameId: game._id });
   if (playersExist) {
     return response(res, 400, "Cannot delete game with existing game sessions");
   }
 
-  // Delete associated images from Cloudinary
+  await game.softDelete(req.user.id);
+  return response(res, 200, "Game moved to recycle bin");
+});
+
+exports.restoreGame = asyncHandler(async (req, res) => {
+  const game = await Game.findOneDeleted({ _id: req.params.id, mode: "solo" });
+  if (!game) return response(res, 404, "Game not found in trash");
+
+  await game.restore();
+  return response(res, 200, "Game restored", game);
+});
+
+exports.permanentDeleteGame = asyncHandler(async (req, res) => {
+  const game = await Game.findOneDeleted({ _id: req.params.id, mode: "solo" });
+  if (!game) return response(res, 404, "Game not found in trash");
+
   if (game.coverImage) await deleteImage(game.coverImage);
   if (game.nameImage) await deleteImage(game.nameImage);
   if (game.backgroundImage) await deleteImage(game.backgroundImage);
 
   await game.deleteOne();
-  return response(res, 200, "Game deleted successfully");
+  return response(res, 200, "Game permanently deleted");
 });

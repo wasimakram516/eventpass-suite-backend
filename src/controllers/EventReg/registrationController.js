@@ -206,7 +206,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   const page = Number(req.query.page) || 1;
   const limit = Number(req.query.limit) || 10;
 
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug }).notDeleted();
   if (!event) return response(res, 404, "Event not found");
   if (event.eventType !== "public") {
     return response(res, 400, "This event is not public");
@@ -262,7 +262,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
 exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug }).notDeleted();
   if (!event) return response(res, 404, "Event not found");
   if (event.eventType !== "public") {
     return response(res, 400, "This event is not public");
@@ -348,7 +348,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   });
 });
 
-// DELETE registration
+// Soft delete registration
 exports.deleteRegistration = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
@@ -361,10 +361,37 @@ exports.deleteRegistration = asyncHandler(async (req, res) => {
     return response(res, 404, "Registration not found");
   }
 
-  await Registration.findByIdAndDelete(id);
+  await registration.softDelete(req.user.id);
+
+  // decrement count
   await Event.findByIdAndUpdate(registration.eventId, {
     $inc: { registrations: -1 },
   });
 
-  return response(res, 200, "Registration deleted successfully");
+  return response(res, 200, "Registration moved to recycle bin");
+});
+
+// Restore registration
+exports.restoreRegistration = asyncHandler(async (req, res) => {
+  const reg = await Registration.findOneDeleted({ _id: req.params.id });
+  if (!reg) return response(res, 404, "Registration not found in trash");
+
+  await reg.restore();
+
+  // increment count back
+  await Event.findByIdAndUpdate(reg.eventId, {
+    $inc: { registrations: 1 },
+  });
+
+  return response(res, 200, "Registration restored", reg);
+});
+
+// Permanent delete registration
+exports.permanentDeleteRegistration = asyncHandler(async (req, res) => {
+  const reg = await Registration.findOneDeleted({ _id: req.params.id });
+  if (!reg) return response(res, 404, "Registration not found in trash");
+
+  await reg.deleteOne();
+
+  return response(res, 200, "Registration permanently deleted");
 });

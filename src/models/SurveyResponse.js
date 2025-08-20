@@ -17,7 +17,7 @@ const SurveyResponseSchema = new mongoose.Schema(
 
     attendee: {
       name: { type: String, required: true },
-      email: { type: String, required: true, lowercase: true, trim: true },
+      email: { type: String, required: true, lowercase: true, trim: true},
       company: { type: String, default: "" },
     },
 
@@ -28,6 +28,9 @@ const SurveyResponseSchema = new mongoose.Schema(
 );
 
 SurveyResponseSchema.index({ formId: 1, "attendee.email": 1 });
+
+// Soft delete support
+SurveyResponseSchema.plugin(require("../db/plugins/softDelete"));
 
 module.exports =
   mongoose.models.SurveyResponse ||

@@ -14,4 +14,7 @@ const PollSchema = new mongoose.Schema({
   type: { type: String, enum: ['options', 'slider'], default: 'options' },
 }, { timestamps: true });
 
+// Soft delete support
+PollSchema.plugin(require('../db/plugins/softDelete'));
+
 module.exports = mongoose.models.Poll || mongoose.model('Poll', PollSchema);

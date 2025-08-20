@@ -23,7 +23,7 @@ const sanitizeUser = require("../utils/sanitizeUser");
 
 // Get all users
 exports.getAllUsers = asyncHandler(async (req, res) => {
-  const users = await User.find().populate("business", "name slug logoUrl");
+  const users = await User.find().notDeleted().populate("business", "name slug logoUrl");
 
   const admins = [];
   const businessMap = new Map();
@@ -136,8 +136,36 @@ exports.updateUser = asyncHandler(async (req, res) => {
   return response(res, 200, "User updated", sanitizeUser(user));
 });
 
-// Delete user (hard delete with full cascade for business owners)
+// Soft delete user
 exports.deleteUser = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id);
+  if (!user) return response(res, 404, "User not found");
+
+  await user.softDelete(req.user?.id);
+  return response(res, 200, "User moved to Recycle Bin", user);
+});
+
+// Restore user
+exports.restoreUser = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id);
+  if (!user) return response(res, 404, "User not found");
+
+  // Prevent email conflict
+  const conflict = await User.findOne({
+    _id: { $ne: user._id },
+    email: user.email,
+    isDeleted: false,
+  });
+  if (conflict) {
+    return response(res, 409, "Cannot restore: email already in use");
+  }
+
+  await user.restore();
+  return response(res, 200, "User restored successfully", user);
+});
+
+// Permanent delete user (with cascade if owner)
+exports.permanentDeleteUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return response(res, 404, "User not found");
 
@@ -145,7 +173,6 @@ exports.deleteUser = asyncHandler(async (req, res) => {
 
   if (user.role === "business") {
     const businesses = await Business.find({ owner: userId });
-
     for (const business of businesses) {
       const businessId = business._id;
 
@@ -218,16 +245,14 @@ exports.deleteUser = asyncHandler(async (req, res) => {
       await business.deleteOne();
     }
   } else {
-    // For staff (or any non-business role): remove walk-ins they scanned
+    // For staff → remove walk-ins they scanned
     await WalkIn.deleteMany({ scannedBy: userId });
   }
 
-  // Finally, delete the user itself
   await user.deleteOne();
-
   return response(
     res,
     200,
-    "User and related associations deleted successfully"
+    "User and related associations permanently deleted successfully"
   );
 });

@@ -56,10 +56,11 @@ const addOrUpdateParticipantsInBulk = asyncHandler(async (req, res) => {
 const getBulkParticipantsForSpinWheel = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const wheel = await SpinWheel.findOne({ slug }).select("_id");
+  const wheel = await SpinWheel.findOne({ slug }).select("_id").notDeleted();
   if (!wheel) return response(res, 404, "SpinWheel not found");
 
   const participants = await SpinWheelParticipant.find({ spinWheel: wheel._id })
+    .notDeleted()
     .sort({ name: 1 })
     .select("name");
 
@@ -69,7 +70,7 @@ const getBulkParticipantsForSpinWheel = asyncHandler(async (req, res) => {
 // Get All Participants for a SpinWheel (by ID)
 const getParticipants = asyncHandler(async (req, res) => {
   const spinWheelId = req.params.spinWheelId;
-  const participants = await SpinWheelParticipant.find({ spinWheel: spinWheelId }).sort({ name: 1 });
+  const participants = await SpinWheelParticipant.find({ spinWheel: spinWheelId }).notDeleted().sort({ name: 1 });
 
   return response(res, 200, "Participants retrieved successfully", participants);
 });
@@ -78,10 +79,10 @@ const getParticipants = asyncHandler(async (req, res) => {
 const getParticipantsBySlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const wheel = await SpinWheel.findOne({ slug }).select("_id");
+  const wheel = await SpinWheel.findOne({ slug }).select("_id").notDeleted();
   if (!wheel) return response(res, 404, "SpinWheel not found");
 
-  const participants = await SpinWheelParticipant.find({ spinWheel: wheel._id })
+  const participants = await SpinWheelParticipant.find({ spinWheel: wheel._id }).notDeleted()
     .sort({ name: 1 })
     .select("name phone company");
 
@@ -90,7 +91,7 @@ const getParticipantsBySlug = asyncHandler(async (req, res) => {
 
 // Get Single Participant by ID
 const getParticipantById = asyncHandler(async (req, res) => {
-  const participant = await SpinWheelParticipant.findById(req.params.id);
+  const participant = await SpinWheelParticipant.findById(req.params.id).notDeleted();
   if (!participant) return response(res, 404, "Participant not found");
 
   return response(res, 200, "Participant retrieved successfully", participant);
@@ -112,13 +113,31 @@ const updateParticipant = asyncHandler(async (req, res) => {
   return response(res, 200, "Participant updated successfully", participant);
 });
 
-// Delete Participant
+// Soft delete participant
 const deleteParticipant = asyncHandler(async (req, res) => {
   const participant = await SpinWheelParticipant.findById(req.params.id);
   if (!participant) return response(res, 404, "Participant not found");
 
+  await participant.softDelete(req.user.id);
+  return response(res, 200, "Participant moved to recycle bin");
+});
+
+// Restore participant
+const restoreParticipant = asyncHandler(async (req, res) => {
+  const participant = await SpinWheelParticipant.findOneDeleted({ _id: req.params.id });
+  if (!participant) return response(res, 404, "Participant not found in trash");
+
+  await participant.restore();
+  return response(res, 200, "Participant restored", participant);
+});
+
+// Permanently delete participant
+const permanentDeleteParticipant = asyncHandler(async (req, res) => {
+  const participant = await SpinWheelParticipant.findOneDeleted({ _id: req.params.id });
+  if (!participant) return response(res, 404, "Participant not found in trash");
+
   await participant.deleteOne();
-  return response(res, 200, "Participant deleted successfully");
+  return response(res, 200, "Participant permanently deleted");
 });
 
 // Public API to Get SpinWheel Details
@@ -138,5 +157,7 @@ module.exports = {
   getParticipantById,
   updateParticipant,
   deleteParticipant,
+  restoreParticipant,
+  permanentDeleteParticipant,
   getPublicSpinWheel,
 };

@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const EventSchema = new mongoose.Schema({
   businessId: { type: mongoose.Schema.Types.ObjectId, ref: "Business", required: true },
   name: { type: String, required: true },
-  slug: { type: String, required: true, unique: true },
+  slug: { type: String, required: true },
   startDate: { type: Date, required: true },
   endDate: {
     type: Date,
@@ -49,5 +49,10 @@ const EventSchema = new mongoose.Schema({
     },
   ],
 });
+
+// Soft delete support
+EventSchema.plugin(require("../db/plugins/softDelete"));
+// Partial unique index for slug
+EventSchema.addPartialUnique({ slug: 1 });
 
 module.exports = mongoose.models.Event || mongoose.model("Event", EventSchema);

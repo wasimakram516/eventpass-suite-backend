@@ -15,12 +15,12 @@ exports.exportResults = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid game ID");
   }
 
-  const game = await Game.findById(gameId).populate("businessId", "name");
+  const game = await Game.findById(gameId).populate("businessId", "name").notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
   const sessions = await GameSession.find({
     gameId,
-  }).populate("players.playerId");
+  }).notDeleted().populate("players.playerId");
 
   const exportData = sessions.flatMap((session) =>
     session.players.map((p) => ({
@@ -72,7 +72,7 @@ exports.joinGame = asyncHandler(async (req, res) => {
 
   if (!name) return response(res, 400, "Name is required");
 
-  const game = await Game.findById(gameId);
+  const game = await Game.findById(gameId).notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
   // 1. Create Player
@@ -108,7 +108,7 @@ exports.submitResult = asyncHandler(async (req, res) => {
   const { sessionId, playerId } = req.params;
   const { score, timeTaken, attemptedQuestions } = req.body;
 
-  const session = await GameSession.findById(sessionId);
+  const session = await GameSession.findById(sessionId).notDeleted();
   if (!session) return response(res, 404, "Game session not found");
 
   const playerData = session.players.find(
@@ -130,7 +130,7 @@ exports.submitResult = asyncHandler(async (req, res) => {
 exports.getPlayersByGame = asyncHandler(async (req, res) => {
   const gameId = req.params.gameId;
 
-  const sessions = await GameSession.find({ gameId }).populate(
+  const sessions = await GameSession.find({ gameId }).notDeleted().populate(
     "players.playerId"
   );
 
@@ -155,7 +155,7 @@ exports.getLeaderboard = asyncHandler(async (req, res) => {
   const sessions = await GameSession.find({
     gameId,
     status: "completed",
-  }).populate("players.playerId");
+  }).notDeleted().populate("players.playerId");
 
   const results = sessions.flatMap((session) =>
     session.players.map((p) => ({

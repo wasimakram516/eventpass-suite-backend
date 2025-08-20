@@ -19,5 +19,8 @@ const EventQuestionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Soft delete support
+EventQuestionSchema.plugin(require("../db/plugins/softDelete"));
+
 module.exports = mongoose.models.EventQuestion ||
   mongoose.model("EventQuestion", EventQuestionSchema);

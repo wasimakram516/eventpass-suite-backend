@@ -25,7 +25,7 @@ const RegistrationSchema = new mongoose.Schema(
       default: {},
     },
 
-    token: { type: String, required: true, unique: true }, // For QR
+    token: { type: String, required: true }, // For QR
   },
   { timestamps: true }
 );
@@ -36,6 +36,12 @@ RegistrationSchema.pre("validate", function (next) {
   }
   next();
 });
+
+// Soft delete support
+RegistrationSchema.plugin(require("../db/plugins/softDelete"));
+
+// Partial unique index for eventId and token
+RegistrationSchema.addPartialUnique({ eventId: 1, token: 1 });
 
 module.exports =
   mongoose.models.Registration ||

@@ -47,20 +47,23 @@ exports.createSpinWheel = asyncHandler(async (req, res) => {
 
 // Get All SpinWheels
 exports.getAllSpinWheels = asyncHandler(async (req, res) => {
-  const wheels = await SpinWheel.find().populate("business", "name slug").sort({ createdAt: -1 });
+  const wheels = await SpinWheel.find().notDeleted()
+    .populate("business", "name slug")
+    .sort({ createdAt: -1 });
+
   return response(res, 200, "Fetched all spin wheels", wheels);
 });
 
 // Get SpinWheel by ID
 exports.getSpinWheelById = asyncHandler(async (req, res) => {
-  const wheel = await SpinWheel.findById(req.params.id).populate("business", "name slug");
+  const wheel = await SpinWheel.findById(req.params.id).notDeleted().populate("business", "name slug");
   if (!wheel) return response(res, 404, "SpinWheel not found");
   return response(res, 200, "SpinWheel found", wheel);
 });
 
 // Get SpinWheel by Slug
 exports.getSpinWheelBySlug = asyncHandler(async (req, res) => {
-  const wheel = await SpinWheel.findOne({ slug: req.params.slug }).populate("business", "name slug");
+  const wheel = await SpinWheel.findOne({ slug: req.params.slug }).notDeleted().populate("business", "name slug");
   if (!wheel) return response(res, 404, "SpinWheel not found");
   return response(res, 200, "SpinWheel found", wheel);
 });
@@ -95,14 +98,32 @@ exports.updateSpinWheel = asyncHandler(async (req, res) => {
   return response(res, 200, "SpinWheel updated successfully", wheel);
 });
 
-// Delete SpinWheel
+// Soft delete SpinWheel
 exports.deleteSpinWheel = asyncHandler(async (req, res) => {
   const wheel = await SpinWheel.findById(req.params.id);
   if (!wheel) return response(res, 404, "SpinWheel not found");
+
+  await wheel.softDelete(req.user.id);
+  return response(res, 200, "SpinWheel moved to recycle bin");
+});
+
+// Restore SpinWheel
+exports.restoreSpinWheel = asyncHandler(async (req, res) => {
+  const wheel = await SpinWheel.findOneDeleted({ _id: req.params.id });
+  if (!wheel) return response(res, 404, "SpinWheel not found in trash");
+
+  await wheel.restore();
+  return response(res, 200, "SpinWheel restored", wheel);
+});
+
+// Permanently delete SpinWheel
+exports.permanentDeleteSpinWheel = asyncHandler(async (req, res) => {
+  const wheel = await SpinWheel.findOneDeleted({ _id: req.params.id });
+  if (!wheel) return response(res, 404, "SpinWheel not found in trash");
 
   if (wheel.logoUrl) await deleteImage(wheel.logoUrl);
   if (wheel.backgroundUrl) await deleteImage(wheel.backgroundUrl);
 
   await wheel.deleteOne();
-  return response(res, 200, "SpinWheel deleted successfully");
+  return response(res, 200, "SpinWheel permanently deleted");
 });

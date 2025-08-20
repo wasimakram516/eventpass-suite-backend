@@ -29,7 +29,7 @@ exports.createBusiness = asyncHandler(async (req, res) => {
   if (!name) return response(res, 400, "Business name is required");
   if (!ownerId) return response(res, 400, "Owner ID is required");
 
-  const owner = await User.findById(ownerId);
+  const owner = await User.findById(ownerId).notDeleted();
   if (!owner) return response(res, 404, "Owner (user) not found");
 
   const finalSlug = await generateUniqueSlug(Business, "slug", slug || name);
@@ -63,7 +63,7 @@ exports.createBusiness = asyncHandler(async (req, res) => {
 });
 // Get All Businesses
 exports.getAllBusinesses = asyncHandler(async (req, res) => {
-  const businesses = await Business.find()
+  const businesses = await Business.find().notDeleted()
     .populate("owner", "name email role")
     .sort({ createdAt: -1 });
 
@@ -72,7 +72,7 @@ exports.getAllBusinesses = asyncHandler(async (req, res) => {
 
 // Get Business by ID (with owner populated)
 exports.getBusinessById = asyncHandler(async (req, res) => {
-  const business = await Business.findById(req.params.id).populate(
+  const business = await Business.findById(req.params.id).notDeleted().populate(
     "owner",
     "name email role"
   );
@@ -83,7 +83,7 @@ exports.getBusinessById = asyncHandler(async (req, res) => {
 
 // Get Business by Slug (with owner populated)
 exports.getBusinessBySlug = asyncHandler(async (req, res) => {
-  const business = await Business.findOne({ slug: req.params.slug }).populate(
+  const business = await Business.findOne({ slug: req.params.slug }).notDeleted().populate(
     "owner",
     "name email role"
   );
@@ -94,7 +94,7 @@ exports.getBusinessBySlug = asyncHandler(async (req, res) => {
 
 // Update Business
 exports.updateBusiness = asyncHandler(async (req, res) => {
-  const business = await Business.findById(req.params.id);
+  const business = await Business.findById(req.params.id).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
   const { name, slug, email, phone, address } = req.body;
@@ -126,8 +126,37 @@ exports.updateBusiness = asyncHandler(async (req, res) => {
   return response(res, 200, "Business updated successfully", business);
 });
 
-// Delete Business
+// Soft delete (Recycle Bin)
 exports.deleteBusiness = asyncHandler(async (req, res) => {
+  const business = await Business.findById(req.params.id);
+  if (!business) return response(res, 404, "Business not found");
+
+  await business.softDelete(req.user?.id);
+
+  return response(res, 200, "Business moved to Recycle Bin", business);
+});
+
+// Restore
+exports.restoreBusiness = asyncHandler(async (req, res) => {
+  const business = await Business.findById(req.params.id);
+  if (!business) return response(res, 404, "Business not found");
+
+  // Prevent slug conflicts
+  const conflict = await Business.findOne({
+    _id: { $ne: business._id },
+    slug: business.slug,
+    isDeleted: false,
+  });
+  if (conflict) {
+    return response(res, 409, "Cannot restore: slug already in use");
+  }
+
+  await business.restore();
+  return response(res, 200, "Business restored successfully", business);
+});
+
+// Permanent delete with cascade cleanup
+exports.permanentDeleteBusiness = asyncHandler(async (req, res) => {
   const business = await Business.findById(req.params.id);
   if (!business) return response(res, 404, "Business not found");
 
@@ -193,8 +222,8 @@ exports.deleteBusiness = asyncHandler(async (req, res) => {
   // Delete staff members
   await User.deleteMany({ business: businessId, role: "staff" });
 
-  // Finally, delete business
+  // Finally, delete business permanently
   await business.deleteOne();
 
-  return response(res, 200, "Business and related data deleted successfully");
+  return response(res, 200, "Business and related data permanently deleted");
 });

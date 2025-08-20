@@ -73,15 +73,16 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const { page = 1, limit = 10 } = req.query;
 
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug }).notDeleted();
   if (!event || event.eventType !== "employee") {
     return response(res, 404, "Employee event not found");
   }
 
   const eventId = event._id;
 
-  const totalRegistrations = await Registration.countDocuments({ eventId });
+  const totalRegistrations = await Registration.countDocuments({ eventId }).notDeleted();
   const registrations = await Registration.find({ eventId })
+    .notDeleted()
     .skip((page - 1) * limit)
     .limit(Number(limit));
 
@@ -108,44 +109,80 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 });
 
-// DELETE registration
+// SOFT DELETE registration
 exports.deleteRegistration = asyncHandler(async (req, res) => {
   const { id } = req.params;
-
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return response(res, 400, "Invalid registration ID");
   }
 
   const registration = await Registration.findById(id);
-  if (!registration) {
-    return response(res, 404, "Registration not found");
-  }
+  if (!registration) return response(res, 404, "Registration not found");
 
   const event = await Event.findById(registration.eventId);
   if (!event || event.eventType !== "employee") {
     return response(res, 400, "Associated employee event not found");
   }
 
-  await Registration.findByIdAndDelete(id);
-  await Event.findByIdAndUpdate(registration.eventId, {
-    $inc: { registrations: -1 },
-  });
+  await registration.softDelete(req.user?._id);
+  await Event.findByIdAndUpdate(registration.eventId, { $inc: { registrations: -1 } });
 
-  return response(res, 200, "Registration deleted successfully");
+  return response(res, 200, "Registration moved to Recycle Bin");
+});
+
+// RESTORE registration
+exports.restoreRegistration = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return response(res, 400, "Invalid registration ID");
+  }
+
+  const registration = await Registration.findById(id);
+  if (!registration) return response(res, 404, "Registration not found");
+
+  // Prevent duplicate token conflict
+  const conflict = await Registration.findOne({
+    _id: { $ne: registration._id },
+    eventId: registration.eventId,
+    token: registration.token,
+    isDeleted: false,
+  });
+  if (conflict) {
+    return response(res, 409, "Cannot restore: token already in use");
+  }
+
+  await registration.restore();
+  await Event.findByIdAndUpdate(registration.eventId, { $inc: { registrations: 1 } });
+
+  return response(res, 200, "Registration restored successfully", registration);
+});
+
+// PERMANENT DELETE registration
+exports.permanentDeleteRegistration = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return response(res, 400, "Invalid registration ID");
+  }
+
+  const registration = await Registration.findById(id);
+  if (!registration) return response(res, 404, "Registration not found");
+
+  await registration.deleteOne();
+  return response(res, 200, "Registration permanently deleted");
 });
 
 // GET all registrations by event using slug (for export)
 exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug }).notDeleted();
   if (!event || event.eventType !== "employee") {
     return response(res, 404, "Employee event not found");
   }
 
   const eventId = event._id;
 
-  const registrations = await Registration.find({ eventId });
+  const registrations = await Registration.find({ eventId }).notDeleted();
 
   const enhanced = registrations.map((reg) => {
     const emp = event.employeeData.find((e) => e.employeeId === reg.employeeId);

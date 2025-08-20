@@ -8,7 +8,7 @@ const { emitToRoom } = require("../../utils/socketUtils");
 
 // Get all media
 exports.getDisplayMedia = asyncHandler(async (req, res) => {
-  const items = await DisplayMedia.find()
+  const items = await DisplayMedia.find().notDeleted()
     .sort({ createdAt: -1 })
     .populate("wall");
   return response(
@@ -21,7 +21,7 @@ exports.getDisplayMedia = asyncHandler(async (req, res) => {
 
 // Get one media item by ID
 exports.getMediaById = asyncHandler(async (req, res) => {
-  const item = await DisplayMedia.findById(req.params.id).populate("wall");
+  const item = await DisplayMedia.findById(req.params.id).notDeleted().populate("wall");
   if (!item) return response(res, 404, "Media not found.");
   return response(res, 200, "Media retrieved.", item);
 });
@@ -73,17 +73,42 @@ exports.updateDisplayMedia = asyncHandler(async (req, res) => {
   return response(res, 200, "Media updated successfully.", item);
 });
 
-// Delete media
 exports.deleteDisplayMedia = asyncHandler(async (req, res) => {
   const item = await DisplayMedia.findById(req.params.id);
   if (!item) return response(res, 404, "Media not found.");
+
+  await item.softDelete(req.user.id);
+
+  const wall = await WallConfig.findById(item.wall);
+  const updatedMediaList = await DisplayMedia.find({ wall: wall._id, isDeleted: false }).sort({ createdAt: -1 });
+  emitToRoom(wall.slug, "mediaUpdate", updatedMediaList);
+
+  return response(res, 200, "Media moved to recycle bin.");
+});
+
+exports.restoreDisplayMedia = asyncHandler(async (req, res) => {
+  const item = await DisplayMedia.findOneDeleted({ _id: req.params.id });
+  if (!item) return response(res, 404, "Media not found in trash.");
+
+  await item.restore();
+
+  const wall = await WallConfig.findById(item.wall);
+  const updatedMediaList = await DisplayMedia.find({ wall: wall._id, isDeleted: false }).sort({ createdAt: -1 });
+  emitToRoom(wall.slug, "mediaUpdate", updatedMediaList);
+
+  return response(res, 200, "Media restored.", item);
+});
+
+exports.permanentDeleteDisplayMedia = asyncHandler(async (req, res) => {
+  const item = await DisplayMedia.findOneDeleted({ _id: req.params.id });
+  if (!item) return response(res, 404, "Media not found in trash.");
 
   if (item.imageUrl) await deleteImage(item.imageUrl);
   await item.deleteOne();
 
   const wall = await WallConfig.findById(item.wall);
-  const updatedMediaList = await DisplayMedia.find({ wall: wall._id }).sort({ createdAt: -1 });
+  const updatedMediaList = await DisplayMedia.find({ wall: wall._id, isDeleted: false }).sort({ createdAt: -1 });
   emitToRoom(wall.slug, "mediaUpdate", updatedMediaList);
 
-  return response(res, 200, "Media deleted successfully.");
+  return response(res, 200, "Media permanently deleted.");
 });

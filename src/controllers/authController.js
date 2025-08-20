@@ -50,7 +50,7 @@ exports.registerUser = asyncHandler(async (req, res) => {
     return response(res, 400, "Business ID is required for staff users");
   }
 
-  const existingUser = await User.findOne({ email: email.toLowerCase() });
+  const existingUser = await User.findOne({ email: email.toLowerCase() }).notDeleted();
   if (existingUser) {
     return response(res, 400, "User with this email already exists");
   }
@@ -104,7 +104,7 @@ exports.login = asyncHandler(async (req, res) => {
     return response(res, 400, "Email and password are required");
   }
 
-  const user = await User.findOne({ email: email.toLowerCase() })
+  const user = await User.findOne({ email: email.toLowerCase() }).notDeleted()
     .populate("business", "name slug logoUrl contact address");
 
   if (!user) {
@@ -156,7 +156,7 @@ exports.refreshToken = asyncHandler(async (req, res) => {
   jwt.verify(refreshToken, env.jwt.secret, async (err, decoded) => {
     if (err) return response(res, 403, "Invalid refresh token");
 
-    const user = await User.findById(decoded.id)
+    const user = await User.findById(decoded.id).notDeleted()
       .populate("business", "name slug logoUrl");
 
     if (!user) return response(res, 404, "User not found");

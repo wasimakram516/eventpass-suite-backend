@@ -8,7 +8,6 @@ const WallConfigSchema = new mongoose.Schema({
   slug: {
     type: String,
     required: true,
-    unique: true,
     lowercase: true,
   },
   mode: {
@@ -22,5 +21,10 @@ const WallConfigSchema = new mongoose.Schema({
     required: true,
   },
 }, { timestamps: true });
+
+// Soft delete support
+WallConfigSchema.plugin(require("../db/plugins/softDelete"));
+// Partial unique index for slug
+WallConfigSchema.addPartialUnique({ slug: 1 });
 
 module.exports = mongoose.models.WallConfig || mongoose.model("WallConfig", WallConfigSchema);

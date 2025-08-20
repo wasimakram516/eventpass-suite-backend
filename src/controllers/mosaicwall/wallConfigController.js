@@ -11,7 +11,7 @@ exports.createWallConfig = asyncHandler(async (req, res) => {
     return response(res, 400, "Name, slug, and valid mode are required.");
   }
 
-  const business = await Business.findById(businessId);
+  const business = await Business.findById(businessId).notDeleted();
   if (!business) {
     return response(res, 404, "Business not found.");
   }
@@ -74,7 +74,7 @@ exports.updateWallConfig = asyncHandler(async (req, res) => {
 
 // Get all wall configs
 exports.getWallConfigs = asyncHandler(async (req, res) => {
-  const configs = await WallConfig.find()
+  const configs = await WallConfig.find().notDeleted()
     .sort({ createdAt: -1 })
     .populate("business");
 
@@ -98,7 +98,7 @@ exports.getWallConfigs = asyncHandler(async (req, res) => {
 
 // Get single wall config
 exports.getWallConfigBySlug = asyncHandler(async (req, res) => {
-  const wall = await WallConfig.findOne({ slug: req.params.slug }).populate("business");
+  const wall = await WallConfig.findOne({ slug: req.params.slug }).notDeleted().populate("business");
   if (!wall) return response(res, 404, "Wall configuration not found.");
 
   return response(res, 200, "Wall configuration retrieved.", {
@@ -117,11 +117,26 @@ exports.getWallConfigBySlug = asyncHandler(async (req, res) => {
   });
 });
 
-// Delete wall config
 exports.deleteWallConfig = asyncHandler(async (req, res) => {
   const config = await WallConfig.findById(req.params.id);
   if (!config) return response(res, 404, "Wall configuration not found.");
 
+  await config.softDelete(req.user.id);
+  return response(res, 200, "Wall configuration moved to recycle bin.");
+});
+
+exports.restoreWallConfig = asyncHandler(async (req, res) => {
+  const config = await WallConfig.findOneDeleted({ _id: req.params.id });
+  if (!config) return response(res, 404, "Wall configuration not found in trash.");
+
+  await config.restore();
+  return response(res, 200, "Wall configuration restored.", config);
+});
+
+exports.permanentDeleteWallConfig = asyncHandler(async (req, res) => {
+  const config = await WallConfig.findOneDeleted({ _id: req.params.id });
+  if (!config) return response(res, 404, "Wall configuration not found in trash.");
+
   await config.deleteOne();
-  return response(res, 200, "Wall configuration deleted.");
+  return response(res, 200, "Wall configuration permanently deleted.");
 });

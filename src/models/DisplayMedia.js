@@ -16,4 +16,7 @@ const DisplayMediaSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+// Soft delete support
+DisplayMediaSchema.plugin(require("../db/plugins/softDelete"));
+
 module.exports = mongoose.models.DisplayMedia || mongoose.model("DisplayMedia", DisplayMediaSchema);

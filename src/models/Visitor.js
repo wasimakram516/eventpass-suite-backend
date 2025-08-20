@@ -17,4 +17,9 @@ const VisitorSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Soft delete support
+VisitorSchema.plugin(require("../db/plugins/softDelete"));
+// Partial unique index for phone
+VisitorSchema.addPartialUnique({ phone: 1 });
+
 module.exports = mongoose.models.Visitor || mongoose.model("Visitor", VisitorSchema);

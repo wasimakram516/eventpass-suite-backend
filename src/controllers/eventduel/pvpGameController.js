@@ -125,40 +125,69 @@ exports.updateGame = asyncHandler(async (req, res) => {
 
 // Get PvP games for a business
 exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
-  const business = await Business.findOne({ slug: req.params.slug });
+  const business = await Business.findOne({ slug: req.params.slug }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
-  const games = await Game.find({ businessId: business._id, mode: "pvp" });
+  const games = await Game.find({ businessId: business._id, mode: "pvp" }).notDeleted();
   return response(res, 200, `PvP Games fetched for ${business.name}`, games);
 });
 
 // Get PvP game by ID or slug
 exports.getGameById = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id);
+  const game = await Game.findById(req.params.id).notDeleted();
   if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
   return response(res, 200, "Game found", game);
 });
 
 exports.getGameBySlug = asyncHandler(async (req, res) => {
-  const game = await Game.findOne({ slug: req.params.slug });
+  const game = await Game.findOne({ slug: req.params.slug }).notDeleted();
   if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
   return response(res, 200, "Game found", game);
 });
 
-// Delete PvP game
+// Soft delete PvP game
 exports.deleteGame = asyncHandler(async (req, res) => {
   const game = await Game.findById(req.params.id);
   if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
 
   const playersExist = await Player.exists({ gameId: game._id });
   if (playersExist) {
-    return response(res, 400, "Cannot delete game with existing game sessions");
+    return response(res, 400, "Cannot delete game with existing sessions/players");
   }
+
+  await game.softDelete(req.user.id);
+  return response(res, 200, "PvP game moved to recycle bin");
+});
+
+// Restore PvP game
+exports.restoreGame = asyncHandler(async (req, res) => {
+  const game = await Game.findOneDeleted({ _id: req.params.id, mode: "pvp" });
+  if (!game) return response(res, 404, "Game not found in trash");
+
+  // check slug conflicts
+  const conflict = await Game.findOne({
+    _id: { $ne: game._id },
+    slug: game.slug,
+    isDeleted: false,
+  });
+  if (conflict) return response(res, 409, "Cannot restore: slug already in use");
+
+  await game.restore();
+  return response(res, 200, "PvP game restored", game);
+});
+
+// Permanently delete PvP game
+exports.permanentDeleteGame = asyncHandler(async (req, res) => {
+  const game = await Game.findOneDeleted({ _id: req.params.id, mode: "pvp" });
+  if (!game) return response(res, 404, "Game not found in trash");
 
   if (game.coverImage) await deleteImage(game.coverImage);
   if (game.nameImage) await deleteImage(game.nameImage);
   if (game.backgroundImage) await deleteImage(game.backgroundImage);
 
+  await GameSession.deleteMany({ gameId: game._id });
+  await Player.deleteMany({ gameId: game._id });
+
   await game.deleteOne();
-  return response(res, 200, "PvP game deleted successfully");
+  return response(res, 200, "PvP game permanently deleted");
 });

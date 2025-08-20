@@ -1,11 +1,13 @@
+// src/controllers/globalConfigController.js
 const GlobalConfig = require("../models/GlobalConfig");
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
 const { uploadToCloudinary } = require("../utils/uploadToCloudinary");
 
-// Create Global Config
+// Create Global Config (allow only 1 active)
 exports.createConfig = asyncHandler(async (req, res) => {
-  const existing = await GlobalConfig.findOne();
+  // Only consider active (not deleted) configs
+  const existing = await GlobalConfig.findOne({ isDeleted: false });
   if (existing)
     return response(res, 400, "Global configuration already exists");
 
@@ -26,7 +28,7 @@ exports.createConfig = asyncHandler(async (req, res) => {
   let brandingMediaUrl = "";
   let poweredByMediaUrl = "";
 
-  // Upload files
+  // Upload files (optional)
   if (req.files?.companyLogo) {
     const uploaded = await uploadToCloudinary(
       req.files.companyLogo[0].buffer,
@@ -51,17 +53,10 @@ exports.createConfig = asyncHandler(async (req, res) => {
     poweredByMediaUrl = uploaded.secure_url;
   }
 
-  // Construct object fields
   const config = await GlobalConfig.create({
     appName,
-    contact: {
-      email: contactEmail ?? "",
-      phone: contactPhone ?? "",
-    },
-    support: {
-      email: supportEmail ?? "",
-      phone: supportPhone ?? "",
-    },
+    contact: { email: contactEmail ?? "", phone: contactPhone ?? "" },
+    support: { email: supportEmail ?? "", phone: supportPhone ?? "" },
     socialLinks: {
       facebook: facebook ?? "",
       instagram: instagram ?? "",
@@ -70,24 +65,21 @@ exports.createConfig = asyncHandler(async (req, res) => {
     },
     companyLogoUrl,
     brandingMediaUrl,
-    poweredBy: {
-      text: poweredByText ?? "",
-      mediaUrl: poweredByMediaUrl,
-    },
+    poweredBy: { text: poweredByText ?? "", mediaUrl: poweredByMediaUrl },
   });
 
   return response(res, 201, "Global configuration created", config);
 });
 
-// Get Global Config
+// Get the active Global Config (ignore trashed)
 exports.getConfig = asyncHandler(async (req, res) => {
-  const config = await GlobalConfig.findOne();
+  const config = await GlobalConfig.findOne({ isDeleted: false });
   return response(res, 200, "Global configuration fetched", config);
 });
 
-// Update Global Config
+// Update active Global Config
 exports.updateConfig = asyncHandler(async (req, res) => {
-  const config = await GlobalConfig.findOne();
+  const config = await GlobalConfig.findOne({ isDeleted: false });
   if (!config) return response(res, 404, "Global configuration not found");
 
   const {
@@ -105,21 +97,9 @@ exports.updateConfig = asyncHandler(async (req, res) => {
 
   if (appName !== undefined) config.appName = appName;
 
-  config.contact = {
-    email: contactEmail ?? "",
-    phone: contactPhone ?? "",
-  };
-
-  config.support = {
-    email: supportEmail ?? "",
-    phone: supportPhone ?? "",
-  };
-
-  config.poweredBy = {
-    ...config.poweredBy,
-    text: poweredByText ?? "",
-  };
-
+  config.contact = { email: contactEmail ?? "", phone: contactPhone ?? "" };
+  config.support = { email: supportEmail ?? "", phone: supportPhone ?? "" };
+  config.poweredBy = { ...config.poweredBy, text: poweredByText ?? "" };
   config.socialLinks = {
     facebook: facebook ?? "",
     instagram: instagram ?? "",
@@ -127,7 +107,7 @@ exports.updateConfig = asyncHandler(async (req, res) => {
     website: website ?? "",
   };
 
-  // Image uploads remain unchanged
+  // Optional uploads
   if (req.files?.companyLogo) {
     const uploaded = await uploadToCloudinary(
       req.files.companyLogo[0].buffer,
@@ -156,11 +136,45 @@ exports.updateConfig = asyncHandler(async (req, res) => {
   return response(res, 200, "Global configuration updated", config);
 });
 
-// Delete Global Config
+// Soft delete (move to Recycle Bin)
 exports.deleteConfig = asyncHandler(async (req, res) => {
-  const config = await GlobalConfig.findOne();
+  const config = await GlobalConfig.findOne({ isDeleted: false });
   if (!config) return response(res, 404, "Global configuration not found");
 
-  await config.deleteOne();
-  return response(res, 200, "Global configuration deleted");
+  await config.softDelete(req.user?.id);
+  return response(res, 200, "Global configuration moved to Recycle Bin");
+});
+
+// Restore most recent trashed config (guard against multiple actives)
+exports.restoreConfig = asyncHandler(async (req, res) => {
+  const active = await GlobalConfig.findOne({ isDeleted: false });
+  if (active) {
+    return response(
+      res,
+      409,
+      "Cannot restore: an active global configuration already exists"
+    );
+  }
+
+  // Restore latest trashed config (or you can target by ID if you add routes by ID)
+  const trashed = await GlobalConfig.findOne({ isDeleted: true }).sort({
+    deletedAt: -1,
+  });
+  if (!trashed)
+    return response(res, 404, "No trashed configuration to restore");
+
+  await trashed.restore();
+  return response(res, 200, "Global configuration restored", trashed);
+});
+
+// Permanent delete (admin-only)
+exports.permanentDeleteConfig = asyncHandler(async (req, res) => {
+  // You can pick by ID if you prefer; here we delete the latest trashed one:
+  const trashed = await GlobalConfig.findOne({ isDeleted: true }).sort({
+    deletedAt: -1,
+  });
+  if (!trashed) return response(res, 404, "No trashed configuration found");
+
+  await trashed.deleteOne();
+  return response(res, 200, "Global configuration permanently deleted");
 });

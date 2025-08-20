@@ -16,7 +16,7 @@ exports.getGameSessions = asyncHandler(async (req, res) => {
     return response(res, 400, "Missing gameSlug in query");
   }
 
-  const game = await Game.findOne({ slug: gameSlug });
+  const game = await Game.findOne({ slug: gameSlug }).notDeleted();
   if (!game) {
     return response(res, 404, "Game not found");
   }
@@ -25,12 +25,13 @@ exports.getGameSessions = asyncHandler(async (req, res) => {
   const pageSize = parseInt(limit);
   const skip = (pageNumber - 1) * pageSize;
 
-  const totalCount = await GameSession.countDocuments({ gameId: game._id });
+  const totalCount = await GameSession.countDocuments({ gameId: game._id }).notDeleted();
 
   const sessions = await GameSession.find({
     gameId: game._id,
     status: "completed",
   })
+    .notDeleted()
     .populate("players.playerId winner gameId")
     .sort({ createdAt: -1 })
     .skip(skip)
@@ -51,7 +52,7 @@ exports.startGameSession = asyncHandler(async (req, res) => {
     return response(res, 400, "Missing gameSlug in request body");
   }
 
-  const game = await Game.findOne({ slug: gameSlug });
+  const game = await Game.findOne({ slug: gameSlug }).notDeleted();
   if (!game || game.mode !== "pvp") {
     return response(res, 404, "Game not found");
   }
@@ -259,50 +260,71 @@ exports.endGameSession = asyncHandler(async (req, res) => {
   return response(res, 200, "Session completed", session);
 });
 
-// Reset all sessions for a given gameSlug
+// Soft reset all sessions for a given gameSlug
 exports.resetGameSessions = asyncHandler(async (req, res) => {
   const { gameSlug } = req.body;
-
-  if (!gameSlug) {
-    return response(res, 400, "Missing gameSlug in request body");
-  }
+  if (!gameSlug) return response(res, 400, "Missing gameSlug in request body");
 
   const game = await Game.findOne({ slug: gameSlug });
-  if (!game || game.mode !== "pvp") {
-    return response(res, 404, "Game not found");
-  }
+  if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
 
   const gameId = game._id;
+  const sessions = await GameSession.find({ gameId });
 
-  // Find all Completed sessions for the game
-  const sessions = await GameSession.find({ gameId, status: "completed" });
+  if (!sessions.length) return response(res, 404, "No sessions found for this game");
 
-  // Collect all playerIds used in these sessions
-  const allPlayerIds = sessions.flatMap((session) =>
-    session.players.map((p) => p.playerId)
-  );
+  const allPlayerIds = sessions.flatMap((s) => s.players.map((p) => p.playerId));
 
-  // Delete all sessions
-  await GameSession.deleteMany({ gameId });
+  // Soft delete sessions
+  for (const session of sessions) {
+    await session.softDelete(req.user.id);
+  }
 
-  // Delete related players (safe even if playerIds are empty)
-  await Player.deleteMany({ _id: { $in: allPlayerIds } });
+  // Soft delete players
+  const players = await Player.find({ _id: { $in: allPlayerIds } });
+  for (const player of players) {
+    await player.softDelete(req.user.id);
+  }
 
-  // Emit session update to room
-  emitToRoom(gameSlug, "pvpCurrentSession", null);
-  emitToRoom(gameSlug, "pvpAllSessions", []);
+  emitToRoom(game.slug, "pvpCurrentSession", null);
+  emitToRoom(game.slug, "pvpAllSessions", []);
 
-  return response(res, 200, "All sessions and players reset for this game");
+  return response(res, 200, "All sessions and players moved to recycle bin");
+});
+
+exports.restoreAllGameSessions = asyncHandler(async (req, res) => {
+  const { gameSlug } = req.body;
+  if (!gameSlug) return response(res, 400, "Missing gameSlug in request body");
+
+  const game = await Game.findOne({ slug: gameSlug });
+  if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
+
+  const gameId = game._id;
+  const sessions = await GameSession.find({ gameId, isDeleted: true });
+  if (!sessions.length) return response(res, 404, "No deleted sessions found");
+
+  for (const session of sessions) {
+    await session.restore();
+  }
+
+  const allPlayerIds = sessions.flatMap((s) => s.players.map((p) => p.playerId));
+  const players = await Player.find({ _id: { $in: allPlayerIds }, isDeleted: true });
+  for (const player of players) {
+    await player.restore();
+  }
+
+  return response(res, 200, "All sessions and players restored");
 });
 
 // Export all player results to Excel
 exports.exportResults = asyncHandler(async (req, res) => {
   const gameSlug = req.params.gameSlug;
 
-  const game = await Game.findOne({ slug: gameSlug }).populate("businessId", "name");
+  const game = await Game.findOne({ slug: gameSlug }).populate("businessId", "name").notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
   const sessions = await GameSession.find({ gameId: game._id, status: "completed" })
+    .notDeleted()
     .populate("players.playerId");
 
   if (!sessions.length) return response(res, 404, "No completed sessions");
@@ -372,7 +394,7 @@ exports.exportResults = asyncHandler(async (req, res) => {
 exports.getLeaderboard = asyncHandler(async (req, res) => {
   const gameSlug = req.params.gameSlug;
 
-  const game = await Game.findOne({ slug: gameSlug });
+  const game = await Game.findOne({ slug: gameSlug }).notDeleted();
   if (!game) return response(res, 404, "Game not found");
   if (game.mode !== "pvp") {
     return response(res, 400, "Leaderboard only available for PvP games");
@@ -381,7 +403,7 @@ exports.getLeaderboard = asyncHandler(async (req, res) => {
   const sessions = await GameSession.find({
     gameId,
     status: "completed",
-  }).populate("players.playerId");
+  }).notDeleted().populate("players.playerId");
 
   const results = sessions.flatMap((session) =>
     session.players.map((p) => ({

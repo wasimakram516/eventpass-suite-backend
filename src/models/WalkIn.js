@@ -7,4 +7,7 @@ const WalkInSchema = new mongoose.Schema({
   scannedAt: { type: Date, default: Date.now }
 });
 
+// Soft delete support
+WalkInSchema.plugin(require("../db/plugins/softDelete"));
+
 module.exports = mongoose.models.WalkIn || mongoose.model("WalkIn", WalkInSchema);

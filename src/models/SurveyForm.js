@@ -28,4 +28,9 @@ const SurveyFormSchema = new mongoose.Schema({
 // Unique per business (safer than global uniqueness)
 SurveyFormSchema.index({ businessId: 1, slug: 1 }, { unique: true });
 
+// Soft delete support
+SurveyFormSchema.plugin(require("../db/plugins/softDelete"));
+// Partial unique index for slug
+SurveyFormSchema.addPartialUnique({ slug: 1 });
+
 module.exports = mongoose.models.SurveyForm || mongoose.model("SurveyForm", SurveyFormSchema);

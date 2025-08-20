@@ -26,7 +26,9 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
   const events = await Event.find({
     businessId,
     eventType: "public",
-  }).sort({ startDate: -1 });
+  })
+  .notDeleted()
+  .sort({ startDate: -1 });
 
   return response(res, 200, "Events fetched successfully.", {
     events,
@@ -38,7 +40,7 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
 exports.getEventBySlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug }).notDeleted();
   if (!event || event.eventType !== "public") {
     return response(res, 400, "Public event not found");
   }
@@ -54,7 +56,7 @@ exports.getEventById = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid Event ID");
   }
 
-  const event = await Event.findById(id);
+  const event = await Event.findById(id).notDeleted();
   if (!event || event.eventType !== "public") {
     return response(res, 400, "Public event not found");
   }
@@ -72,7 +74,9 @@ exports.getEventsByBusinessId = asyncHandler(async (req, res) => {
   const events = await Event.find({
     businessId,
     eventType: "public",
-  }).sort({ startDate: -1 });
+  })
+  .notDeleted()
+  .sort({ startDate: -1 });
 
   return response(res, 200, "Events fetched successfully.", {
     events,
@@ -83,7 +87,7 @@ exports.getEventsByBusinessId = asyncHandler(async (req, res) => {
 // Get all events by Business Slug
 exports.getEventsByBusinessSlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const business = await Business.findOne({ slug });
+  const business = await Business.findOne({ slug }).notDeleted();
   if (!business) {
     return response(res, 404, "Business not found");
   }
@@ -91,7 +95,9 @@ exports.getEventsByBusinessSlug = asyncHandler(async (req, res) => {
   const events = await Event.find({
     businessId: business._id,
     eventType: "public",
-  }).sort({ startDate: -1 });
+  })
+  .notDeleted()
+  .sort({ startDate: -1 });
 
   return response(res, 200, "Events fetched successfully.", {
     events,
@@ -316,7 +322,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   return response(res, 200, "Event updated successfully", updatedEvent);
 });
 
-// DELETE EVENT
+// Soft delete event
 exports.deleteEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
@@ -331,19 +337,30 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
 
   const registrationsCount = await Registration.countDocuments({ eventId: id });
   if (registrationsCount > 0) {
-    return response(
-      res,
-      400,
-      "Cannot delete an event with existing registrations"
-    );
+    return response(res, 400, "Cannot delete an event with existing registrations");
   }
 
-  if (event.logoUrl) {
-    await deleteImage(event.logoUrl);
-  }
-  if (event.brandingMediaUrl) {
-    await deleteImage(event.brandingMediaUrl);
-  }
-  await Event.findByIdAndDelete(id);
-  return response(res, 200, "Event deleted successfully");
+  await event.softDelete(req.user.id);
+  return response(res, 200, "Event moved to recycle bin");
+});
+
+// Restore event
+exports.restoreEvent = asyncHandler(async (req, res) => {
+  const event = await Event.findOneDeleted({ _id: req.params.id, eventType: "public" });
+  if (!event) return response(res, 404, "Event not found in trash");
+
+  await event.restore();
+  return response(res, 200, "Event restored", event);
+});
+
+// Permanent delete event
+exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
+  const event = await Event.findOneDeleted({ _id: req.params.id, eventType: "public" });
+  if (!event) return response(res, 404, "Event not found in trash");
+
+  if (event.logoUrl) await deleteImage(event.logoUrl);
+  if (event.brandingMediaUrl) await deleteImage(event.brandingMediaUrl);
+
+  await event.deleteOne();
+  return response(res, 200, "Event permanently deleted");
 });

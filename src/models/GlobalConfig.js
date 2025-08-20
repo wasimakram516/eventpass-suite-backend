@@ -53,4 +53,7 @@ const GlobalConfigSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
+// Soft delete support
+GlobalConfigSchema.plugin(require("../db/plugins/softDelete"));
+
 module.exports = mongoose.models.GlobalConfig || mongoose.model('GlobalConfig', GlobalConfigSchema);

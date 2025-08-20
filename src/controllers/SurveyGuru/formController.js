@@ -48,20 +48,18 @@ async function attachOptionImages(questions = [], files = [], prevForm = null) {
     for (let oi = 0; oi < q.options.length; oi++) {
       const key = `${qi}:${oi}`;
       const opt = q.options[oi] || {};
-      const incomingRemoveFlag = !!opt.imageRemove; // optional boolean sent from FE to delete existing
+      const incomingRemoveFlag = !!opt.imageRemove; 
 
-      // If a new file arrived for this option -> upload and (if update) delete old
       if (fileMap.has(key)) {
         const file = fileMap.get(key);
         const uploaded = await uploadToCloudinary(file.buffer, file.mimetype);
         const newUrl = uploaded.secure_url;
 
-        // delete previous if existed
         if (prevForm && prevImg[key]) {
           await deleteImage(prevImg[key]);
         }
         opt.imageUrl = newUrl;
-        delete opt.imageRemove; // sanitize
+        delete opt.imageRemove; 
       } else if (incomingRemoveFlag) {
         // explicit remove request (no file uploaded but user cleared image)
         if (prevForm && prevImg[key]) {
@@ -114,7 +112,7 @@ exports.listForms = asyncHandler(async (req, res) => {
   if (businessId) filter.businessId = businessId;
   if (eventId) filter.eventId = eventId;
 
-  const forms = await SurveyForm.find(filter).sort({ createdAt: -1 });
+  const forms = await SurveyForm.find(filter).notDeleted().sort({ createdAt: -1 });
 
   if (withCounts) {
     const ids = forms.map((f) => f._id);
@@ -149,14 +147,14 @@ exports.listForms = asyncHandler(async (req, res) => {
 exports.getForm = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) return response(res, 400, "Invalid form id");
-  const form = await SurveyForm.findById(id);
+  const form = await SurveyForm.findById(id).notDeleted();
   if (!form) return response(res, 404, "Survey form not found");
   return response(res, 200, "Survey form fetched", form);
 });
 
 // PUBLIC: GET FORM BY SLUG (active only)
 exports.getFormBySlug = asyncHandler(async (req, res) => {
-  const form = await SurveyForm.findOne({ slug: req.params.slug, isActive: true });
+  const form = await SurveyForm.findOne({ slug: req.params.slug, isActive: true }).notDeleted();
   if (!form) return response(res, 404, "Survey form not found");
   return response(res, 200, "Survey form fetched", form);
 });
@@ -166,7 +164,7 @@ exports.updateForm = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) return response(res, 400, "Invalid form id");
 
-  const prev = await SurveyForm.findById(id);
+  const prev = await SurveyForm.findById(id).notDeleted();
   if (!prev) return response(res, 404, "Survey form not found");
 
   const patch = {
@@ -187,7 +185,7 @@ exports.updateForm = asyncHandler(async (req, res) => {
   return response(res, 200, "Survey form updated", updated);
 });
 
-// DELETE FORM (+ cascade)
+// Soft delete form
 exports.deleteForm = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) return response(res, 400, "Invalid form id");
@@ -195,7 +193,24 @@ exports.deleteForm = asyncHandler(async (req, res) => {
   const form = await SurveyForm.findById(id);
   if (!form) return response(res, 404, "Survey form not found");
 
-  // delete any option images from Cloudinary
+  await form.softDelete(req.user.id);
+  return response(res, 200, "Survey form moved to recycle bin");
+});
+
+// Restore form
+exports.restoreForm = asyncHandler(async (req, res) => {
+  const form = await SurveyForm.findOneDeleted({ _id: req.params.id });
+  if (!form) return response(res, 404, "Form not found in trash");
+
+  await form.restore();
+  return response(res, 200, "Survey form restored", form);
+});
+
+// Permanent delete form (with cascade)
+exports.permanentDeleteForm = asyncHandler(async (req, res) => {
+  const form = await SurveyForm.findOneDeleted({ _id: req.params.id });
+  if (!form) return response(res, 404, "Form not found in trash");
+
   for (const q of form.questions || []) {
     for (const o of q.options || []) {
       if (o?.imageUrl) {
@@ -208,7 +223,7 @@ exports.deleteForm = asyncHandler(async (req, res) => {
     SurveyResponse.deleteMany({ formId: form._id }),
     SurveyRecipient.deleteMany({ formId: form._id }),
   ]);
-  await form.deleteOne();
 
-  return response(res, 200, "Survey form deleted");
+  await form.deleteOne();
+  return response(res, 200, "Survey form permanently deleted");
 });

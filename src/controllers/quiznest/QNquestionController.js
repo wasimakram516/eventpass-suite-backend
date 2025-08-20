@@ -55,7 +55,7 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
   const gameId = req.params.gameId;
   if (!req.file) return response(res, 400, "No file uploaded");
 
-  const game = await Game.findById(gameId);
+  const game = await Game.findById(gameId).notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
   const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
@@ -120,7 +120,7 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
 
 // Get all questions for a game
 exports.getQuestions = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.gameId);
+  const game = await Game.findById(req.params.gameId).notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
   return response(res, 200, "Questions retrieved", game.questions);
@@ -134,7 +134,7 @@ exports.addQuestion = asyncHandler(async (req, res) => {
     return response(res, 400, "All fields are required");
   }
 
-  const game = await Game.findById(req.params.gameId);
+  const game = await Game.findById(req.params.gameId).notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
   if (answers.length !== game.choicesCount) {
@@ -161,7 +161,7 @@ exports.addQuestion = asyncHandler(async (req, res) => {
 exports.updateQuestion = asyncHandler(async (req, res) => {
   const { question, answers, correctAnswerIndex, hint } = req.body;
 
-  const game = await Game.findById(req.params.gameId);
+  const game = await Game.findById(req.params.gameId).notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
   const q = game.questions.id(req.params.questionId);
@@ -184,19 +184,43 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
   return response(res, 200, "Question updated", q);
 });
 
-// Delete a question
 exports.deleteQuestion = asyncHandler(async (req, res) => {
+  const game = await Game.findById(req.params.gameId);
+  if (!game) return response(res, 404, "Game not found");
+
+  const q = game.questions.id(req.params.questionId);
+  if (!q) return response(res, 404, "Question not found");
+
+  await q.softDelete(req.user.id);
+  await game.save();
+
+  return response(res, 200, "Question moved to recycle bin");
+});
+
+exports.restoreQuestion = asyncHandler(async (req, res) => {
+  const game = await Game.findById(req.params.gameId);
+  if (!game) return response(res, 404, "Game not found");
+
+  const q = game.questions.id(req.params.questionId);
+  if (!q || !q.isDeleted) return response(res, 404, "Question not found in trash");
+
+  await q.restore();
+  await game.save();
+
+  return response(res, 200, "Question restored", q);
+});
+
+exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
   const game = await Game.findById(req.params.gameId);
   if (!game) return response(res, 404, "Game not found");
 
   const questionIndex = game.questions.findIndex(
     (q) => q._id.toString() === req.params.questionId
   );
-
   if (questionIndex === -1) return response(res, 404, "Question not found");
 
   game.questions.splice(questionIndex, 1);
   await game.save();
 
-  return response(res, 200, "Question deleted");
+  return response(res, 200, "Question permanently deleted");
 });

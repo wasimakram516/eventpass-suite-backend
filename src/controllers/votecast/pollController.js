@@ -13,15 +13,15 @@ exports.getPolls = asyncHandler(async (req, res) => {
   if (status) filter.status = status;
 
   if (businessSlug) {
-    const business = await Business.findOne({ slug: businessSlug });
+    const business = await Business.findOne({ slug: businessSlug }).notDeleted();
     if (!business) return response(res, 404, "Business not found");
     filter.business = business._id;
   } else if (user.role === "business") {
-    const businesses = await Business.find({ owner: user.id });
+    const businesses = await Business.find({ owner: user.id }).notDeleted();
     filter.business = { $in: businesses.map((b) => b._id) };
   }
 
-  const polls = await Poll.find(filter).populate("business", "name slug");
+  const polls = await Poll.find(filter).notDeleted().populate("business", "name slug");
   return response(res, 200, "Polls fetched", polls);
 });
 
@@ -155,7 +155,7 @@ exports.updatePoll = asyncHandler(async (req, res) => {
   return response(res, 200, "Poll updated", poll);
 });
 
-// DELETE poll
+// Soft delete poll
 exports.deletePoll = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const user = req.user;
@@ -167,8 +167,26 @@ exports.deletePoll = asyncHandler(async (req, res) => {
   const isOwner = String(poll.business.owner) === user.id;
   if (!isAdmin && !isOwner) return response(res, 403, "Permission denied");
 
-  await Poll.findByIdAndDelete(id);
-  return response(res, 200, "Poll deleted");
+  await poll.softDelete(req.user.id);
+  return response(res, 200, "Poll moved to recycle bin");
+});
+
+// Restore poll
+exports.restorePoll = asyncHandler(async (req, res) => {
+  const poll = await Poll.findOneDeleted({ _id: req.params.id });
+  if (!poll) return response(res, 404, "Poll not found in trash");
+
+  await poll.restore();
+  return response(res, 200, "Poll restored", poll);
+});
+
+// Permanently delete poll
+exports.permanentDeletePoll = asyncHandler(async (req, res) => {
+  const poll = await Poll.findOneDeleted({ _id: req.params.id });
+  if (!poll) return response(res, 404, "Poll not found in trash");
+
+  await poll.deleteOne();
+  return response(res, 200, "Poll permanently deleted");
 });
 
 // POST clone poll
@@ -198,7 +216,7 @@ exports.voteOnPoll = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { optionIndex } = req.body;
 
-  const poll = await Poll.findById(id);
+  const poll = await Poll.findById(id).notDeleted();
   if (!poll) return response(res, 404, "Poll not found");
   if (poll.status !== "active") return response(res, 403, "Poll is not active");
 
@@ -226,7 +244,7 @@ exports.resetVotes = asyncHandler(async (req, res) => {
   const filter = { business: business._id };
   if (status) filter.status = status;
 
-  const polls = await Poll.find(filter);
+  const polls = await Poll.find(filter).notDeleted();
   if (polls.length === 0) return response(res, 404, "No polls found");
 
   await Promise.all(
@@ -243,13 +261,13 @@ exports.resetVotes = asyncHandler(async (req, res) => {
 exports.getActivePollsByBusiness = asyncHandler(async (req, res) => {
   const { businessSlug } = req.params;
 
-  const business = await Business.findOne({ slug: businessSlug });
+  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
   const polls = await Poll.find({
     business: business._id,
     status: "active",
-  });
+  }).notDeleted();
 
   return response(res, 200, "Active polls fetched", polls);
 });
@@ -260,13 +278,13 @@ exports.getPollResults = asyncHandler(async (req, res) => {
 
   if (!businessSlug) return response(res, 400, "businessSlug is required");
 
-  const business = await Business.findOne({ slug: businessSlug });
+  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
   const filter = { business: business._id };
   if (status) filter.status = status;
 
-  const polls = await Poll.find(filter);
+  const polls = await Poll.find(filter).notDeleted();
 
   const resultData = polls.map((poll) => {
     const totalVotes =
@@ -297,13 +315,13 @@ exports.getPollResults = asyncHandler(async (req, res) => {
 exports.exportPollsToExcel = asyncHandler(async (req, res) => {
   const { businessSlug, status } = req.body;
 
-  const business = await Business.findOne({ slug: businessSlug });
+  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
   const filter = { business: business._id };
   if (status) filter.status = status;
 
-  const polls = await Poll.find(filter);
+  const polls = await Poll.find(filter).notDeleted();
   if (polls.length === 0) return response(res, 404, "No polls found");
 
   const maxOptions = Math.max(...polls.map((p) => p.options.length));

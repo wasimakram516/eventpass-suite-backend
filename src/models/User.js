@@ -1,14 +1,14 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const { MODULES } = require("../constants/modules");
+const softDelete = require("../db/plugins/softDelete");
 
 const VALID_MODULE_KEYS = MODULES.map((m) => m.key);
 
 const userSchema = new mongoose.Schema(
   {
     name: { type: String },
-
-    email: { type: String, required: true, unique: true },
+    email: { type: String, required: true },
     password: { type: String, required: true },
 
     role: {
@@ -33,6 +33,12 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Soft delete support
+userSchema.plugin(softDelete);
+
+// Partial unique index for email
+userSchema.addPartialUnique({ email: 1 });
+
 // Hash password before saving
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
@@ -40,7 +46,7 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
-// Method for password comparison
+// Compare password
 userSchema.methods.comparePassword = function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };

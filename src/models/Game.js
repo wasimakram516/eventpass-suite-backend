@@ -5,7 +5,7 @@ const questionSchema = new mongoose.Schema({
   answers: [{ type: String, required: true }],
   correctAnswerIndex: { type: Number, required: true },
   hint: { type: String },
-});
+}, { timestamps: true });
 
 const gameSchema = new mongoose.Schema(
   {
@@ -15,7 +15,7 @@ const gameSchema = new mongoose.Schema(
       required: true,
     },
     title: { type: String, required: true },
-    slug: { type: String, required: true, unique: true },
+    slug: { type: String, required: true},
     coverImage: { type: String, required: true },
     nameImage: { type: String, required: true },
     backgroundImage: { type: String, required: true },
@@ -27,5 +27,12 @@ const gameSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Soft delete support
+questionSchema.plugin(require("../db/plugins/softDelete"));
+gameSchema.plugin(require("../db/plugins/softDelete"));
+
+// Partial unique index for slug
+gameSchema.addPartialUnique({ slug: 1 });
 
 module.exports = mongoose.models.Game || mongoose.model("Game", gameSchema);

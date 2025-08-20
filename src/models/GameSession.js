@@ -26,4 +26,7 @@ const GameSessionSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
+// Soft delete support
+GameSessionSchema.plugin(require("../db/plugins/softDelete"));
+
 module.exports = mongoose.models.GameSession || mongoose.model("GameSession", GameSessionSchema);
