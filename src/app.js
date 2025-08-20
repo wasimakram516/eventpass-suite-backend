@@ -10,6 +10,7 @@ const response = require("./utils/response");
 // Routes
 const moduleRoutes = require("./routes/moduleRoutes");
 const translateRoutes = require("./routes/translateRoutes");
+const trashRoutes = require("./routes/trashRoutes");
 
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
@@ -88,6 +89,7 @@ initializeApp();
 // Routes
 app.use("/api/modules", moduleRoutes);
 app.use("/api/translate", translateRoutes);
+app.use("/api/trash", trashRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/global-config", globalConfigRoutes);

@@ -14,6 +14,7 @@ module.exports = function softDelete(schema) {
     });
   };
 
+  // Instance methods
   schema.methods.softDelete = function (userId) {
     this.isDeleted = true;
     this.deletedAt = new Date();
@@ -26,6 +27,19 @@ module.exports = function softDelete(schema) {
     this.deletedAt = undefined;
     this.deletedBy = undefined;
     return this.save();
+  };
+
+  // 🔹 New static helpers
+  schema.statics.findDeleted = function (conditions = {}, projection = null, options = {}) {
+    return this.find({ ...conditions, isDeleted: true }, projection, options);
+  };
+
+  schema.statics.findOneDeleted = function (conditions = {}, projection = null, options = {}) {
+    return this.findOne({ ...conditions, isDeleted: true }, projection, options);
+  };
+
+  schema.statics.countDocumentsDeleted = function (conditions = {}) {
+    return this.countDocuments({ ...conditions, isDeleted: true });
   };
 
   // For fields with unique constraints (slug, email, token, etc.)
