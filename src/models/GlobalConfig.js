@@ -15,6 +15,14 @@ const GlobalConfigSchema = new mongoose.Schema({
     type: String
   },
 
+  clientLogos: [
+    {
+      name: { type: String },
+      logoUrl: { type: String },
+      website: { type: String }
+    }
+  ],
+
   contact: {
     email: {
       type: String,
