@@ -140,6 +140,30 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
   });
 });
 
+// Abandon a session if players don’t join within a certain time
+exports.abandonGameSession = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+
+  const session = await GameSession.findById(sessionId);
+  if (!session) return response(res, 404, "Session not found");
+
+  if (session.status !== "pending") {
+    return response(res, 400, "Only pending sessions can be abandoned");
+  }
+
+  session.status = "abandoned";
+  session.endTime = new Date();
+  await session.save();
+
+  const populatedSession = await GameSession.findById(session._id).populate(
+    "players.playerId winner gameId"
+  );
+
+  emitToRoom(populatedSession.gameId.slug, "pvpCurrentSession", populatedSession);
+
+  return response(res, 200, "Session abandoned", populatedSession);
+});
+
 // Activate session
 exports.activateGameSession = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
