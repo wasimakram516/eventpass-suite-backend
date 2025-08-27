@@ -25,7 +25,9 @@ exports.getGameSessions = asyncHandler(async (req, res) => {
   const pageSize = parseInt(limit);
   const skip = (pageNumber - 1) * pageSize;
 
-  const totalCount = await GameSession.countDocuments({ gameId: game._id }).notDeleted();
+  const totalCount = await GameSession.countDocuments({
+    gameId: game._id,
+  }).notDeleted();
 
   const sessions = await GameSession.find({
     gameId: game._id,
@@ -122,7 +124,7 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
   await session.save();
 
   // Re-fetch latest 5 sessions and emit updated list
-  const allSessions = await GameSession.find({ gameId: session.gameId })
+  const allSessions = await GameSession.find({ gameId: session.gameId }).notDeleted()
     .populate("players.playerId winner gameId")
     .sort({ createdAt: -1 })
     .limit(5);
@@ -159,7 +161,11 @@ exports.abandonGameSession = asyncHandler(async (req, res) => {
     "players.playerId winner gameId"
   );
 
-  emitToRoom(populatedSession.gameId.slug, "pvpCurrentSession", populatedSession);
+  emitToRoom(
+    populatedSession.gameId.slug,
+    "pvpCurrentSession",
+    populatedSession
+  );
 
   return response(res, 200, "Session abandoned", populatedSession);
 });
@@ -206,40 +212,83 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
   );
   if (!playerStats) return response(res, 404, "Player not in session");
 
+  // Update this player's stats
   playerStats.score = score;
   playerStats.timeTaken = timeTaken;
   playerStats.attemptedQuestions = attemptedQuestions;
 
   await session.save();
 
-  // Re-emit session update (no need to reassign questions!)
-  const mapIndexesToQuestions = (indexes) =>
-    indexes.map((i) => game.questions[i]);
+  // --- 🔑 AUTO-COMPLETE CHECK ---
+  const totalQ = game.questions.length;
+  const duration = game.gameSessionTimer || 60; // session length in seconds
+  const [p1, p2] = session.players;
 
-  const player1Questions = mapIndexesToQuestions(
-    session.questionsAssigned.Player1 || []
-  );
-  const player2Questions = mapIndexesToQuestions(
-    session.questionsAssigned.Player2 || []
-  );
+  // A player is "finalized" if they finished all questions OR their timer hit the full duration
+  const p1Final = (p1?.attemptedQuestions ?? 0) >= totalQ || (p1?.timeTaken ?? 0) >= duration;
+  const p2Final = (p2?.attemptedQuestions ?? 0) >= totalQ || (p2?.timeTaken ?? 0) >= duration;
+  const bothFinalized = p1Final && p2Final;
 
-  const populatedSession = await GameSession.findById(session._id).populate(
-    "players.playerId winner gameId"
-  );
+  if (session.status === "active" && bothFinalized) {
+    // Decide winner
+    let winner = null;
+    if ((p1.score ?? 0) > (p2.score ?? 0)) {
+      winner = p1.playerId;
+    } else if ((p2.score ?? 0) > (p1.score ?? 0)) {
+      winner = p2.playerId;
+    } else {
+      // Scores tied → lower time wins
+      const t1 = p1.timeTaken ?? duration;
+      const t2 = p2.timeTaken ?? duration;
+      if (t1 < t2) winner = p1.playerId;
+      else if (t2 < t1) winner = p2.playerId;
+      else winner = null; // exact tie
+    }
 
-  emitToRoom(game.slug, "pvpCurrentSession", {
-    populatedSession,
-    player1Questions,
-    player2Questions,
-  });
+    session.winner = winner;
+    session.status = "completed";
+    session.endTime = new Date();
+    await session.save();
+
+    // Emit updates
+    const allSessions = await GameSession.find({ gameId: session.gameId })
+      .notDeleted()
+      .populate("players.playerId winner gameId")
+      .sort({ createdAt: -1 })
+      .limit(5);
+    emitToRoom(game.slug, "pvpAllSessions", allSessions);
+
+    const populatedSession = await GameSession.findById(session._id).populate(
+      "players.playerId winner gameId"
+    );
+    emitToRoom(game.slug, "pvpCurrentSession", populatedSession);
+  } else {
+    // Just emit progress update if not finished
+    const mapIndexesToQuestions = (indexes) =>
+      (indexes || []).map((i) => game.questions[i]);
+
+    const player1Questions = mapIndexesToQuestions(session.questionsAssigned.Player1);
+    const player2Questions = mapIndexesToQuestions(session.questionsAssigned.Player2);
+
+    const populatedSession = await GameSession.findById(session._id).populate(
+      "players.playerId winner gameId"
+    );
+
+    emitToRoom(game.slug, "pvpCurrentSession", {
+      populatedSession,
+      player1Questions,
+      player2Questions,
+    });
+  }
 
   return response(res, 200, "Player result saved", playerStats);
 });
 
+
 // End session & decide winner
 exports.endGameSession = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
-  
+
   const session = await GameSession.findById(sessionId);
   if (!session) return response(res, 404, "Session not found");
 
@@ -295,9 +344,12 @@ exports.resetGameSessions = asyncHandler(async (req, res) => {
   const gameId = game._id;
   const sessions = await GameSession.find({ gameId });
 
-  if (!sessions.length) return response(res, 404, "No sessions found for this game");
+  if (!sessions.length)
+    return response(res, 404, "No sessions found for this game");
 
-  const allPlayerIds = sessions.flatMap((s) => s.players.map((p) => p.playerId));
+  const allPlayerIds = sessions.flatMap((s) =>
+    s.players.map((p) => p.playerId)
+  );
 
   // Soft delete sessions
   for (const session of sessions) {
@@ -331,8 +383,13 @@ exports.restoreAllGameSessions = asyncHandler(async (req, res) => {
     await session.restore();
   }
 
-  const allPlayerIds = sessions.flatMap((s) => s.players.map((p) => p.playerId));
-  const players = await Player.find({ _id: { $in: allPlayerIds }, isDeleted: true });
+  const allPlayerIds = sessions.flatMap((s) =>
+    s.players.map((p) => p.playerId)
+  );
+  const players = await Player.find({
+    _id: { $in: allPlayerIds },
+    isDeleted: true,
+  });
   for (const player of players) {
     await player.restore();
   }
@@ -344,10 +401,15 @@ exports.restoreAllGameSessions = asyncHandler(async (req, res) => {
 exports.exportResults = asyncHandler(async (req, res) => {
   const gameSlug = req.params.gameSlug;
 
-  const game = await Game.findOne({ slug: gameSlug }).populate("businessId", "name").notDeleted();
+  const game = await Game.findOne({ slug: gameSlug })
+    .populate("businessId", "name")
+    .notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
-  const sessions = await GameSession.find({ gameId: game._id, status: "completed" })
+  const sessions = await GameSession.find({
+    gameId: game._id,
+    status: "completed",
+  })
     .notDeleted()
     .populate("players.playerId");
 
@@ -427,7 +489,9 @@ exports.getLeaderboard = asyncHandler(async (req, res) => {
   const sessions = await GameSession.find({
     gameId,
     status: "completed",
-  }).notDeleted().populate("players.playerId");
+  })
+    .notDeleted()
+    .populate("players.playerId");
 
   const results = sessions.flatMap((session) =>
     session.players.map((p) => ({

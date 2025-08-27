@@ -36,14 +36,15 @@ const eventDuelSocket = (io, socket) => {
   });
 
   socket.on("getAllSessions", async ({ gameSlug }) => {
-  const game = await Game.findOne({ slug: gameSlug });
+  const game = await Game.findOne({ slug: gameSlug }).notDeleted();
   if (!game) return;
 
-  const sessions = await GameSession.find({ gameId: game._id })
-    .populate("players.playerId winner gameId")
-    .sort({ createdAt: -1 });
+  const allSessions = await GameSession.find({ gameId: game._id }).notDeleted()
+      .populate("players.playerId winner gameId")
+      .sort({ createdAt: -1 })
+      .limit(5);
 
-  io.to(game.slug).emit("pvpAllSessions", sessions);
+  io.to(game.slug).emit("pvpAllSessions", allSessions);
 
 });
 
