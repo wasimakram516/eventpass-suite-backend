@@ -100,10 +100,14 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
 
 // Get all questions for a game
 exports.getQuestions = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.gameId).notDeleted();
-  if (!game || game.mode !== "pvp") return response(res, 404, "PvP game not found");
-
-  return response(res, 200, "Questions retrieved", game.questions);
+  const { gameId } = req.params;
+  
+  const game = await Game.findById(gameId).notDeleted();
+  if (!game) return response(res, 404, "Game not found");
+  
+  const activeQuestions = game.questions.filter(q => !q.isDeleted);
+  
+  return response(res, 200, "Questions fetched", activeQuestions);
 });
 
 // Add a single question
@@ -166,44 +170,54 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
 
 // Soft delete a question (keep name as deleteQuestion)
 exports.deleteQuestion = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.gameId);
-  if (!game || game.mode !== "pvp") return response(res, 404, "PvP game not found");
-
-  const q = game.questions.id(req.params.questionId);
-  if (!q) return response(res, 404, "Question not found");
-
-  await q.softDelete(req.user?.id); 
+  const { gameId, questionId } = req.params;
+  
+  const game = await Game.findById(gameId).notDeleted();
+  if (!game) return response(res, 404, "Game not found");
+  
+  const questionIndex = game.questions.findIndex(q => q._id.toString() === questionId);
+  if (questionIndex === -1) return response(res, 404, "Question not found");
+  
+  game.questions[questionIndex].isDeleted = true; 
+  game.questions[questionIndex].deletedAt = new Date();
+  game.questions[questionIndex].deletedBy = req.user.id; 
   await game.save();
-
   return response(res, 200, "Question moved to recycle bin");
 });
-
-// Restore question
+ 
 exports.restoreQuestion = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.gameId);
-  if (!game) return response(res, 404, "Game not found");
+  const { id } = req.params; 
 
-  const q = game.questions.id(req.params.questionId);
-  if (!q || !q.isDeleted) return response(res, 404, "Question not found in trash");
-
-  await q.restore();
+  const game = await Game.findOne({
+    "questions._id": id,
+    "questions.isDeleted": true
+  });
+  
+  if (!game) return response(res, 404, "Deleted question not found");
+  
+  const questionIndex = game.questions.findIndex(q => q._id.toString() === id && q.isDeleted);
+  if (questionIndex === -1) return response(res, 404, "Question not found in trash");
+  
+  game.questions[questionIndex].isDeleted = false;
+  delete game.questions[questionIndex].deletedAt; 
+  delete game.questions[questionIndex].deletedBy; 
+  
   await game.save();
-
-  return response(res, 200, "Question restored", q);
+  return response(res, 200, "Question restored successfully");
 });
 
-// Permanently delete a question
 exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.gameId);
-  if (!game) return response(res, 404, "Game not found");
-
-  const questionIndex = game.questions.findIndex(
-    (q) => q._id.toString() === req.params.questionId
-  );
-  if (questionIndex === -1) return response(res, 404, "Question not found");
-
-  game.questions.splice(questionIndex, 1);
+  const { id } = req.params; 
+  
+  const game = await Game.findOne({
+    "questions._id": id,
+    "questions.isDeleted": true 
+  });
+  
+  if (!game) return response(res, 404, "Deleted question not found");
+  
+  game.questions = game.questions.filter(q => q._id.toString() !== id); 
+  
   await game.save();
-
   return response(res, 200, "Question permanently deleted");
 });
