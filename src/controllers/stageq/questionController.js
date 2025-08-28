@@ -40,7 +40,7 @@ exports.submitQuestion = asyncHandler(async (req, res) => {
   } else {
     const existing = visitor.eventHistory.find(
       (e) => e.business.toString() === business._id.toString()
-    ).notDeleted();
+    );
     if (existing) {
       existing.count += 1;
       existing.lastInteraction = new Date();
@@ -99,7 +99,7 @@ exports.deleteQuestion = asyncHandler(async (req, res) => {
 
 // Restore question
 exports.restoreQuestion = asyncHandler(async (req, res) => {
-  const question = await EventQuestion.findOneDeleted({ _id: req.params.questionId });
+  const question = await EventQuestion.findOneDeleted({ _id: req.params.id });
   if (!question) return response(res, 404, "Question not found in trash");
 
   await question.restore();
@@ -108,7 +108,7 @@ exports.restoreQuestion = asyncHandler(async (req, res) => {
 
 // Permanent delete
 exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
-  const question = await EventQuestion.findOneDeleted({ _id: req.params.questionId });
+  const question = await EventQuestion.findOneDeleted({ _id: req.params.id });
   if (!question) return response(res, 404, "Question not found in trash");
 
   await question.deleteOne();
