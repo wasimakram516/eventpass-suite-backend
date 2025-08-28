@@ -7,7 +7,8 @@ const multer = require("../middlewares/uploadMiddleware");
 const multiUpload = multer.fields([
   { name: "companyLogo", maxCount: 1 },
   { name: "brandingMedia", maxCount: 1 },
-  { name: "poweredByMedia", maxCount: 1 }
+  { name: "poweredByMedia", maxCount: 1 },
+  { name: "clientLogos", maxCount: 20 }
 ]);
 
 router.post("/", protect, adminOnly, multiUpload, controller.createConfig);

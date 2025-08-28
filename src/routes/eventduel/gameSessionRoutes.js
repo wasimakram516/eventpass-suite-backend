@@ -10,6 +10,7 @@ const {
   getLeaderboard,
   exportResults,
   resetGameSessions,
+  abandonGameSession, 
 } = require("../../controllers/eventduel/pvpGameSessionController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
@@ -21,12 +22,17 @@ router.patch("/:sessionId/:playerId/submit", submitPvPResult);
 router.post("/join", joinGameSession);
 
 // PvP session flow
-router.post("/start", eventduelAccess, startGameSession);
-router.put("/:sessionId/activate", eventduelAccess, activateGameSession);
-router.put("/:sessionId/end", eventduelAccess, endGameSession);
+router.post("/start", startGameSession);
+router.put("/:sessionId/activate", activateGameSession);
+router.put("/:sessionId/end", endGameSession);
+
+// Abandon session
+router.put("/:sessionId/abandon", abandonGameSession);
+
 router.get("/leaderboard/:gameSlug", eventduelAccess, getLeaderboard);
 router.get("/export/:gameSlug", eventduelAccess, exportResults);
 
 // Reset all sessions for a specific game
 router.post("/reset", eventduelAccess, resetGameSessions);
+
 module.exports = router;

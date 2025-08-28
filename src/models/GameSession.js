@@ -20,7 +20,7 @@ const GameSessionSchema = new mongoose.Schema({
   },
 
   winner: { type: mongoose.Schema.Types.ObjectId, ref: "Player" },
-  status: { type: String, enum: ["pending", "active", "completed"], default: "pending" },
+  status: { type: String, enum: ["pending", "abandoned", "active", "completed"], default: "pending" },
   startTime: { type: Date },
   endTime: { type: Date },
 
