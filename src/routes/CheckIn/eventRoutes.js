@@ -37,6 +37,7 @@ router.post(
     { name: "logo", maxCount: 1 },
     { name: "employeeData", maxCount: 1 },
     { name: "tableImages", maxCount: 500 },
+     { name: "brandingMedia", maxCount: 1 },
   ]),
   createEvent
 );
@@ -49,6 +50,7 @@ router.put(
     { name: "logo", maxCount: 1 },
     { name: "employeeData", maxCount: 1 },
     { name: "tableImages", maxCount: 500 },
+     { name: "brandingMedia", maxCount: 1 },
   ]),
   updateEvent
 );

@@ -150,26 +150,23 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     <div style="padding:30px">
       <p>Hi <strong>${displayName}</strong>,</p>
       <p>You’re confirmed for <strong>${event.name}</strong>!</p>
-      ${
-        event.logoUrl
-          ? `<div style="text-align:center;margin:20px 0">
+      ${event.logoUrl
+      ? `<div style="text-align:center;margin:20px 0">
                <img src="${event.logoUrl}" style="max-width:180px;max-height:100px"/>
              </div>`
-          : ""
-      }
+      : ""
+    }
       <p>Event Details:</p>
       <ul style="padding-left:20px">
-        <li><strong>Date:</strong> ${event.startDate.toDateString()}${
-    event.endDate && event.endDate.getTime() !== event.startDate.getTime()
+        <li><strong>Date:</strong> ${event.startDate.toDateString()}${event.endDate && event.endDate.getTime() !== event.startDate.getTime()
       ? ` to ${event.endDate.toDateString()}`
       : ""
-  }</li>
+    }</li>
         <li><strong>Venue:</strong> ${event.venue}</li>
-        ${
-          event.description
-            ? `<li><strong>About:</strong> ${event.description}</li>`
-            : ""
-        }
+        ${event.description
+      ? `<li><strong>About:</strong> ${event.description}</li>`
+      : ""
+    }
       </ul>
       ${customFieldHtml}
       <p>Please present this QR at check-in:</p>
@@ -213,9 +210,10 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   }
 
   const eventId = event._id;
-  const totalRegistrations = await Registration.countDocuments({ eventId });
+  const totalRegistrations = await Registration.countDocuments({ eventId, deletedAt: { $exists: false } });
 
   const registrations = await Registration.find({ eventId })
+    .notDeleted()
     .skip((page - 1) * limit)
     .limit(limit);
 
@@ -270,8 +268,7 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
 
   const eventId = event._id;
 
-  const registrations = await Registration.find({ eventId });
-
+  const registrations = await Registration.find({ eventId }).notDeleted();
   const enhanced = await Promise.all(
     registrations.map(async (reg) => {
       const walkIns = await WalkIn.find({ registrationId: reg._id })

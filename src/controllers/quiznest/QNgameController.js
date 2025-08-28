@@ -85,9 +85,9 @@ exports.updateGame = asyncHandler(async (req, res) => {
     req.body;
 
   if (slug && slug !== game.slug) {
-      const sanitizedSlug = await generateUniqueSlug(Game,"slug",slug);
-      game.slug = sanitizedSlug;
-    }
+    const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
+    game.slug = sanitizedSlug;
+  }
 
   game.title = title || game.title;
   game.choicesCount = choicesCount || game.choicesCount;
@@ -132,6 +132,7 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
   if (!business) return response(res, 404, "Business not found");
 
   const games = await Game.find({ businessId: business._id, mode: "solo" })
+    .notDeleted()
     .populate("businessId", "name slug")
     .sort({ createdAt: -1 });
   return response(res, 200, `Solo Games fetched for ${business.name}`, games);

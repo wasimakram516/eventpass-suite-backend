@@ -369,32 +369,45 @@ exports.resetGameSessions = asyncHandler(async (req, res) => {
 });
 
 exports.restoreAllGameSessions = asyncHandler(async (req, res) => {
-  const { gameSlug } = req.body;
-  if (!gameSlug) return response(res, 400, "Missing gameSlug in request body");
+  const { id } = req.params;
+ 
+  if (!id) return response(res, 400, "Missing session ID in URL params");
 
-  const game = await Game.findOne({ slug: gameSlug });
-  if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
 
-  const gameId = game._id;
-  const sessions = await GameSession.find({ gameId, isDeleted: true });
-  if (!sessions.length) return response(res, 404, "No deleted sessions found");
+  const session = await GameSession.findOne({ _id: id, isDeleted: true }).populate('gameId');
+  if (!session) return response(res, 404, "Deleted session not found");
 
-  for (const session of sessions) {
-    await session.restore();
-  }
+  const game = session.gameId;
+  if (!game || game.mode !== "pvp") return response(res, 404, "Game not found or not PvP");
 
-  const allPlayerIds = sessions.flatMap((s) =>
-    s.players.map((p) => p.playerId)
-  );
-  const players = await Player.find({
-    _id: { $in: allPlayerIds },
-    isDeleted: true,
-  });
+  await session.restore();
+
+  const playerIds = session.players.map(p => p.playerId);
+  const players = await Player.find({ _id: { $in: playerIds }, isDeleted: true });
+
   for (const player of players) {
     await player.restore();
   }
 
-  return response(res, 200, "All sessions and players restored");
+  return response(res, 200, "Game session and associated players restored");
+
+});
+exports.permanentDeleteSession = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const session = await GameSession.findOne({ _id: id, isDeleted: true });
+  if (!session) {
+    return response(res, 404, "Deleted session not found");
+  }
+
+  const playerIds = session.players.map(p => p.playerId);
+  if (playerIds.length > 0) {
+    await Player.deleteMany({ _id: { $in: playerIds } });
+  }
+
+  await GameSession.deleteOne({ _id: id });
+
+  return response(res, 200, "PvP session and associated players permanently deleted");
 });
 
 // Export all player results to Excel

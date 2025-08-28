@@ -50,7 +50,7 @@ const models = {
   user: User,
   business: Business,
   event: Event,
-  eventquestion: EventQuestion,
+  question: EventQuestion,
   poll: Poll,
   spinwheel: SpinWheel,
   spinwheelparticipant: SpinWheelParticipant,
@@ -65,6 +65,8 @@ const models = {
   displaymedia: DisplayMedia,
   wallconfig: WallConfig,
   globalconfig: GlobalConfig,
+  pvpquestion: null,
+  qnquestion: null,
 };
 
 // Mapping module → controller methods
@@ -118,16 +120,16 @@ const controllerMap = {
     permanentDelete: usersController.permanentDeleteUser,
   },
   qngame: {
-    restore: qnGameController.restoreQNGame,
-    permanentDelete: qnGameController.permanentDeleteQNGame,
+    restore: qnGameController.restoreGame,
+    permanentDelete: qnGameController.permanentDeleteGame,
   },
   qnplayer: {
     restore: qnPlayerController.restoreQNPlayer,
     permanentDelete: qnPlayerController.permanentDeleteQNPlayer,
   },
   qnquestion: {
-    restore: qnQuestionController.restoreQNQuestion,
-    permanentDelete: qnQuestionController.permanentDeleteQNQuestion,
+    restore: qnQuestionController.restoreQuestion,
+    permanentDelete: qnQuestionController.permanentDeleteQuestion,
   },
   question: {
     restore: questionController.restoreQuestion,
@@ -150,7 +152,7 @@ const controllerMap = {
     permanentDelete: pvpGameController.permanentDeleteGame,
   },
   pvpgamesession: {
-    restore: pvpGameSessionController.restoreSession,
+    restore: pvpGameSessionController.restoreAllGameSessions,
     permanentDelete: pvpGameSessionController.permanentDeleteSession,
   },
   pvpquestion: {
@@ -158,10 +160,209 @@ const controllerMap = {
     permanentDelete: pvpQuestionController.permanentDeleteQuestion,
   },
 };
+// Module mapping for calculating counts per business module
+const moduleMapping = {
+  quiznest: [
+    { model: 'game', condition: { mode: 'solo' } },
+    { model: 'gamesession', populateField: 'gameId', populateCondition: { mode: 'solo' } },
+    { model: 'qnquestion' }
+  ],
+  eventduel: [
+    { model: 'game', condition: { mode: 'pvp' } },
+    { model: 'gamesession', populateField: 'gameId', populateCondition: { mode: 'pvp' } },
+    { model: 'pvpquestion' }
+  ],
+  eventreg: [
+    { model: 'event', condition: { eventType: 'public' } },
+    { model: 'registration', populateField: 'eventId', populateCondition: { eventType: 'public' } },
+    { model: 'walkin' }
+  ],
+  checkin: [
+    { model: 'event', condition: { eventType: 'employee' } },
+    { model: 'registration', populateField: 'eventId', populateCondition: { eventType: 'employee' } }
+  ],
+  surveyguru: [
+    { model: 'surveyform' },
+    { model: 'surveyresponse' }
+  ],
+  votecast: [
+    { model: 'poll' }
+  ],
+  stageq: [
+    { model: 'question' },
+    { model: 'visitor' }
+  ],
+  mosaicwall: [
+    { model: 'displaymedia' },
+    { model: 'wallconfig' }
+  ],
+  eventwheel: [
+    { model: 'spinwheel' },
+    { model: 'spinwheelparticipant' }
+  ],
+  users: [
+    { model: 'user' }
+  ],
+  businesses: [
+    { model: 'business' }
+  ]
+};
+const getDeletedQuestionsFromGames = async (query, mode = null) => {
+  const gameQuery = {
+    "questions.isDeleted": true,
+    ...query
+  };
+
+  if (mode) {
+    gameQuery.mode = mode;
+  }
+
+  const games = await Game.find(gameQuery).lean();
+
+  const deletedQuestions = [];
+  games.forEach(game => {
+    game.questions.forEach(question => {
+      if (question.isDeleted) {
+        deletedQuestions.push({
+          ...question,
+          _id: question._id,
+          gameId: game._id,
+          gameTitle: game.title,
+          gameMode: game.mode
+        });
+      }
+    });
+  });
+
+  return deletedQuestions;
+};
+// Get module-wise deletion counts
+exports.getModuleCounts = asyncHandler(async (req, res) => {
+  const moduleCounts = {};
+
+  const moduleCountPromises = Object.entries(moduleMapping).map(async ([moduleName, modelConfigs]) => {
+    let totalCount = 0;
+
+    const modelPromises = modelConfigs.map(async (config) => {
+      const Model = models[config.model];
+      if (config.model === 'pvpquestion') {
+        const deletedQuestions = await getDeletedQuestionsFromGames({}, 'pvp');
+        return deletedQuestions.length;
+      }
+      if (config.model === 'qnquestion') {
+        const deletedQuestions = await getDeletedQuestionsFromGames({}, 'solo');
+        return deletedQuestions.length;
+      }
+
+      if (!Model) return 0;
+
+      if (config.condition) {
+        return await Model.countDocumentsDeleted(config.condition);
+      } else if (config.populateField && config.populateCondition) {
+        const items = await Model.findDeleted({}).populate(config.populateField).lean();
+        return items.filter(item => {
+          const populatedDoc = item[config.populateField];
+          if (!populatedDoc) return false;
+          return Object.entries(config.populateCondition).every(([key, value]) =>
+            populatedDoc[key] === value
+          );
+        }).length;
+      } else {
+        return await Model.countDocumentsDeleted({});
+      }
+    });
+
+    const counts = await Promise.all(modelPromises);
+    totalCount = counts.reduce((sum, count) => sum + count, 0);
+
+    return { moduleName, count: totalCount };
+  });
+
+  const results = await Promise.all(moduleCountPromises);
+  results.forEach(({ moduleName, count }) => {
+    moduleCounts[moduleName] = count;
+  });
+
+  return response(res, 200, "Fetched module deletion counts", moduleCounts);
+});
+
+//function to determine module-specific model key based on conditions
+const getModuleSpecificKey = async (modelName, item) => {
+  switch (modelName) {
+    case 'registration':
+      if (item.eventId) {
+        const populatedItem = await models.registration.findDeleted({ _id: item._id }).populate('eventId');
+        if (populatedItem && populatedItem.length > 0 && populatedItem[0].eventId) {
+          return populatedItem[0].eventId.eventType === 'public' ? 'registration-eventreg' : 'registration-checkin';
+        }
+      }
+      return 'registration';
+    case 'event':
+      return item.eventType === 'public' ? 'event-eventreg' : 'event-checkin';
+    case 'game':
+      return item.mode === 'solo' ? 'game-quiznest' : 'game-eventduel';
+    case 'gamesession':
+      if (item.gameId) {
+        const populatedItem = await models.gamesession.findDeleted({ _id: item._id }).populate('gameId');
+        if (populatedItem && populatedItem.length > 0 && populatedItem[0].gameId) {
+          return populatedItem[0].gameId.mode === 'solo' ? 'gamesession-quiznest' : 'gamesession-eventduel';
+        }
+      }
+      return 'gamesession';
+    default:
+      return modelName;
+  }
+};
 
 // List trash (generic, uses models directly)
 exports.getTrash = asyncHandler(async (req, res) => {
   const { model, deletedBy, startDate, endDate, page = 1, limit = 20 } = req.query;
+  // function to extract base model and conditions from combined module keys
+  const parseModuleFilter = (moduleKey) => {
+    if (!moduleKey || moduleKey === '__ALL__') return { baseModel: null, conditions: {} };
+
+    if (moduleKey.includes('-')) {
+      const [baseModel, subModule] = moduleKey.split('-');
+      const conditions = {};
+
+      switch (moduleKey) {
+        case 'game-quiznest':
+          conditions.mode = 'solo';
+          break;
+        case 'game-eventduel':
+          conditions.mode = 'pvp';
+          break;
+        case 'event-eventreg':
+          conditions.eventType = 'public';
+          break;
+        case 'event-checkin':
+          conditions.eventType = 'employee';
+          break;
+      }
+
+      return { baseModel, conditions };
+    }
+
+    return { baseModel: moduleKey, conditions: {} };
+  };
+  const getConditionForModuleKey = (moduleKey, originalKey) => {
+    const conditions = {};
+    switch (moduleKey) {
+      case 'event-eventreg':
+        conditions.eventType = 'public';
+        break;
+      case 'event-checkin':
+        conditions.eventType = 'employee';
+        break;
+      case 'game-quiznest':
+        conditions.mode = 'solo';
+        break;
+      case 'game-eventduel':
+        conditions.mode = 'pvp';
+        break;
+    }
+    return conditions;
+  };
   const user = req.user;
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -185,28 +386,196 @@ exports.getTrash = asyncHandler(async (req, res) => {
   let results = {};
 
   if (model) {
-    const M = models[model.toLowerCase()];
+    // handling for question modules that don't have direct models
+    if (model === 'qnquestion') {
+      const deletedQuestions = await getDeletedQuestionsFromGames(query, 'solo');
+      const paginatedQuestions = deletedQuestions.slice(skip, skip + parseInt(limit));
+      results[model] = { items: paginatedQuestions, total: deletedQuestions.length };
+      return response(res, 200, "Fetched trash items", { items: results });
+    }
+    if (model === 'pvpquestion') {
+      const deletedQuestions = await getDeletedQuestionsFromGames(query, 'pvp');
+      const paginatedQuestions = deletedQuestions.slice(skip, skip + parseInt(limit));
+      results[model] = { items: paginatedQuestions, total: deletedQuestions.length };
+      return response(res, 200, "Fetched trash items", { items: results });
+    }
+
+    const { baseModel, conditions } = parseModuleFilter(model);
+    const M = models[baseModel?.toLowerCase()];
     if (!M) return response(res, 400, "Invalid model");
 
-    const items = await M.findDeleted(query)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .sort({ deletedAt: -1 });
+    const finalQuery = { ...query, ...conditions };
 
-    const total = await M.countDocumentsDeleted(query);
+    let items, total;
+    if (model === 'registration-eventreg' || model === 'registration-checkin') {
+      const allItems = await M.findDeleted(query).populate('eventId').sort({ deletedAt: -1 });
+      const filteredItems = allItems.filter(item => {
+        if (!item.eventId) return false;
+        return model === 'registration-eventreg' ?
+          item.eventId.eventType === 'public' :
+          item.eventId.eventType === 'employee';
+      });
+      items = filteredItems.slice(skip, skip + parseInt(limit));
+      total = filteredItems.length;
+    } else if (model === 'gamesession-quiznest' || model === 'gamesession-eventduel') {
+      const allItems = await M.findDeleted(query).populate('gameId').sort({ deletedAt: -1 });
+      const filteredItems = allItems.filter(item => {
+        if (!item.gameId) return false;
+        return model === 'gamesession-quiznest' ?
+          item.gameId.mode === 'solo' :
+          item.gameId.mode === 'pvp';
+      });
+      items = filteredItems.slice(skip, skip + parseInt(limit));
+      total = filteredItems.length;
+    } else {
+      // Standard filtering with direct conditions
+      [items, total] = await Promise.all([
+        M.findDeleted(finalQuery)
+          .skip(skip)
+          .limit(parseInt(limit))
+          .sort({ deletedAt: -1 })
+          .lean(),
+        M.countDocumentsDeleted(finalQuery)
+      ]);
+    }
 
     results[model] = { items, total };
   } else {
-    // All models
-    for (const [key, M] of Object.entries(models)) {
-      const items = await M.findDeleted(query).limit(5).sort({ deletedAt: -1 });
-      const total = await M.countDocumentsDeleted(query);
-      if (total > 0) results[key] = { items, total };
-    }
+    // Using Promise.all for parallel execution with module-specific grouping
+    const modelQueries = Object.entries(models).map(async ([key, M]) => {
+      if (key === 'pvpquestion') { 
+        const deletedQuestions = await getDeletedQuestionsFromGames(query, 'pvp'); 
+        if (deletedQuestions.length > 0) {
+          return {
+            pvpquestion: {
+              items: deletedQuestions.slice(0, 5),
+              total: deletedQuestions.length
+            }
+          };
+        }
+        return null;
+      }
+      if (key === 'qnquestion') {
+        const deletedQuestions = await getDeletedQuestionsFromGames(query, 'solo'); 
+        if (deletedQuestions.length > 0) {
+          return {
+            qnquestion: {
+              items: deletedQuestions.slice(0, 5),
+              total: deletedQuestions.length
+            }
+          };
+        }
+        return null;
+      }
+      if (key === 'player') {
+        const allDeletedPlayers = await M.findDeleted(query).populate('_id');
+        const deletedSessions = await GameSession.findDeleted({}).populate('gameId');
+        const sessionPlayerIds = new Set();
+
+        deletedSessions.forEach(session => {
+          session.players.forEach(p => sessionPlayerIds.add(p.playerId.toString()));
+        });
+
+        const independentPlayers = allDeletedPlayers.filter(player =>
+          !sessionPlayerIds.has(player._id.toString())
+        );
+
+        if (independentPlayers.length === 0) return null;
+
+        return {
+          player: {
+            items: independentPlayers.slice(0, 5),
+            total: independentPlayers.length
+          }
+        };
+      }
+
+      const [items, total] = await Promise.all([
+        M.findDeleted(query).limit(5).sort({ deletedAt: -1 }).populate(
+          key === 'registration' ? 'eventId' : key === 'gamesession' ? 'gameId' : ''
+        ),
+        M.countDocumentsDeleted(query)
+      ]);
+
+      if (total > 0) {
+        // Group items by module-specific keys
+        const groupedItems = {};
+        for (const item of items) {
+          const moduleKey = await getModuleSpecificKey(key, item);
+          if (!groupedItems[moduleKey]) {
+            groupedItems[moduleKey] = { items: [], total: 0 };
+          }
+          groupedItems[moduleKey].items.push(item);
+        }
+
+        // Calculate totals for each group
+        for (const moduleKey of Object.keys(groupedItems)) {
+          const condition = getConditionForModuleKey(moduleKey, key);
+          groupedItems[moduleKey].total = await M.countDocumentsDeleted({ ...query, ...condition });
+        }
+
+        return groupedItems;
+      }
+      return null;
+    });
+
+    const modelResults = await Promise.all(modelQueries);
+    modelResults.forEach(groupedResult => {
+      if (groupedResult) {
+        Object.assign(results, groupedResult);
+      }
+    });
+  }
+  // Calculate module counts
+  let moduleCounts = null;
+  if (req.query.includeCounts === 'true') {
+    const moduleCountPromises = Object.entries(moduleMapping).map(async ([moduleName, modelConfigs]) => {
+      let totalCount = 0;
+      const modelPromises = modelConfigs.map(async (config) => {
+        const Model = models[config.model];
+
+        // handling for embedded questions in games
+        if (config.model === 'pvpquestion') {
+          const deletedQuestions = await getDeletedQuestionsFromGames({}, 'pvp');
+          return deletedQuestions.length;
+        }
+        if (config.model === 'qnquestion') {
+          const deletedQuestions = await getDeletedQuestionsFromGames({}, 'solo');
+          return deletedQuestions.length;
+        }
+
+        if (!Model) return 0;
+
+        if (config.condition) {
+          return await Model.countDocumentsDeleted(config.condition);
+        } else if (config.populateField && config.populateCondition) {
+          const items = await Model.findDeleted({}).populate(config.populateField).lean();
+          return items.filter(item => {
+            const populatedDoc = item[config.populateField];
+            if (!populatedDoc) return false;
+            return Object.entries(config.populateCondition).every(([key, value]) =>
+              populatedDoc[key] === value
+            );
+          }).length;
+        } else {
+          return await Model.countDocumentsDeleted({});
+        }
+      });
+      const counts = await Promise.all(modelPromises);
+      totalCount = counts.reduce((sum, count) => sum + count, 0);
+      return { moduleName, count: totalCount };
+    });
+
+    const moduleResults = await Promise.all(moduleCountPromises);
+    moduleCounts = {};
+    moduleResults.forEach(({ moduleName, count }) => {
+      moduleCounts[moduleName] = count;
+    });
   }
 
-  return response(res, 200, "Fetched trash items", results);
+  return response(res, 200, "Fetched trash items", { items: results, moduleCounts });
 });
+
 
 // Restore
 exports.restoreItem = asyncHandler(async (req, res, next) => {

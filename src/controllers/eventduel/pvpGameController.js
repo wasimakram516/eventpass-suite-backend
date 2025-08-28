@@ -6,7 +6,7 @@ const { deleteImage } = require("../../config/cloudinary");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
-
+const GameSession = require("../../models/GameSession"); 
 // Create PvP Game
 exports.createGame = asyncHandler(async (req, res) => {
   const {
