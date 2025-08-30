@@ -15,6 +15,7 @@ const {
   pickPhone,
   pickCompany,
 } = require("../../utils/customFieldUtils");
+const { buildBadgeZpl } = require("../../utils/zebraZpl");
 
 // CREATE public registration
 exports.createRegistration = asyncHandler(async (req, res) => {
@@ -115,7 +116,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   // 7) Generate QR
   const qrCodeDataUrl = await QRCode.toDataURL(newRegistration.token);
   const qrBuffer = await QRCode.toBuffer(newRegistration.token);
-  const qrUpload = await uploadToCloudinary(qrBuffer, "image/png");
+  //const qrUpload = await uploadToCloudinary(qrBuffer, "image/png");
 
   // 8) Build displayName fallback
   const displayName = fullName || "Guest";
@@ -304,30 +305,28 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   const { token } = req.query;
   const staffUser = req.user;
 
-  if (!token) {
-    return response(res, 400, "Token is required");
-  }
+  if (!token) return response(res, 400, "Token is required");
 
   if (!staffUser?.id) {
     return response(res, 401, "Unauthorized – no scanner info");
   }
+  const registration = await Registration.findOne({ token }).populate("eventId");
+  if (!registration) return response(res, 404, "Registration not found");
 
-  const registration = await Registration.findOne({ token }).populate(
-    "eventId"
-  );
-
-  if (!registration) {
-    return response(res, 404, "Registration not found");
-  }
-
-  // Create a WalkIn record
   const walkin = new WalkIn({
     registrationId: registration._id,
     eventId: registration.eventId?._id,
     scannedBy: staffUser.id,
   });
-
   await walkin.save();
+
+  // Generate ZPL
+  const zpl = buildBadgeZpl({
+    fullName: registration.fullName,
+    company: registration.company,
+    eventName: registration.eventId?.name,
+    token: registration.token,
+  });
 
   return response(res, 200, "Registration verified and walk-in recorded", {
     fullName: registration.fullName,
@@ -342,6 +341,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     scannedBy: {
       name: staffUser.name || staffUser.email,
     },
+    zpl,
   });
 });
 
