@@ -217,12 +217,18 @@ const getDeletedQuestionsFromGames = async (query, mode = null) => {
     gameQuery.mode = mode;
   }
 
-  const games = await Game.find(gameQuery).lean();
+  const { deletedBy, ...gameOnlyQuery } = gameQuery;
+  const games = await Game.find(gameOnlyQuery).lean();
 
   const deletedQuestions = [];
   games.forEach(game => {
     game.questions.forEach(question => {
       if (question.isDeleted) {
+        // Apply deletedBy filter at question level if specified
+        if (deletedBy && question.deletedBy && question.deletedBy.toString() !== deletedBy) {
+          return;
+        }
+
         deletedQuestions.push({
           ...question,
           _id: question._id,
@@ -443,8 +449,8 @@ exports.getTrash = asyncHandler(async (req, res) => {
   } else {
     // Using Promise.all for parallel execution with module-specific grouping
     const modelQueries = Object.entries(models).map(async ([key, M]) => {
-      if (key === 'pvpquestion') { 
-        const deletedQuestions = await getDeletedQuestionsFromGames(query, 'pvp'); 
+      if (key === 'pvpquestion') {
+        const deletedQuestions = await getDeletedQuestionsFromGames(query, 'pvp');
         if (deletedQuestions.length > 0) {
           return {
             pvpquestion: {
@@ -456,7 +462,7 @@ exports.getTrash = asyncHandler(async (req, res) => {
         return null;
       }
       if (key === 'qnquestion') {
-        const deletedQuestions = await getDeletedQuestionsFromGames(query, 'solo'); 
+        const deletedQuestions = await getDeletedQuestionsFromGames(query, 'solo');
         if (deletedQuestions.length > 0) {
           return {
             qnquestion: {
