@@ -335,11 +335,6 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
     return response(res, 404, "Public event not found");
   }
 
-  const registrationsCount = await Registration.countDocuments({ eventId: id });
-  if (registrationsCount > 0) {
-    return response(res, 400, "Cannot delete an event with existing registrations");
-  }
-
   await event.softDelete(req.user.id);
   return response(res, 200, "Event moved to recycle bin");
 });
@@ -357,6 +352,11 @@ exports.restoreEvent = asyncHandler(async (req, res) => {
 exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   const event = await Event.findOneDeleted({ _id: req.params.id, eventType: "public" });
   if (!event) return response(res, 404, "Event not found in trash");
+
+  const registrationsCount = await Registration.countDocuments({ eventId: event._id });
+  if (registrationsCount > 0) {
+    return response(res, 400, "Cannot delete an event with existing registrations");
+  }
 
   if (event.logoUrl) await deleteImage(event.logoUrl);
   if (event.brandingMediaUrl) await deleteImage(event.brandingMediaUrl);

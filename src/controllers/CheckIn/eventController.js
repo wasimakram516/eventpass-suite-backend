@@ -212,12 +212,6 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
     return response(res, 404, "Employee event not found");
   }
 
-  // If event has registrations, block soft delete
-  const registrationsCount = await Registration.countDocuments({ eventId: id });
-  if (registrationsCount > 0) {
-    return response(res, 400, "Cannot delete an event with existing registrations");
-  }
-
   await event.softDelete(req.user?.id);
   return response(res, 200, "Event moved to Recycle Bin");
 });
@@ -255,6 +249,11 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
 
   const event = await Event.findById(id);
   if (!event) return response(res, 404, "Event not found");
+
+  const registrationsCount = await Registration.countDocuments({ eventId: event._id });
+  if (registrationsCount > 0) {
+    return response(res, 400, "Cannot delete an event with existing registrations");
+  }
 
   // Delete logo if exists
   if (event.logoUrl) {
