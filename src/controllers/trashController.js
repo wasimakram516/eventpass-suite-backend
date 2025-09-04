@@ -878,13 +878,53 @@ exports.permanentDeleteAllItems = asyncHandler(async (req, res) => {
   const ctrl = controllerMap[backendModule];
   if (!ctrl?.permanentDelete) return response(res, 400, "Permanent delete not implemented for this module");
 
+  let failedDeletions = [];
+
   for (const item of items) {
     try {
+      // For event-eventreg and checkin module, check registration dependency before deletion attempt
+      if (module === 'event-eventreg' || module === 'event-checkin') {
+        const registrationsCount = await Registration.countDocuments({ eventId: item._id });
+        if (registrationsCount > 0) {
+          failedDeletions.push({
+            id: item._id,
+            name: item.name,
+            reason: 'Cannot delete an event with existing registrations'
+          });
+          continue;
+        }
+      }
+
       await ctrl.permanentDelete({ params: { id: item._id } }, res, () => { });
       deletedCount++;
     } catch (error) {
       console.error(`Error deleting item ${item._id}:`, error);
+      failedDeletions.push({
+        id: item._id,
+        name: item.name,
+        reason: error.message || 'Unknown error'
+      });
     }
+  }
+
+  // If all deletions failed due to dependencies, return appropriate error
+  if (deletedCount === 0 && failedDeletions.length > 0) {
+    const hasRegistrationErrors = failedDeletions.some(f =>
+      f.reason.includes('existing registrations')
+    );
+    if (hasRegistrationErrors) {
+      return response(res, 400, "Cannot delete events with existing registrations");
+    }
+    return response(res, 400, `Failed to delete items: ${failedDeletions[0].reason}`);
+  }
+
+  // If some succeeded and some failed, return partial success
+  if (failedDeletions.length > 0) {
+    return response(res, 200, `Partially completed: ${deletedCount} deleted, ${failedDeletions.length} failed`, {
+      deletedCount,
+      failedCount: failedDeletions.length,
+      failures: failedDeletions
+    });
   }
 
   return response(res, 200, `Permanently deleted ${deletedCount} items from ${module}`, { deletedCount });
