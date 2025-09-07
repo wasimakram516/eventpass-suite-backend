@@ -27,8 +27,8 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
     businessId,
     eventType: "public",
   })
-  .notDeleted()
-  .sort({ startDate: -1 });
+    .notDeleted()
+    .sort({ startDate: -1 });
 
   return response(res, 200, "Events fetched successfully.", {
     events,
@@ -75,8 +75,8 @@ exports.getEventsByBusinessId = asyncHandler(async (req, res) => {
     businessId,
     eventType: "public",
   })
-  .notDeleted()
-  .sort({ startDate: -1 });
+    .notDeleted()
+    .sort({ startDate: -1 });
 
   return response(res, 200, "Events fetched successfully.", {
     events,
@@ -96,8 +96,8 @@ exports.getEventsByBusinessSlug = asyncHandler(async (req, res) => {
     businessId: business._id,
     eventType: "public",
   })
-  .notDeleted()
-  .sort({ startDate: -1 });
+    .notDeleted()
+    .sort({ startDate: -1 });
 
   return response(res, 200, "Events fetched successfully.", {
     events,
@@ -159,6 +159,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     );
     logoUrl = uploadResult.secure_url;
   }
+
   let brandingMediaUrl = null;
   if (req.files?.brandingMedia) {
     const uploadResult = await uploadToCloudinary(
@@ -167,6 +168,16 @@ exports.createEvent = asyncHandler(async (req, res) => {
     );
     brandingMediaUrl = uploadResult.secure_url;
   }
+
+  let agendaUrl = null;
+  if (req.files?.agenda) {
+    const uploadResult = await uploadToCloudinary(
+      req.files.agenda[0].buffer,
+      req.files.agenda[0].mimetype
+    );
+    agendaUrl = uploadResult.secure_url;
+  }
+
   // Parse and validate formFields (stringified JSON from FormData)
   let parsedFormFields = [];
   if (formFields) {
@@ -200,6 +211,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     description,
     logoUrl,
     brandingMediaUrl,
+    agendaUrl, 
     capacity,
     businessId,
     formFields: parsedFormFields,
@@ -275,6 +287,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     );
     updates.logoUrl = uploadResult.secure_url;
   }
+
   if (req.files?.brandingMedia) {
     if (event.brandingMediaUrl) {
       await deleteImage(event.brandingMediaUrl);
@@ -285,8 +298,20 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     );
     updates.brandingMediaUrl = uploadResult.secure_url;
   }
+
+  if (req.files?.agenda) {
+    if (event.agendaUrl) {
+      await deleteImage(event.agendaUrl);
+    }
+    const uploadResult = await uploadToCloudinary(
+      req.files.agenda[0].buffer,
+      req.files.agenda[0].mimetype
+    );
+    updates.agendaUrl = uploadResult.secure_url;
+  }
+
   // Handle updated formFields (string or array)
-  let parsedFormFields =[];
+  let parsedFormFields = [];
   if (formFields) {
     try {
       const rawFields =
@@ -311,9 +336,14 @@ exports.updateEvent = asyncHandler(async (req, res) => {
 
   updates.formFields = parsedFormFields;
 
-  if (typeof showQrAfterRegistration === "boolean" || showQrAfterRegistration === "true" || showQrAfterRegistration === "false") {
-  updates.showQrAfterRegistration = showQrAfterRegistration === "true" || showQrAfterRegistration === true;
-}
+  if (
+    typeof showQrAfterRegistration === "boolean" ||
+    showQrAfterRegistration === "true" ||
+    showQrAfterRegistration === "false"
+  ) {
+    updates.showQrAfterRegistration =
+      showQrAfterRegistration === "true" || showQrAfterRegistration === true;
+  }
 
   const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
     new: true,
@@ -341,7 +371,10 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
 
 // Restore event
 exports.restoreEvent = asyncHandler(async (req, res) => {
-  const event = await Event.findOneDeleted({ _id: req.params.id, eventType: "public" });
+  const event = await Event.findOneDeleted({
+    _id: req.params.id,
+    eventType: "public",
+  });
   if (!event) return response(res, 404, "Event not found in trash");
 
   await event.restore();
@@ -350,16 +383,26 @@ exports.restoreEvent = asyncHandler(async (req, res) => {
 
 // Permanent delete event
 exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
-  const event = await Event.findOneDeleted({ _id: req.params.id, eventType: "public" });
+  const event = await Event.findOneDeleted({
+    _id: req.params.id,
+    eventType: "public",
+  });
   if (!event) return response(res, 404, "Event not found in trash");
 
-  const registrationsCount = await Registration.countDocuments({ eventId: event._id });
+  const registrationsCount = await Registration.countDocuments({
+    eventId: event._id,
+  });
   if (registrationsCount > 0) {
-    return response(res, 400, "Cannot delete an event with existing registrations");
+    return response(
+      res,
+      400,
+      "Cannot delete an event with existing registrations"
+    );
   }
 
   if (event.logoUrl) await deleteImage(event.logoUrl);
   if (event.brandingMediaUrl) await deleteImage(event.brandingMediaUrl);
+  if (event.agendaUrl) await deleteImage(event.agendaUrl);
 
   await event.deleteOne();
   return response(res, 200, "Event permanently deleted");
