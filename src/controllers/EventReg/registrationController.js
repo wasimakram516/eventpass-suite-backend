@@ -401,3 +401,26 @@ exports.permanentDeleteRegistration = asyncHandler(async (req, res) => {
 
   return response(res, 200, "Registration permanently deleted");
 });
+
+exports.permanentDeleteAllRegistrations = asyncHandler(async (req, res) => {
+  const result = await Registration.deleteManyDeleted();
+  return response(
+    res,
+    200,
+    `Permanently deleted ${result.deletedCount} registrations`
+  );
+});
+
+exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
+  const regs = await Registration.findDeleted();
+  if (!regs.length)
+    return response(res, 404, "No registrations found in trash to restore");
+  for (const reg of regs) {
+    await reg.restore();
+    // increment count back
+    await Event.findByIdAndUpdate(reg.eventId, {
+      $inc: { registrations: 1 },
+    });
+  }
+  return response(res, 200, `Restored ${regs.length} registrations`);
+});
