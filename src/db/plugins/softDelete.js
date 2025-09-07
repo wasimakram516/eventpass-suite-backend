@@ -9,7 +9,9 @@ module.exports = function softDelete(schema) {
 
   // Query helper
   schema.query.notDeleted = function () {
-    return this.where({ isDeleted: false });
+    return this.where({
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
+    });
   };
 
   // Instance methods
@@ -21,7 +23,7 @@ module.exports = function softDelete(schema) {
   };
 
   schema.methods.restore = function () {
-    if (!this.isDeleted) return this; // avoid unnecessary save
+    if (!this.isDeleted) return this; 
     this.isDeleted = false;
     this.deletedAt = undefined;
     this.deletedBy = undefined;
@@ -29,12 +31,24 @@ module.exports = function softDelete(schema) {
   };
 
   // Static helpers
-  schema.statics.findDeleted = function (conditions = {}, projection = null, options = {}) {
+  schema.statics.findDeleted = function (
+    conditions = {},
+    projection = null,
+    options = {}
+  ) {
     return this.find({ ...conditions, isDeleted: true }, projection, options);
   };
 
-  schema.statics.findOneDeleted = function (conditions = {}, projection = null, options = {}) {
-    return this.findOne({ ...conditions, isDeleted: true }, projection, options);
+  schema.statics.findOneDeleted = function (
+    conditions = {},
+    projection = null,
+    options = {}
+  ) {
+    return this.findOne(
+      { ...conditions, isDeleted: true },
+      projection,
+      options
+    );
   };
 
   schema.statics.countDocumentsDeleted = function (conditions = {}) {
