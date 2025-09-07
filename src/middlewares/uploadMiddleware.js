@@ -8,11 +8,13 @@ const allowedExcelTypes = [
 ];
 const allowedImageTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
 const allowedVideoTypes = ["video/mp4", "video/mpeg", "video/quicktime"];
+const allowedPdfTypes = ["application/pdf"];
 
 const allowedTypes = [
   ...allowedImageTypes,
   ...allowedVideoTypes,
   ...allowedExcelTypes,
+  ...allowedPdfTypes,
 ];
 
 // Multer storage (stores file in memory)
@@ -23,7 +25,7 @@ const fileFilter = (req, file, cb) => {
   if (!allowedTypes.includes(file.mimetype)) {
     return cb(
       new Error(
-        "Invalid file type. Allowed: JPG, PNG, GIF, MP4, MPEG, MOV, CSV, XLS, XLSX"
+        "Invalid file type. Allowed: JPG, PNG, GIF, MP4, MPEG, MOV, CSV, XLS, XLSX, PDF"
       ),
       false
     );
