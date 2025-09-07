@@ -46,61 +46,224 @@ const pvpQuestionController = require("../controllers/eventduel/pvpQuestionContr
 // -------------------
 
 const moduleMapping = {
-  business: { model: Business, controller: businessController },
+  business: {
+    model: Business,
+    controller: {
+      restore: businessController.restoreBusiness,
+      permanentDelete: businessController.permanentDeleteBusiness,
+      restoreAll: businessController.restoreAllBusinesses,
+      permanentDeleteAll: businessController.permanentDeleteAllBusinesses,
+    },
+  },
 
   // Events
-  "event-eventreg": { model: Event, controller: eventRegEventController, condition: { eventType: "public" } },
-  "event-checkin": { model: Event, controller: checkInEventController, condition: { eventType: "employee" } },
+  "event-eventreg": {
+    model: Event,
+    controller: {
+      restore: eventRegEventController.restoreEvent,
+      permanentDelete: eventRegEventController.permanentDeleteEvent,
+      restoreAll: eventRegEventController.restoreAllEvents,
+      permanentDeleteAll: eventRegEventController.permanentDeleteAllEvents,
+    },
+    condition: { eventType: "public" },
+  },
+  "event-checkin": {
+    model: Event,
+    controller: {
+      restore: checkInEventController.restoreEvent,
+      permanentDelete: checkInEventController.permanentDeleteEvent,
+      restoreAll: checkInEventController.restoreAllEvents,
+      permanentDeleteAll: checkInEventController.permanentDeleteAllEvents,
+    },
+    condition: { eventType: "employee" },
+  },
 
   // Registrations
   "registration-eventreg": {
-  model: Registration,
-  controller: {
-    restore: eventRegRegistrationController.restoreRegistration,
-    permanentDelete: eventRegRegistrationController.permanentDeleteRegistration,
-    restoreAll: eventRegRegistrationController.restoreAllRegistrations,
-    permanentDeleteAll: eventRegRegistrationController.permanentDeleteAllRegistrations
-  },
-  condition: { "eventId.eventType": "public" }
-},
-
-  "registration-checkin": { 
     model: Registration,
-    controller: checkInRegistrationController,
-    condition: { "eventId.eventType": "employee" }
+    controller: {
+      restore: eventRegRegistrationController.restoreRegistration,
+      permanentDelete:
+        eventRegRegistrationController.permanentDeleteRegistration,
+      restoreAll: eventRegRegistrationController.restoreAllRegistrations,
+      permanentDeleteAll:
+        eventRegRegistrationController.permanentDeleteAllRegistrations,
+    },
+    condition: { "eventId.eventType": "public" },
+  },
+
+  "registration-checkin": {
+    model: Registration,
+    controller: {
+      restore: checkInRegistrationController.restoreRegistration,
+      permanentDelete:
+        checkInRegistrationController.permanentDeleteRegistration,
+      restoreAll: checkInRegistrationController.restoreAllRegistrations,
+      permanentDeleteAll:
+        checkInRegistrationController.permanentDeleteAllRegistrations,
+    },
+    condition: { "eventId.eventType": "employee" },
   },
 
   // Other modules
-  poll: { model: Poll, controller: pollController },
-  spinwheel: { model: SpinWheel, controller: spinWheelController },
-  spinwheelparticipant: { model: SpinWheelParticipant, controller: spinWheelParticipantController },
-  displaymedia: { model: DisplayMedia, controller: displayMediaController },
-  wallconfig: { model: WallConfig, controller: wallConfigController },
-  globalconfig: { model: GlobalConfig, controller: globalConfigController },
-  user: { model: User, controller: usersController },
+  poll: {
+    model: Poll,
+    controller: {
+      restore: pollController.restorePoll,
+      permanentDelete: pollController.permanentDeletePoll,
+      restoreAll: pollController.restoreAllPolls,
+      permanentDeleteAll: pollController.permanentDeleteAllPolls,
+    },
+  },
+  spinwheel: {
+    model: SpinWheel,
+    controller: {
+      restore: spinWheelController.restoreSpinWheel,
+      permanentDelete: spinWheelController.permanentDeleteSpinWheel,
+      restoreAll: spinWheelController.restoreAllSpinWheels,
+      permanentDeleteAll: spinWheelController.permanentDeleteAllSpinWheels,
+    },
+  },
+  spinwheelparticipant: {
+    model: SpinWheelParticipant,
+    controller: {
+      restore: spinWheelParticipantController.restoreParticipant,
+      permanentDelete:
+        spinWheelParticipantController.permanentDeleteParticipant,
+      restoreAll: spinWheelParticipantController.restoreAllParticipants,
+      permanentDeleteAll:
+        spinWheelParticipantController.permanentDeleteAllParticipants,
+    },
+  },
+  displaymedia: {
+    model: DisplayMedia,
+    controller: {
+      restore: displayMediaController.restoreMedia,
+      permanentDelete: displayMediaController.permanentDeleteMedia,
+      restoreAll: displayMediaController.restoreAllMedia,
+      permanentDeleteAll: displayMediaController.permanentDeleteAllMedia,
+    },
+  },
+  wallconfig: {
+    model: WallConfig,
+    controller: {
+      restore: wallConfigController.restoreWall,
+      permanentDelete: wallConfigController.permanentDeleteWall,
+      restoreAll: wallConfigController.restoreAllWalls,
+      permanentDeleteAll: wallConfigController.permanentDeleteAllWalls,
+    },
+  },
+  globalconfig: {
+    model: GlobalConfig,
+    controller: {
+      restore: globalConfigController.restoreConfig,
+      permanentDelete: globalConfigController.permanentDeleteConfig,
+    },
+  },
+  user: {
+    model: User,
+    controller: {
+      restore: usersController.restoreUser,
+      permanentDelete: usersController.permanentDeleteUser,
+      restoreAll: usersController.restoreAllUsers,
+      permanentDeleteAll: usersController.permanentDeleteAllUsers,
+    },
+  },
 
   // QuizNest
-  "game-quiznest": { model: Game, controller: qnGameController },
-  "gamesession-quiznest": { model: GameSession, controller: qnGameController },
-  qnquestion: { model: null, controller: qnQuestionController },
+  "game-quiznest": {
+    model: Game,
+    controller: {
+      restore: qnGameController.restoreGame,
+      permanentDelete: qnGameController.permanentDeleteGame,
+      restoreAll: qnGameController.restoreAllGames,
+      permanentDeleteAll: qnGameController.permanentDeleteAllGames,
+    },
+  },
+  "gamesession-quiznest": {
+    model: GameSession,
+    controller: {
+      restore: qnGameController.restoreGameSession,
+      permanentDelete: qnGameController.permanentDeleteGameSession,
+      restoreAll: qnGameController.restoreAllGameSessions,
+      permanentDeleteAll: qnGameController.permanentDeleteAllGameSessions,
+    },
+  },
+  qnquestion: {
+    model: null,
+    controller: {
+      restore: qnQuestionController.restoreQuestion,
+      permanentDelete: qnQuestionController.permanentDeleteQuestion,
+      restoreAll: qnQuestionController.restoreAllQuestions,
+      permanentDeleteAll: qnQuestionController.permanentDeleteAllQuestions,
+    },
+  },
   qnplayer: { model: Player, controller: qnPlayerController },
 
   // EventDuel
-  "game-eventduel": { model: Game, controller: pvpGameController },
-  "gamesession-eventduel": { model: GameSession, controller: pvpGameSessionController },
-  pvpquestion: { model: null, controller: pvpQuestionController },
+  "game-eventduel": {
+    model: Game,
+    controller: {
+      restore: pvpGameController.restoreGame,
+      permanentDelete: pvpGameController.permanentDeleteGame,
+      restoreAll: pvpGameController.restoreAllGames,
+      permanentDeleteAll: pvpGameController.permanentDeleteAllGames,
+    },
+  },
+  "gamesession-eventduel": {
+    model: GameSession,
+    controller: {
+      restore: pvpGameSessionController.restoreGameSession,
+      permanentDelete: pvpGameSessionController.permanentDeleteGameSession,
+      restoreAll: pvpGameSessionController.restoreAllGameSessions,
+      permanentDeleteAll:
+        pvpGameSessionController.permanentDeleteAllGameSessions,
+    },
+  },
+  pvpquestion: {
+    model: null,
+    controller: {
+      restore: pvpQuestionController.restoreQuestion,
+      permanentDelete: pvpQuestionController.permanentDeleteQuestion,
+      restoreAll: pvpQuestionController.restoreAllQuestions,
+      permanentDeleteAll: pvpQuestionController.permanentDeleteAllQuestions,
+    },
+  },
 
   // StageQ
-  question: { model: require("../models/EventQuestion"), controller: questionController },
+  question: {
+    model: require("../models/EventQuestion"),
+    controller: {
+      restore: questionController.restoreQuestion,
+      permanentDelete: questionController.permanentDeleteQuestion,
+      restoreAll: questionController.restoreAllQuestions,
+      permanentDeleteAll: questionController.permanentDeleteAllQuestions,
+    },
+  },
   visitor: { model: Visitor, controller: visitorController },
 
   // SurveyGuru
-  surveyform: { model: SurveyForm, controller: formController },
-  surveyresponse: { model: SurveyResponse, controller: responseController },
+  surveyform: {
+    model: SurveyForm,
+    controller: {
+      restore: formController.restoreForm,
+      permanentDelete: formController.permanentDeleteForm,
+      restoreAll: formController.restoreAllForms,
+      permanentDeleteAll: formController.permanentDeleteAllForms,
+    },
+  },
+  surveyresponse: {
+    model: SurveyResponse,
+    controller: {
+      restore: responseController.restoreResponse,
+      permanentDelete: responseController.permanentDeleteResponse,
+      restoreAll: responseController.restoreAllResponses,
+      permanentDeleteAll: responseController.permanentDeleteAllResponses,
+    },
+  },
 
   // Walkins
   walkin: { model: WalkIn, controller: checkInRegistrationController },
 };
 
 module.exports = moduleMapping;
-

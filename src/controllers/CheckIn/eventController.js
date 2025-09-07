@@ -200,7 +200,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   return response(res, 200, "Employee event updated successfully", updatedEvent);
 });
 
-// SOFT DELETE employee event (Recycle Bin)
+// SOFT DELETE employee event
 exports.deleteEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -209,38 +209,14 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
 
   const event = await Event.findById(id);
   if (!event || event.eventType !== "employee") {
-    return response(res, 404, "Employee event not found");
+    return response(res, 404, "Event not found");
   }
 
   await event.softDelete(req.user?.id);
   return response(res, 200, "Event moved to Recycle Bin");
 });
 
-// RESTORE employee event
-exports.restoreEvent = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return response(res, 400, "Invalid Event ID");
-  }
-
-  const event = await Event.findById(id);
-  if (!event) return response(res, 404, "Event not found");
-
-  // Prevent slug conflicts
-  const conflict = await Event.findOne({
-    _id: { $ne: event._id },
-    slug: event.slug,
-    isDeleted: false,
-  });
-  if (conflict) {
-    return response(res, 409, "Cannot restore: slug already in use");
-  }
-
-  await event.restore();
-  return response(res, 200, "Event restored successfully", event);
-});
-
-// PERMANENT DELETE employee event
+// PERMANENT DELETE public event
 exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -250,19 +226,56 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   const event = await Event.findById(id);
   if (!event) return response(res, 404, "Event not found");
 
-  const registrationsCount = await Registration.countDocuments({ eventId: event._id });
-  if (registrationsCount > 0) {
-    return response(res, 400, "Cannot delete an event with existing registrations");
+  // 🔒 Restrict if *any* registrations exist (active or trashed)
+  const totalRegs = await Registration.countDocuments({ eventId: event._id });
+  if (totalRegs > 0) {
+    return response(
+      res,
+      400,
+      "Cannot permanently delete an event with registrations in DB"
+    );
   }
 
-  // Delete logo if exists
-  if (event.logoUrl) {
-    await deleteImage(event.logoUrl);
-  }
-
-  // Cleanup registrations linked to this event
-  await Registration.deleteMany({ eventId: event._id });
+  if (event.logoUrl) await deleteImage(event.logoUrl);
+  if (event.brandingMediaUrl) await deleteImage(event.brandingMediaUrl);
+  if (event.agendaUrl) await deleteImage(event.agendaUrl);
 
   await event.deleteOne();
   return response(res, 200, "Event permanently deleted");
+});
+
+// RESTORE ALL
+exports.restoreAllEvents = asyncHandler(async (req, res) => {
+  const events = await Event.findDeleted({ eventType: "employee" });
+  if (!events.length) return response(res, 404, "No Employee events in trash");
+
+  for (const ev of events) {
+    const conflict = await Event.findOne({
+      _id: { $ne: ev._id },
+      slug: ev.slug,
+      isDeleted: false,
+    });
+    if (!conflict) {
+      await ev.restore();
+    }
+  }
+
+  return response(res, 200, `Restored ${events.length} events`);
+});
+
+// PERMANENT DELETE ALL
+exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
+  const events = await Event.findDeleted({ eventType: "employee" });
+  if (!events.length) return response(res, 404, "No employee events in trash");
+
+  let deletedCount = 0;
+  for (const ev of events) {
+    const regCount = await Registration.countDocuments({ eventId: ev._id });
+    if (regCount === 0) {
+      await ev.deleteOne();
+      deletedCount++;
+    }
+  }
+
+  return response(res, 200, `Permanently deleted ${deletedCount} public events (without registrations)`);
 });

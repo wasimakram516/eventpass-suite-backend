@@ -1,42 +1,93 @@
 const asyncHandler = require("../middlewares/asyncHandler");
 const response = require("../utils/response");
 const moduleMapping = require("../utils/trashMappings");
+const mongoose = require("mongoose");
 
+/**
+ * Utility: build query / aggregation depending on condition type
+ */
+async function fetchDeletedItems({ model, query, condition, page, limit }) {
+  // Case: condition on nested field (e.g. eventId.eventType)
+  if (condition && Object.keys(condition).some((c) => c.includes("."))) {
+    const pipeline = [
+      { $match: { isDeleted: true, ...query } },
+      {
+        $lookup: {
+          from: "events", 
+          localField: "eventId",
+          foreignField: "_id",
+          as: "event",
+        },
+      },
+      { $unwind: "$event" },
+      { $match: condition }, // e.g. { "event.eventType": "public" }
+      { $sort: { deletedAt: -1 } },
+    ];
+
+    const [items, totalResult] = await Promise.all([
+      model.aggregate([
+        ...pipeline,
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+      ]),
+      model.aggregate([
+        ...pipeline,
+        { $count: "total" },
+      ]),
+    ]);
+
+    const total = totalResult[0]?.total || 0;
+    return { items, total };
+  }
+
+  // Case: flat condition or none
+  const [items, total] = await Promise.all([
+    model
+      .findDeleted({ ...query, ...(condition || {}) })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .sort({ deletedAt: -1 })
+      .lean(),
+    model.countDocumentsDeleted({ ...query, ...(condition || {}) }),
+  ]);
+
+  return { items, total };
+}
+
+/**
+ * Count trashed items for each module
+ */
 exports.getModuleCounts = asyncHandler(async (req, res) => {
   const counts = {};
 
   await Promise.all(
     Object.entries(moduleMapping).map(async ([key, { model, controller, condition }]) => {
-      let total = 0;
-
       try {
-        // Case 1: special controllers with countDeleted implemented
         if (controller?.countDeleted) {
-          total = await controller.countDeleted();
-        }
-        // Case 2: normal model with flat condition
-        else if (model && model.countDocuments) {
-          // Handle nested condition (e.g., eventId.eventType)
+          // Use custom counter if defined in controller
+          counts[key] = await controller.countDeleted();
+        } else if (model?.countDocumentsDeleted) {
+          // Use plugin’s countDocumentsDeleted
           if (condition && Object.keys(condition).some((c) => c.includes("."))) {
-            // populate and filter in-memory
-            const items = await model.findDeleted({ isDeleted: true }).populate("eventId").lean();
-            const filtered = items.filter((item) => {
-              return Object.entries(condition).every(([path, val]) => {
-                const [field, sub] = path.split(".");
-                return item[field] && item[field][sub] === val;
-              });
+            // Nested conditions via aggregation
+            const result = await fetchDeletedItems({
+              model,
+              query: {},
+              condition,
+              page: 1,
+              limit: Number.MAX_SAFE_INTEGER, 
             });
-            total = filtered.length;
+            counts[key] = result.total;
           } else {
-            // direct query
-            total = await model.countDocumentsDeleted({ isDeleted: true, ...(condition || {}) });
+            counts[key] = await model.countDocumentsDeleted({ ...condition });
           }
+        } else {
+          counts[key] = 0;
         }
       } catch (err) {
         console.error(`Error counting module ${key}:`, err.message);
+        counts[key] = 0;
       }
-
-      counts[key] = total;
     })
   );
 
@@ -48,9 +99,9 @@ exports.getModuleCounts = asyncHandler(async (req, res) => {
  */
 exports.getTrash = asyncHandler(async (req, res) => {
   const { model: moduleKey, deletedBy, startDate, endDate, page = 1, limit = 20 } = req.query;
-  const query = { isDeleted: true };
 
-  if (deletedBy) query.deletedBy = deletedBy;
+  const query = {};
+  if (deletedBy) query.deletedBy = new mongoose.Types.ObjectId(deletedBy);
   if (startDate || endDate) {
     query.deletedAt = {};
     if (startDate) query.deletedAt.$gte = new Date(startDate);
@@ -61,45 +112,16 @@ exports.getTrash = asyncHandler(async (req, res) => {
 
   const fetchModule = async (key) => {
     const entry = moduleMapping[key];
-    if (!entry) return;
+    if (!entry?.model) return;
 
-    const { model: M, condition } = entry;
-    if (!M) return; // embedded cases handled elsewhere
-
-    let q = M.findDeleted(query)
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .sort({ deletedAt: -1 })
-      .lean();
-
-    let countQ = M.countDocumentsDeleted(query);
-
-    // If condition refers to a populated field (like eventId.eventType)
-    if (condition && Object.keys(condition).some((c) => c.includes("."))) {
-      q = M.findDeleted(query).populate("eventId").lean();
-      const items = await q;
-      const filtered = items.filter((item) => {
-        return Object.entries(condition).every(([path, val]) => {
-          const [field, sub] = path.split(".");
-          return item[field] && item[field][sub] === val;
-        });
-      });
-      const paged = filtered.slice((page - 1) * limit, page * limit);
-      results[key] = { items: paged, total: filtered.length };
-      return;
-    }
-
-    // Normal condition (direct field)
-    const [items, total] = await Promise.all([
-      M.findDeleted({ ...query, ...(condition || {}) })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .sort({ deletedAt: -1 })
-        .lean(),
-      M.countDocumentsDeleted({ ...query, ...(condition || {}) }),
-    ]);
-
-    results[key] = { items, total };
+    const { model, condition } = entry;
+    results[key] = await fetchDeletedItems({
+      model,
+      query,
+      condition,
+      page: Number(page),
+      limit: Number(limit),
+    });
   };
 
   if (moduleKey && moduleMapping[moduleKey]) {
@@ -112,7 +134,7 @@ exports.getTrash = asyncHandler(async (req, res) => {
 });
 
 /**
- * Restore single item
+ * Restore / Permanently delete (single + all) via controllers
  */
 exports.restoreItem = asyncHandler(async (req, res, next) => {
   const { module } = req.params;
@@ -122,9 +144,6 @@ exports.restoreItem = asyncHandler(async (req, res, next) => {
   return entry.controller.restore(req, res, next);
 });
 
-/**
- * Permanently delete single item
- */
 exports.permanentDeleteItem = asyncHandler(async (req, res, next) => {
   const { module } = req.params;
   const entry = moduleMapping[module];
@@ -133,9 +152,6 @@ exports.permanentDeleteItem = asyncHandler(async (req, res, next) => {
   return entry.controller.permanentDelete(req, res, next);
 });
 
-/**
- * Restore all items in a module
- */
 exports.restoreAllItems = asyncHandler(async (req, res, next) => {
   const { module } = req.params;
   const entry = moduleMapping[module];
@@ -144,9 +160,6 @@ exports.restoreAllItems = asyncHandler(async (req, res, next) => {
   return entry.controller.restoreAll(req, res, next);
 });
 
-/**
- * Permanently delete all items in a module
- */
 exports.permanentDeleteAllItems = asyncHandler(async (req, res, next) => {
   const { module } = req.params;
   const entry = moduleMapping[module];

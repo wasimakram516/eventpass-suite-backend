@@ -377,31 +377,42 @@ exports.deleteRegistration = asyncHandler(async (req, res) => {
   return response(res, 200, "Registration moved to recycle bin");
 });
 
-// Restore registration
+// Restore single registration
 exports.restoreRegistration = asyncHandler(async (req, res) => {
   const reg = await Registration.findOneDeleted({ _id: req.params.id });
   if (!reg) return response(res, 404, "Registration not found in trash");
 
   await reg.restore();
+  await Event.findByIdAndUpdate(reg.eventId, { $inc: { registrations: 1 } });
 
-  // increment count back
-  await Event.findByIdAndUpdate(reg.eventId, {
-    $inc: { registrations: 1 },
-  });
-
-  return response(res, 200, "Registration restored", reg);
+  return response(res, 200, "Registration restored successfully", reg);
 });
 
-// Permanent delete registration
+// Restore ALL registrations
+exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
+  const regs = await Registration.findDeleted();
+  if (!regs.length) {
+    return response(res, 404, "No registrations found in trash to restore");
+  }
+
+  for (const reg of regs) {
+    await reg.restore();
+    await Event.findByIdAndUpdate(reg.eventId, { $inc: { registrations: 1 } });
+  }
+
+  return response(res, 200, `Restored ${regs.length} registrations`);
+});
+
+// Permanent delete single registration
 exports.permanentDeleteRegistration = asyncHandler(async (req, res) => {
   const reg = await Registration.findOneDeleted({ _id: req.params.id });
   if (!reg) return response(res, 404, "Registration not found in trash");
 
   await reg.deleteOne();
-
   return response(res, 200, "Registration permanently deleted");
 });
 
+// Permanent delete ALL registrations
 exports.permanentDeleteAllRegistrations = asyncHandler(async (req, res) => {
   const result = await Registration.deleteManyDeleted();
   return response(
@@ -409,18 +420,4 @@ exports.permanentDeleteAllRegistrations = asyncHandler(async (req, res) => {
     200,
     `Permanently deleted ${result.deletedCount} registrations`
   );
-});
-
-exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
-  const regs = await Registration.findDeleted();
-  if (!regs.length)
-    return response(res, 404, "No registrations found in trash to restore");
-  for (const reg of regs) {
-    await reg.restore();
-    // increment count back
-    await Event.findByIdAndUpdate(reg.eventId, {
-      $inc: { registrations: 1 },
-    });
-  }
-  return response(res, 200, `Restored ${regs.length} registrations`);
 });

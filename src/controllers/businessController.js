@@ -1,6 +1,7 @@
 const Business = require("../models/Business");
 const User = require("../models/User");
 const Game = require("../models/Game");
+const GameSession = require("../models/GameSession");
 const Player = require("../models/Player");
 const Event = require("../models/Event");
 const Registration = require("../models/Registration");
@@ -61,6 +62,7 @@ exports.createBusiness = asyncHandler(async (req, res) => {
   await owner.save();
   return response(res, 201, "Business created successfully", business);
 });
+
 // Get All Businesses
 exports.getAllBusinesses = asyncHandler(async (req, res) => {
   const businesses = await Business.find().notDeleted()
@@ -126,13 +128,92 @@ exports.updateBusiness = asyncHandler(async (req, res) => {
   return response(res, 200, "Business updated successfully", business);
 });
 
+/* =========================================================
+   Helper: Cascade delete everything linked to a business
+   ========================================================= */
+async function cascadeDeleteBusiness(businessId) {
+  const business = await Business.findById(businessId);
+  if (!business) return;
+
+  // Delete logo
+  if (business.logoUrl) {
+    await deleteImage(business.logoUrl);
+  }
+
+  /** ===== Surveys ===== */
+  const forms = await SurveyForm.find({ businessId });
+  const formIds = forms.map(f => f._id);
+  if (formIds.length) {
+    await SurveyResponse.deleteMany({ formId: { $in: formIds } });
+    await SurveyRecipient.deleteMany({ formId: { $in: formIds } });
+    await SurveyForm.deleteMany({ _id: { $in: formIds } });
+  }
+
+  /** ===== Games & Sessions ===== */
+  const games = await Game.find({ businessId });
+  const gameIds = games.map(g => g._id);
+  if (gameIds.length) {
+    await GameSession.deleteMany({ gameId: { $in: gameIds } });
+    await Player.deleteMany({}); // adjust if Player has businessId/gameId ref
+    await Game.deleteMany({ _id: { $in: gameIds } });
+  }
+
+  /** ===== Events ===== */
+  const events = await Event.find({ businessId });
+  const eventIds = events.map(e => e._id);
+  if (eventIds.length) {
+    await WalkIn.deleteMany({ eventId: { $in: eventIds } });
+    await Registration.deleteMany({ eventId: { $in: eventIds } });
+    await Event.deleteMany({ _id: { $in: eventIds } });
+  }
+
+  /** ===== Polls & Questions ===== */
+  await Poll.deleteMany({ business: businessId });
+  await EventQuestion.deleteMany({ business: businessId });
+
+  /** ===== Visitors ===== */
+  await Visitor.updateMany(
+    {},
+    { $pull: { eventHistory: { business: businessId } } }
+  );
+
+  /** ===== SpinWheels ===== */
+  const wheels = await SpinWheel.find({ business: businessId });
+  const wheelIds = wheels.map(w => w._id);
+  if (wheelIds.length) {
+    await SpinWheelParticipant.deleteMany({ spinWheel: { $in: wheelIds } });
+    await SpinWheel.deleteMany({ _id: { $in: wheelIds } });
+  }
+
+  /** ===== Walls ===== */
+  const walls = await WallConfig.find({ business: businessId });
+  const wallIds = walls.map(w => w._id);
+  if (wallIds.length) {
+    await DisplayMedia.deleteMany({ wall: { $in: wallIds } });
+    await WallConfig.deleteMany({ _id: { $in: wallIds } });
+  }
+
+  /** ===== Users ===== */
+  await User.updateMany(
+    { business: businessId, role: { $ne: "staff" } },
+    { $set: { business: null } }
+  );
+  await User.deleteMany({ business: businessId, role: "staff" });
+
+  // Finally, delete business itself
+  await business.deleteOne();
+}
+
+/* =========================================================
+   Controller Methods
+   ========================================================= */
+
 // Soft delete (Recycle Bin)
 exports.deleteBusiness = asyncHandler(async (req, res) => {
   const business = await Business.findById(req.params.id);
   if (!business) return response(res, 404, "Business not found");
 
   await business.softDelete(req.user?.id);
-
   return response(res, 200, "Business moved to Recycle Bin", business);
 });
 
@@ -141,7 +222,6 @@ exports.restoreBusiness = asyncHandler(async (req, res) => {
   const business = await Business.findById(req.params.id);
   if (!business) return response(res, 404, "Business not found");
 
-  // Prevent slug conflicts
   const conflict = await Business.findOne({
     _id: { $ne: business._id },
     slug: business.slug,
@@ -155,75 +235,39 @@ exports.restoreBusiness = asyncHandler(async (req, res) => {
   return response(res, 200, "Business restored successfully", business);
 });
 
-// Permanent delete with cascade cleanup
+// Permanent delete single business
 exports.permanentDeleteBusiness = asyncHandler(async (req, res) => {
-  const business = await Business.findById(req.params.id);
-  if (!business) return response(res, 404, "Business not found");
+  await cascadeDeleteBusiness(req.params.id);
+  return response(res, 200, "Business and related data permanently deleted");
+});
 
-  // Delete logo
-  if (business.logoUrl) {
-    await deleteImage(business.logoUrl);
+// Restore all businesses
+exports.restoreAllBusinesses = asyncHandler(async (req, res) => {
+  const businesses = await Business.findDeleted();
+  if (!businesses.length) return response(res, 404, "No businesses in trash");
+
+  for (const b of businesses) {
+    const conflict = await Business.findOne({
+      _id: { $ne: b._id },
+      slug: b.slug,
+      isDeleted: false,
+    });
+    if (!conflict) {
+      await b.restore();
+    }
   }
 
-  const businessId = business._id;
+  return response(res, 200, `Restored ${businesses.length} businesses`);
+});
 
-  // ====== SURVEY DATA CLEANUP ======
-  const forms = await SurveyForm.find({ businessId });
-  const formIds = forms.map((f) => f._id);
+// Permanently delete all businesses
+exports.permanentDeleteAllBusinesses = asyncHandler(async (req, res) => {
+  const businesses = await Business.findDeleted();
+  if (!businesses.length) return response(res, 404, "No businesses in trash");
 
-  await SurveyResponse.deleteMany({ formId: { $in: formIds } });
-  await SurveyRecipient.deleteMany({ formId: { $in: formIds } });
-  await SurveyForm.deleteMany({ _id: { $in: formIds } });
-  // =================================
+  for (const b of businesses) {
+    await cascadeDeleteBusiness(b._id);
+  }
 
-  // Remove associated Games and Players
-  const games = await Game.find({ businessId });
-  const gameIds = games.map((g) => g._id);
-  await Player.deleteMany({ gameId: { $in: gameIds } });
-  await Game.deleteMany({ _id: { $in: gameIds } });
-
-  // Remove associated Events and their Registrations & WalkIns
-  const events = await Event.find({ businessId });
-  const eventIds = events.map((e) => e._id);
-  await WalkIn.deleteMany({ eventId: { $in: eventIds } });
-  await Registration.deleteMany({ eventId: { $in: eventIds } });
-  await Event.deleteMany({ _id: { $in: eventIds } });
-
-  // Remove Polls
-  await Poll.deleteMany({ business: businessId });
-
-  // Remove EventQuestions
-  await EventQuestion.deleteMany({ business: businessId });
-
-  // Remove business from visitors' eventHistory
-  await Visitor.updateMany(
-    {},
-    { $pull: { eventHistory: { business: businessId } } }
-  );
-
-  // Remove Spin Wheels & Participants
-  const wheels = await SpinWheel.find({ business: businessId });
-  const wheelIds = wheels.map((w) => w._id);
-  await SpinWheelParticipant.deleteMany({ spinWheel: { $in: wheelIds } });
-  await SpinWheel.deleteMany({ _id: { $in: wheelIds } });
-
-  // Remove WallConfigs and DisplayMedia
-  const walls = await WallConfig.find({ business: businessId });
-  const wallIds = walls.map((w) => w._id);
-  await DisplayMedia.deleteMany({ wall: { $in: wallIds } });
-  await WallConfig.deleteMany({ _id: { $in: wallIds } });
-
-  // Unlink business from owner
-  await User.updateMany(
-    { business: businessId, role: { $ne: "staff" } },
-    { $set: { business: null } }
-  );
-
-  // Delete staff members
-  await User.deleteMany({ business: businessId, role: "staff" });
-
-  // Finally, delete business permanently
-  await business.deleteOne();
-
-  return response(res, 200, "Business and related data permanently deleted");
+  return response(res, 200, `Permanently deleted ${businesses.length} businesses`);
 });

@@ -378,10 +378,23 @@ exports.restoreEvent = asyncHandler(async (req, res) => {
   if (!event) return response(res, 404, "Event not found in trash");
 
   await event.restore();
-  return response(res, 200, "Event restored", event);
+  return response(res, 200, "Event restored successfully", event);
 });
 
-// Permanent delete event
+// Restore ALL events
+exports.restoreAllEvents = asyncHandler(async (req, res) => {
+  const events = await Event.findDeleted({ eventType: "public" });
+  if (!events.length) {
+    return response(res, 404, "No public events found in trash to restore");
+  }
+
+  for (const ev of events) {
+    await ev.restore();
+  }
+  return response(res, 200, `Restored ${events.length} events`);
+});
+
+// Permanent delete single event
 exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   const event = await Event.findOneDeleted({
     _id: req.params.id,
@@ -396,7 +409,7 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
     return response(
       res,
       400,
-      "Cannot delete an event with existing registrations"
+      "Cannot permanently delete an event with existing registrations"
     );
   }
 
@@ -406,4 +419,29 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
 
   await event.deleteOne();
   return response(res, 200, "Event permanently deleted");
+});
+
+// Permanent delete ALL events
+exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
+  const events = await Event.findDeleted({ eventType: "public" });
+  if (!events.length) {
+    return response(res, 404, "No public events found in trash to delete");
+  }
+
+  for (const ev of events) {
+    const registrationsCount = await Registration.countDocuments({
+      eventId: ev._id,
+    });
+    if (registrationsCount > 0) {
+      continue; // skip events with registrations
+    }
+
+    if (ev.logoUrl) await deleteImage(ev.logoUrl);
+    if (ev.brandingMediaUrl) await deleteImage(ev.brandingMediaUrl);
+    if (ev.agendaUrl) await deleteImage(ev.agendaUrl);
+
+    await ev.deleteOne();
+  }
+
+  return response(res, 200, "All eligible events permanently deleted");
 });

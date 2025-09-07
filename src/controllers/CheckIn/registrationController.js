@@ -109,68 +109,6 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 });
 
-// SOFT DELETE registration
-exports.deleteRegistration = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return response(res, 400, "Invalid registration ID");
-  }
-
-  const registration = await Registration.findById(id);
-  if (!registration) return response(res, 404, "Registration not found");
-
-  const event = await Event.findById(registration.eventId);
-  if (!event || event.eventType !== "employee") {
-    return response(res, 400, "Associated employee event not found");
-  }
-
-  await registration.softDelete(req.user?._id);
-  await Event.findByIdAndUpdate(registration.eventId, { $inc: { registrations: -1 } });
-
-  return response(res, 200, "Registration moved to Recycle Bin");
-});
-
-// RESTORE registration
-exports.restoreRegistration = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return response(res, 400, "Invalid registration ID");
-  }
-
-  const registration = await Registration.findById(id);
-  if (!registration) return response(res, 404, "Registration not found");
-
-  // Prevent duplicate token conflict
-  const conflict = await Registration.findOne({
-    _id: { $ne: registration._id },
-    eventId: registration.eventId,
-    token: registration.token,
-    isDeleted: false,
-  });
-  if (conflict) {
-    return response(res, 409, "Cannot restore: token already in use");
-  }
-
-  await registration.restore();
-  await Event.findByIdAndUpdate(registration.eventId, { $inc: { registrations: 1 } });
-
-  return response(res, 200, "Registration restored successfully", registration);
-});
-
-// PERMANENT DELETE registration
-exports.permanentDeleteRegistration = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return response(res, 400, "Invalid registration ID");
-  }
-
-  const registration = await Registration.findById(id);
-  if (!registration) return response(res, 404, "Registration not found");
-
-  await registration.deleteOne();
-  return response(res, 200, "Registration permanently deleted");
-});
-
 // GET all registrations by event using slug (for export)
 exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
@@ -198,3 +136,73 @@ exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
 
   return response(res, 200, "All check-in registrations fetched", enhanced);
 });
+
+// SOFT DELETE registration
+exports.deleteRegistration = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return response(res, 400, "Invalid registration ID");
+  }
+
+  const registration = await Registration.findById(id);
+  if (!registration) return response(res, 404, "Registration not found");
+
+  await registration.softDelete(req.user?._id);
+
+  // decrement count
+  await Event.findByIdAndUpdate(registration.eventId, {
+    $inc: { registrations: -1 },
+  });
+
+  return response(res, 200, "Registration moved to Recycle Bin");
+});
+
+// RESTORE registration
+exports.restoreRegistration = asyncHandler(async (req, res) => {
+  const reg = await Registration.findOneDeleted({ _id: req.params.id });
+  if (!reg) return response(res, 404, "Registration not found in trash");
+
+  await reg.restore();
+  await Event.findByIdAndUpdate(reg.eventId, {
+    $inc: { registrations: 1 },
+  });
+
+  return response(res, 200, "Registration restored successfully", reg);
+});
+
+// PERMANENT DELETE registration
+exports.permanentDeleteRegistration = asyncHandler(async (req, res) => {
+  const reg = await Registration.findOneDeleted({ _id: req.params.id });
+  if (!reg) return response(res, 404, "Registration not found in trash");
+
+  await reg.deleteOne();
+  return response(res, 200, "Registration permanently deleted");
+});
+
+// RESTORE ALL
+exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
+  const regs = await Registration.findDeleted();
+  if (!regs.length)
+    return response(res, 404, "No registrations found in trash to restore");
+
+  for (const reg of regs) {
+    await reg.restore();
+    await Event.findByIdAndUpdate(reg.eventId, {
+      $inc: { registrations: 1 },
+    });
+  }
+
+  return response(res, 200, `Restored ${regs.length} registrations`);
+});
+
+// PERMANENT DELETE ALL
+exports.permanentDeleteAllRegistrations = asyncHandler(async (req, res) => {
+  const regs = await Registration.findDeleted();
+  if (!regs.length)
+    return response(res, 404, "No registrations found in trash to delete");
+
+  await Registration.deleteManyDeleted();
+
+  return response(res, 200, `Permanently deleted ${regs.length} registrations`);
+});
+
