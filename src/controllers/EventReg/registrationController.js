@@ -176,15 +176,6 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       <p>Please present this QR at check-in:</p>
       <div style="text-align:center;margin:25px 0">{{qrImage}}</div>
       <p>Your Token: <strong>${newRegistration.token}</strong></p>
-      ${
-        event.agendaUrl
-          ? `<p><a href="${event.agendaUrl}" 
-       style="display:inline-block;padding:10px 20px;background:#28a745;color:#fff;text-decoration:none;border-radius:5px;">
-       Download Agenda (PDF)
-     </a></p>`
-          : ""
-      }
-
       <hr/>
       <p>Questions? Reply to this email.</p>
       <p>See you soon!</p>
