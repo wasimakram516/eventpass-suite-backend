@@ -151,23 +151,26 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     <div style="padding:30px">
       <p>Hi <strong>${displayName}</strong>,</p>
       <p>You’re confirmed for <strong>${event.name}</strong>!</p>
-      ${event.logoUrl
-      ? `<div style="text-align:center;margin:20px 0">
+      ${
+        event.logoUrl
+          ? `<div style="text-align:center;margin:20px 0">
                <img src="${event.logoUrl}" style="max-width:180px;max-height:100px"/>
              </div>`
-      : ""
-    }
+          : ""
+      }
       <p>Event Details:</p>
       <ul style="padding-left:20px">
-        <li><strong>Date:</strong> ${event.startDate.toDateString()}${event.endDate && event.endDate.getTime() !== event.startDate.getTime()
+        <li><strong>Date:</strong> ${event.startDate.toDateString()}${
+    event.endDate && event.endDate.getTime() !== event.startDate.getTime()
       ? ` to ${event.endDate.toDateString()}`
       : ""
-    }</li>
+  }</li>
         <li><strong>Venue:</strong> ${event.venue}</li>
-        ${event.description
-      ? `<li><strong>About:</strong> ${event.description}</li>`
-      : ""
-    }
+        ${
+          event.description
+            ? `<li><strong>About:</strong> ${event.description}</li>`
+            : ""
+        }
       </ul>
       ${customFieldHtml}
       <p>Please present this QR at check-in:</p>
@@ -187,7 +190,8 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       email,
       `Registration Confirmed: ${event.name}`,
       emailHtml,
-      qrCodeDataUrl
+      qrCodeDataUrl,
+      event.agendaUrl ? [{ filename: "Agenda.pdf", path: event.agendaUrl }] : []
     );
   }
   if (phone) {
@@ -211,7 +215,10 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   }
 
   const eventId = event._id;
-  const totalRegistrations = await Registration.countDocuments({ eventId, deletedAt: { $exists: false } });
+  const totalRegistrations = await Registration.countDocuments({
+    eventId,
+    deletedAt: { $exists: false },
+  });
 
   const registrations = await Registration.find({ eventId })
     .notDeleted()
@@ -310,7 +317,9 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   if (!staffUser?.id) {
     return response(res, 401, "Unauthorized – no scanner info");
   }
-  const registration = await Registration.findOne({ token }).populate("eventId");
+  const registration = await Registration.findOne({ token }).populate(
+    "eventId"
+  );
   if (!registration) return response(res, 404, "Registration not found");
 
   const walkin = new WalkIn({

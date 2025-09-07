@@ -598,3 +598,334 @@ exports.permanentDeleteItem = asyncHandler(async (req, res, next) => {
   if (!ctrl?.permanentDelete) return response(res, 400, "Permanent delete not implemented for this module");
   return ctrl.permanentDelete(req, res, next);
 });
+
+// Restore all items of a module 
+exports.restoreAllItems = asyncHandler(async (req, res) => {
+  const { module } = req.params;
+  const { deletedBy, startDate, endDate } = req.query;
+  const user = req.user;
+
+  const parseModuleFilter = (moduleKey) => {
+    if (moduleKey.includes('-')) {
+      const [baseModel, subModule] = moduleKey.split('-');
+      const conditions = {};
+      switch (moduleKey) {
+        case 'game-quiznest': conditions.mode = 'solo'; break;
+        case 'game-eventduel': conditions.mode = 'pvp'; break;
+        case 'event-eventreg': conditions.eventType = 'public'; break;
+        case 'event-checkin': conditions.eventType = 'employee'; break;
+      }
+      return { baseModel, conditions };
+    }
+    return { baseModel: moduleKey, conditions: {} };
+  };
+
+  const query = {};
+  if (deletedBy) query.deletedBy = deletedBy;
+  if (startDate || endDate) {
+    query.deletedAt = {};
+    if (startDate) query.deletedAt.$gte = new Date(startDate);
+    if (endDate) query.deletedAt.$lte = new Date(endDate);
+  }
+
+  if (user.role === "business") {
+    query.$or = [
+      { business: user.business },
+      { businessId: user.business },
+    ];
+  }
+
+  let items = [];
+  let restoredCount = 0;
+  if (module === 'qnquestion') {
+    const deletedQuestions = await getDeletedQuestionsFromGames(query, 'solo');
+
+    const gameQuestionMap = new Map();
+    deletedQuestions.forEach(question => {
+      if (!gameQuestionMap.has(question.gameId.toString())) {
+        gameQuestionMap.set(question.gameId.toString(), []);
+      }
+      gameQuestionMap.get(question.gameId.toString()).push(question._id.toString());
+    });
+
+    for (const [gameId, questionIds] of gameQuestionMap) {
+      await Game.updateOne(
+        { _id: gameId, "questions._id": { $in: questionIds } },
+        {
+          $unset: {
+            "questions.$[elem].isDeleted": "",
+            "questions.$[elem].deletedAt": "",
+            "questions.$[elem].deletedBy": ""
+          }
+        },
+        { arrayFilters: [{ "elem._id": { $in: questionIds } }] }
+      );
+      restoredCount += questionIds.length;
+    }
+
+    return response(res, 200, `Restored ${restoredCount} items from ${module}`, { restoredCount });
+  }
+
+  if (module === 'pvpquestion') {
+    const deletedQuestions = await getDeletedQuestionsFromGames(query, 'pvp');
+
+    const gameQuestionMap = new Map();
+    deletedQuestions.forEach(question => {
+      if (!gameQuestionMap.has(question.gameId.toString())) {
+        gameQuestionMap.set(question.gameId.toString(), []);
+      }
+      gameQuestionMap.get(question.gameId.toString()).push(question._id.toString());
+    });
+
+    for (const [gameId, questionIds] of gameQuestionMap) {
+      await Game.updateOne(
+        { _id: gameId, "questions._id": { $in: questionIds } },
+        {
+          $unset: {
+            "questions.$[elem].isDeleted": "",
+            "questions.$[elem].deletedAt": "",
+            "questions.$[elem].deletedBy": ""
+          }
+        },
+        { arrayFilters: [{ "elem._id": { $in: questionIds } }] }
+      );
+      restoredCount += questionIds.length;
+    }
+
+    return response(res, 200, `Restored ${restoredCount} items from ${module}`, { restoredCount });
+  }
+
+  const { baseModel, conditions } = parseModuleFilter(module);
+  const M = models[baseModel?.toLowerCase()];
+  if (!M) return response(res, 400, "Invalid module");
+
+  const finalQuery = { ...query, ...conditions };
+
+  if (module === 'registration-eventreg' || module === 'registration-checkin') {
+    const allItems = await M.findDeleted(query).populate('eventId');
+    items = allItems.filter(item => {
+      if (!item.eventId) return false;
+      return module === 'registration-eventreg' ?
+        item.eventId.eventType === 'public' :
+        item.eventId.eventType === 'employee';
+    });
+  } else if (module === 'gamesession-quiznest' || module === 'gamesession-eventduel') {
+    const allItems = await M.findDeleted(query).populate('gameId');
+    items = allItems.filter(item => {
+      if (!item.gameId) return false;
+      return module === 'gamesession-quiznest' ?
+        item.gameId.mode === 'solo' :
+        item.gameId.mode === 'pvp';
+    });
+  } else {
+    items = await M.findDeleted(finalQuery);
+  }
+
+  const backendModule = Object.keys(controllerMap).find(key => {
+    const frontendToBackend = {
+      'business': 'business',
+      'event-checkin': 'checkinevent',
+      'registration-checkin': 'checkinregistration',
+      'event-eventreg': 'eventregevent',
+      'registration-eventreg': 'eventregregistration',
+      'game-quiznest': 'qngame',
+      'game-eventduel': 'pvpgame',
+      'gamesession-quiznest': 'qngamesession',
+      'gamesession-eventduel': 'pvpgamesession',
+    };
+    return frontendToBackend[module] === key || module === key;
+  });
+
+  const ctrl = controllerMap[backendModule];
+  if (!ctrl?.restore) return response(res, 400, "Restore not implemented for this module");
+
+  for (const item of items) {
+    try {
+      await ctrl.restore({ params: { id: item._id } }, res, () => { });
+      restoredCount++;
+    } catch (error) {
+      console.error(`Error restoring item ${item._id}:`, error);
+    }
+  }
+
+  return response(res, 200, `Restored ${restoredCount} items from ${module}`, { restoredCount });
+});
+
+// Permanently delete all items of a module
+exports.permanentDeleteAllItems = asyncHandler(async (req, res) => {
+  const { module } = req.params;
+  const { deletedBy, startDate, endDate } = req.query;
+  const user = req.user;
+
+  const parseModuleFilter = (moduleKey) => {
+    if (moduleKey.includes('-')) {
+      const [baseModel, subModule] = moduleKey.split('-');
+      const conditions = {};
+      switch (moduleKey) {
+        case 'game-quiznest': conditions.mode = 'solo'; break;
+        case 'game-eventduel': conditions.mode = 'pvp'; break;
+        case 'event-eventreg': conditions.eventType = 'public'; break;
+        case 'event-checkin': conditions.eventType = 'employee'; break;
+      }
+      return { baseModel, conditions };
+    }
+    return { baseModel: moduleKey, conditions: {} };
+  };
+
+  const query = {};
+  if (deletedBy) query.deletedBy = deletedBy;
+  if (startDate || endDate) {
+    query.deletedAt = {};
+    if (startDate) query.deletedAt.$gte = new Date(startDate);
+    if (endDate) query.deletedAt.$lte = new Date(endDate);
+  }
+
+  if (user.role === "business") {
+    query.$or = [
+      { business: user.business },
+      { businessId: user.business },
+    ];
+  }
+
+  let items = [];
+  let deletedCount = 0;
+
+  if (module === 'qnquestion') {
+    const deletedQuestions = await getDeletedQuestionsFromGames(query, 'solo');
+
+    const gameQuestionMap = new Map();
+    deletedQuestions.forEach(question => {
+      if (!gameQuestionMap.has(question.gameId.toString())) {
+        gameQuestionMap.set(question.gameId.toString(), []);
+      }
+      gameQuestionMap.get(question.gameId.toString()).push(question._id.toString());
+    });
+
+    for (const [gameId, questionIds] of gameQuestionMap) {
+      await Game.updateOne(
+        { _id: gameId },
+        { $pull: { questions: { _id: { $in: questionIds } } } }
+      );
+      deletedCount += questionIds.length;
+    }
+
+    return response(res, 200, `Permanently deleted ${deletedCount} items from ${module}`, { deletedCount });
+  }
+
+  if (module === 'pvpquestion') {
+    const deletedQuestions = await getDeletedQuestionsFromGames(query, 'pvp');
+
+    const gameQuestionMap = new Map();
+    deletedQuestions.forEach(question => {
+      if (!gameQuestionMap.has(question.gameId.toString())) {
+        gameQuestionMap.set(question.gameId.toString(), []);
+      }
+      gameQuestionMap.get(question.gameId.toString()).push(question._id.toString());
+    });
+
+    for (const [gameId, questionIds] of gameQuestionMap) {
+      await Game.updateOne(
+        { _id: gameId },
+        { $pull: { questions: { _id: { $in: questionIds } } } }
+      );
+      deletedCount += questionIds.length;
+    }
+
+    return response(res, 200, `Permanently deleted ${deletedCount} items from ${module}`, { deletedCount });
+  }
+
+  const { baseModel, conditions } = parseModuleFilter(module);
+  const M = models[baseModel?.toLowerCase()];
+  if (!M) return response(res, 400, "Invalid module");
+
+  const finalQuery = { ...query, ...conditions };
+
+  if (module === 'registration-eventreg' || module === 'registration-checkin') {
+    const allItems = await M.findDeleted(query).populate('eventId');
+    items = allItems.filter(item => {
+      if (!item.eventId) return false;
+      return module === 'registration-eventreg' ?
+        item.eventId.eventType === 'public' :
+        item.eventId.eventType === 'employee';
+    });
+  } else if (module === 'gamesession-quiznest' || module === 'gamesession-eventduel') {
+    const allItems = await M.findDeleted(query).populate('gameId');
+    items = allItems.filter(item => {
+      if (!item.gameId) return false;
+      return module === 'gamesession-quiznest' ?
+        item.gameId.mode === 'solo' :
+        item.gameId.mode === 'pvp';
+    });
+  } else {
+    items = await M.findDeleted(finalQuery);
+  }
+
+  const backendModule = Object.keys(controllerMap).find(key => {
+    const frontendToBackend = {
+      'business': 'business',
+      'event-checkin': 'checkinevent',
+      'registration-checkin': 'checkinregistration',
+      'event-eventreg': 'eventregevent',
+      'registration-eventreg': 'eventregregistration',
+      'game-quiznest': 'qngame',
+      'game-eventduel': 'pvpgame',
+      'gamesession-quiznest': 'qngamesession',
+      'gamesession-eventduel': 'pvpgamesession',
+    };
+    return frontendToBackend[module] === key || module === key;
+  });
+
+  const ctrl = controllerMap[backendModule];
+  if (!ctrl?.permanentDelete) return response(res, 400, "Permanent delete not implemented for this module");
+
+  let failedDeletions = [];
+
+  for (const item of items) {
+    try {
+      // For event-eventreg and checkin module, check registration dependency before deletion attempt
+      if (module === 'event-eventreg' || module === 'event-checkin') {
+        const registrationsCount = await Registration.countDocuments({ eventId: item._id });
+        if (registrationsCount > 0) {
+          failedDeletions.push({
+            id: item._id,
+            name: item.name,
+            reason: 'Cannot delete an event with existing registrations'
+          });
+          continue;
+        }
+      }
+
+      await ctrl.permanentDelete({ params: { id: item._id } }, res, () => { });
+      deletedCount++;
+    } catch (error) {
+      console.error(`Error deleting item ${item._id}:`, error);
+      failedDeletions.push({
+        id: item._id,
+        name: item.name,
+        reason: error.message || 'Unknown error'
+      });
+    }
+  }
+
+  // If all deletions failed due to dependencies, return appropriate error
+  if (deletedCount === 0 && failedDeletions.length > 0) {
+    const hasRegistrationErrors = failedDeletions.some(f =>
+      f.reason.includes('existing registrations')
+    );
+    if (hasRegistrationErrors) {
+      return response(res, 400, "Cannot delete events with existing registrations");
+    }
+    return response(res, 400, `Failed to delete items: ${failedDeletions[0].reason}`);
+  }
+
+  // If some succeeded and some failed, return partial success
+  if (failedDeletions.length > 0) {
+    return response(res, 200, `Partially completed: ${deletedCount} deleted, ${failedDeletions.length} failed`, {
+      deletedCount,
+      failedCount: failedDeletions.length,
+      failures: failedDeletions
+    });
+  }
+
+  return response(res, 200, `Permanently deleted ${deletedCount} items from ${module}`, { deletedCount });
+});
