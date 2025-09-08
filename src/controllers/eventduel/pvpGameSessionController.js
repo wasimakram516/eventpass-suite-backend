@@ -368,11 +368,11 @@ exports.resetGameSessions = asyncHandler(async (req, res) => {
   return response(res, 200, "All sessions and players moved to recycle bin");
 });
 
-exports.restoreAllGameSessions = asyncHandler(async (req, res) => {
+// Restore a single game session
+exports.restoreGameSession = asyncHandler(async (req, res) => {
   const { id } = req.params;
  
   if (!id) return response(res, 400, "Missing session ID in URL params");
-
 
   const session = await GameSession.findOne({ _id: id, isDeleted: true }).populate('gameId');
   if (!session) return response(res, 404, "Deleted session not found");
@@ -390,9 +390,43 @@ exports.restoreAllGameSessions = asyncHandler(async (req, res) => {
   }
 
   return response(res, 200, "Game session and associated players restored");
-
 });
-exports.permanentDeleteSession = asyncHandler(async (req, res) => {
+// Restore all game sessions
+exports.restoreAllGameSessions = asyncHandler(async (req, res) => {
+  const sessions = await GameSession.aggregate([
+    { $match: { isDeleted: true } },
+    {
+      $lookup: {
+        from: "games",
+        localField: "gameId", 
+        foreignField: "_id",
+        as: "game",
+      },
+    },
+    { $unwind: "$game" },
+    { $match: { "game.mode": "pvp" } }, 
+  ]);
+
+  if (!sessions.length) {
+    return response(res, 404, "No PvP game sessions found in trash to restore");
+  }
+
+  for (const sessionData of sessions) {
+    const session = await GameSession.findById(sessionData._id);
+    await session.restore();
+
+    const playerIds = session.players.map(p => p.playerId);
+    const players = await Player.find({ _id: { $in: playerIds }, isDeleted: true });
+
+    for (const player of players) {
+      await player.restore();
+    }
+  }
+
+  return response(res, 200, `Restored ${sessions.length} game sessions`);
+});
+// Permanently delete a single game session
+exports.permanentDeleteGameSession = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const session = await GameSession.findOne({ _id: id, isDeleted: true });
@@ -408,6 +442,37 @@ exports.permanentDeleteSession = asyncHandler(async (req, res) => {
   await GameSession.deleteOne({ _id: id });
 
   return response(res, 200, "PvP session and associated players permanently deleted");
+});
+
+// Permanently delete all game sessions  
+exports.permanentDeleteAllGameSessions = asyncHandler(async (req, res) => {
+  const sessions = await GameSession.aggregate([
+    { $match: { isDeleted: true } },
+    {
+      $lookup: {
+        from: "games",
+        localField: "gameId",
+        foreignField: "_id", 
+        as: "game",
+      },
+    },
+    { $unwind: "$game" },
+    { $match: { "game.mode": "pvp" } }, 
+  ]);
+
+  if (!sessions.length) {
+    return response(res, 404, "No PvP game sessions found in trash to delete");
+  }
+
+  for (const sessionData of sessions) {
+    const playerIds = sessionData.players.map(p => p.playerId);
+    if (playerIds.length > 0) {
+      await Player.deleteMany({ _id: { $in: playerIds } });
+    }
+    await GameSession.deleteOne({ _id: sessionData._id });
+  }
+
+  return response(res, 200, `Permanently deleted ${sessions.length} game sessions`);
 });
 
 // Export all player results to Excel
