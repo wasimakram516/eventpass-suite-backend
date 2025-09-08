@@ -179,26 +179,19 @@ const moduleMapping = {
       restoreAll: qnGameController.restoreAllGames,
       permanentDeleteAll: qnGameController.permanentDeleteAllGames,
     },
-  },
-  "gamesession-quiznest": {
-    model: GameSession,
-    controller: {
-      restore: qnGameController.restoreGameSession,
-      permanentDelete: qnGameController.permanentDeleteGameSession,
-      restoreAll: qnGameController.restoreAllGameSessions,
-      permanentDeleteAll: qnGameController.permanentDeleteAllGameSessions,
-    },
+    condition: { mode: "solo" },
   },
   qnquestion: {
-    model: null,
+    model: Game,
     controller: {
       restore: qnQuestionController.restoreQuestion,
       permanentDelete: qnQuestionController.permanentDeleteQuestion,
       restoreAll: qnQuestionController.restoreAllQuestions,
       permanentDeleteAll: qnQuestionController.permanentDeleteAllQuestions,
     },
+    condition: { mode: "solo" },
+    customAggregation: true, // Flag to indicate we need custom aggregation for embedded questions
   },
-  qnplayer: { model: Player, controller: qnPlayerController },
 
   // EventDuel
   "game-eventduel": {
@@ -209,6 +202,7 @@ const moduleMapping = {
       restoreAll: pvpGameController.restoreAllGames,
       permanentDeleteAll: pvpGameController.permanentDeleteAllGames,
     },
+    condition: { mode: "pvp" },
   },
   "gamesession-eventduel": {
     model: GameSession,
@@ -219,6 +213,7 @@ const moduleMapping = {
       permanentDeleteAll:
         pvpGameSessionController.permanentDeleteAllGameSessions,
     },
+    condition: { "gameId.mode": "pvp" },
   },
   pvpquestion: {
     model: null,
@@ -267,3 +262,4 @@ const moduleMapping = {
 };
 
 module.exports = moduleMapping;
+
