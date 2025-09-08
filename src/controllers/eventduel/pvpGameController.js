@@ -145,7 +145,7 @@ exports.getGameBySlug = asyncHandler(async (req, res) => {
   return response(res, 200, "Game found", game);
 });
 
-// Soft delete PvP game
+// Delete Game
 exports.deleteGame = asyncHandler(async (req, res) => {
   const game = await Game.findById(req.params.id);
   if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
@@ -159,7 +159,7 @@ exports.deleteGame = asyncHandler(async (req, res) => {
   return response(res, 200, "PvP game moved to recycle bin");
 });
 
-// Restore PvP game
+// Restore Game
 exports.restoreGame = asyncHandler(async (req, res) => {
   const game = await Game.findOneDeleted({ _id: req.params.id, mode: "pvp" });
   if (!game) return response(res, 404, "Game not found in trash");
@@ -176,7 +176,7 @@ exports.restoreGame = asyncHandler(async (req, res) => {
   return response(res, 200, "PvP game restored", game);
 });
 
-// Permanently delete PvP game
+// Permanently delete Game
 exports.permanentDeleteGame = asyncHandler(async (req, res) => {
   const game = await Game.findOneDeleted({ _id: req.params.id, mode: "pvp" });
   if (!game) return response(res, 404, "Game not found in trash");
@@ -185,9 +185,58 @@ exports.permanentDeleteGame = asyncHandler(async (req, res) => {
   if (game.nameImage) await deleteImage(game.nameImage);
   if (game.backgroundImage) await deleteImage(game.backgroundImage);
 
-  await GameSession.deleteMany({ gameId: game._id });
-  await Player.deleteMany({ gameId: game._id });
+  await cascadePermanentDeleteGame(game._id);
 
   await game.deleteOne();
   return response(res, 200, "PvP game permanently deleted");
 });
+
+// Restore all games
+exports.restoreAllGames = asyncHandler(async (req, res) => {
+  const games = await Game.findDeleted({ mode: "pvp" });
+  if (!games.length) {
+    return response(res, 404, "No PvP games found in trash to restore");
+  }
+
+  for (const game of games) {
+    await game.restore();
+  }
+  return response(res, 200, `Restored ${games.length} games`);
+});
+
+// Permanent delete all games
+exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
+  const games = await Game.findDeleted({ mode: "pvp" });
+  if (!games.length) {
+    return response(res, 404, "No PvP games found in trash to delete");
+  }
+
+  for (const game of games) {
+    await cascadePermanentDeleteGame(game._id);
+
+    if (game.coverImage) await deleteImage(game.coverImage);
+    if (game.nameImage) await deleteImage(game.nameImage);
+    if (game.backgroundImage) await deleteImage(game.backgroundImage);
+
+    await game.deleteOne();
+  }
+
+  return response(res, 200, "All eligible games permanently deleted");
+});
+
+// Cascade permanent delete everything linked to a game
+async function cascadePermanentDeleteGame(gameId) {
+  const sessions = await GameSession.find({ gameId });
+  
+  if (sessions.length > 0) {
+    const playerIds = sessions.flatMap(session => 
+      session.players.map(p => p.playerId)
+    );
+
+    if (playerIds.length > 0) {
+      await Player.deleteMany({ _id: { $in: playerIds } });
+    }
+
+    await GameSession.deleteMany({ gameId });
+  }
+}

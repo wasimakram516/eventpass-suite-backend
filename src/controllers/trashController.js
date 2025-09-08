@@ -11,9 +11,27 @@ async function fetchDeletedItems({ model, query, condition, page, limit, customA
     return await fetchDeletedQuestions({ model, query, condition, page, limit });
   }
 
-  // Case: condition on nested field (e.g. eventId.eventType)
-  if (condition && Object.keys(condition).some((c) => c.includes("."))) {
-    const pipeline = [
+  // Case: condition on nested field (e.g. eventId.eventType or gameId.mode)
+ if (condition && Object.keys(condition).some((c) => c.includes("."))) {
+  let pipeline;
+  
+  if (Object.keys(condition).some(key => key.startsWith("gameId."))) {
+    pipeline = [
+      { $match: { isDeleted: true, ...query } },
+      {
+        $lookup: {
+          from: "games", 
+          localField: "gameId",
+          foreignField: "_id",
+          as: "game",
+        },
+      },
+      { $unwind: "$game" },
+      { $match: { "game.mode": condition["gameId.mode"] } }, 
+      { $sort: { deletedAt: -1 } },
+    ];
+  } else {
+    pipeline = [
       { $match: { isDeleted: true, ...query } },
       {
         $lookup: {
@@ -27,6 +45,7 @@ async function fetchDeletedItems({ model, query, condition, page, limit, customA
       { $match: condition }, // e.g. { "event.eventType": "public" }
       { $sort: { deletedAt: -1 } },
     ];
+  }
 
     const [items, totalResult] = await Promise.all([
       model.aggregate([
@@ -59,7 +78,7 @@ async function fetchDeletedItems({ model, query, condition, page, limit, customA
 }
 
 /**
-  function to fetch deleted questions from embedded arrays
+ *function to fetch deleted questions from embedded arrays
  */
 async function fetchDeletedQuestions({ model, query, condition, page, limit }) {
   const pipeline = [
