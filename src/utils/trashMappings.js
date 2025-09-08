@@ -210,19 +210,20 @@ const moduleMapping = {
       restore: pvpGameSessionController.restoreGameSession,
       permanentDelete: pvpGameSessionController.permanentDeleteGameSession,
       restoreAll: pvpGameSessionController.restoreAllGameSessions,
-      permanentDeleteAll:
-        pvpGameSessionController.permanentDeleteAllGameSessions,
+      permanentDeleteAll: pvpGameSessionController.permanentDeleteAllGameSessions,
     },
-    condition: { "gameId.mode": "pvp" },
+    condition: { "gameId.mode": "pvp" }, 
   },
   pvpquestion: {
-    model: null,
+    model: Game,
     controller: {
       restore: pvpQuestionController.restoreQuestion,
       permanentDelete: pvpQuestionController.permanentDeleteQuestion,
       restoreAll: pvpQuestionController.restoreAllQuestions,
       permanentDeleteAll: pvpQuestionController.permanentDeleteAllQuestions,
     },
+    condition: { mode: "pvp" },
+    customAggregation: true,
   },
 
   // StageQ
