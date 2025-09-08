@@ -6,7 +6,11 @@ const mongoose = require("mongoose");
 /**
  * Utility: build query / aggregation depending on condition type
  */
-async function fetchDeletedItems({ model, query, condition, page, limit }) {
+async function fetchDeletedItems({ model, query, condition, page, limit, customAggregation }) {
+  if (customAggregation && model.modelName === 'Game') {
+    return await fetchDeletedQuestions({ model, query, condition, page, limit });
+  }
+
   // Case: condition on nested field (e.g. eventId.eventType)
   if (condition && Object.keys(condition).some((c) => c.includes("."))) {
     const pipeline = [
@@ -55,20 +59,78 @@ async function fetchDeletedItems({ model, query, condition, page, limit }) {
 }
 
 /**
+  function to fetch deleted questions from embedded arrays
+ */
+async function fetchDeletedQuestions({ model, query, condition, page, limit }) {
+  const pipeline = [
+    { 
+      $match: { 
+        ...query, 
+        ...(condition || {}),
+        "questions.isDeleted": true 
+      } 
+    },
+    { $unwind: "$questions" },
+    { $match: { "questions.isDeleted": true } },
+    {
+      $project: {
+        _id: "$questions._id",
+        question: "$questions.question",
+        answers: "$questions.answers",
+        correctAnswerIndex: "$questions.correctAnswerIndex",
+        hint: "$questions.hint",
+        isDeleted: "$questions.isDeleted",
+        deletedAt: "$questions.deletedAt",
+        deletedBy: "$questions.deletedBy",
+        gameId: "$_id",
+        gameTitle: "$title",
+        gameSlug: "$slug",
+        createdAt: "$questions.createdAt",
+        updatedAt: "$questions.updatedAt"
+      }
+    },
+    { $sort: { deletedAt: -1 } }
+  ];
+
+  const [items, totalResult] = await Promise.all([
+    model.aggregate([
+      ...pipeline,
+      { $skip: (page - 1) * limit },
+      { $limit: limit },
+    ]),
+    model.aggregate([
+      ...pipeline,
+      { $count: "total" },
+    ]),
+  ]);
+
+  const total = totalResult[0]?.total || 0;
+  return { items, total };
+}
+
+/**
  * Count trashed items for each module
  */
 exports.getModuleCounts = asyncHandler(async (req, res) => {
   const counts = {};
 
   await Promise.all(
-    Object.entries(moduleMapping).map(async ([key, { model, controller, condition }]) => {
+    Object.entries(moduleMapping).map(async ([key, { model, controller, condition, customAggregation }]) => {
       try {
         if (controller?.countDeleted) {
           // Use custom counter if defined in controller
           counts[key] = await controller.countDeleted();
         } else if (model?.countDocumentsDeleted) {
-          // Use plugin’s countDocumentsDeleted
-          if (condition && Object.keys(condition).some((c) => c.includes("."))) {
+          if (customAggregation && model.modelName === 'Game') {
+            const result = await fetchDeletedQuestions({
+              model,
+              query: {},
+              condition,
+              page: 1,
+              limit: Number.MAX_SAFE_INTEGER,
+            });
+            counts[key] = result.total;
+          } else if (condition && Object.keys(condition).some((c) => c.includes("."))) {
             // Nested conditions via aggregation
             const result = await fetchDeletedItems({
               model,
@@ -114,13 +176,14 @@ exports.getTrash = asyncHandler(async (req, res) => {
     const entry = moduleMapping[key];
     if (!entry?.model) return;
 
-    const { model, condition } = entry;
+    const { model, condition, customAggregation } = entry;
     results[key] = await fetchDeletedItems({
       model,
       query,
       condition,
       page: Number(page),
       limit: Number(limit),
+      customAggregation,
     });
   };
 
