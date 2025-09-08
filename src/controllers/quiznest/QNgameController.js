@@ -1,6 +1,7 @@
 const Game = require("../../models/Game");
 const Business = require("../../models/Business");
 const Player = require("../../models/Player");
+const GameSession = require("../../models/GameSession");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
@@ -184,6 +185,9 @@ exports.permanentDeleteGame = asyncHandler(async (req, res) => {
   const game = await Game.findOneDeleted({ _id: req.params.id, mode: "solo" });
   if (!game) return response(res, 404, "Game not found in trash");
 
+  // Cascade permanent delete all related data
+  await cascadePermanentDeleteGame(game._id);
+
   if (game.coverImage) await deleteImage(game.coverImage);
   if (game.nameImage) await deleteImage(game.nameImage);
   if (game.backgroundImage) await deleteImage(game.backgroundImage);
@@ -191,3 +195,55 @@ exports.permanentDeleteGame = asyncHandler(async (req, res) => {
   await game.deleteOne();
   return response(res, 200, "Game permanently deleted");
 });
+
+// Restore all games
+exports.restoreAllGames = asyncHandler(async (req, res) => {
+  const games = await Game.findDeleted({ mode: "solo" });
+  if (!games.length) {
+    return response(res, 404, "No solo games found in trash to restore");
+  }
+
+  for (const game of games) {
+    await game.restore();
+  }
+  return response(res, 200, `Restored ${games.length} games`);
+});
+
+// Permanent delete all games
+exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
+  const games = await Game.findDeleted({ mode: "solo" });
+  if (!games.length) {
+    return response(res, 404, "No solo games found in trash to delete");
+  }
+
+  for (const game of games) {
+    await cascadePermanentDeleteGame(game._id);
+
+    if (game.coverImage) await deleteImage(game.coverImage);
+    if (game.nameImage) await deleteImage(game.nameImage);
+    if (game.backgroundImage) await deleteImage(game.backgroundImage);
+
+    await game.deleteOne();
+  }
+
+  return response(res, 200, "All eligible games permanently deleted");
+});
+
+
+
+/* Cascade permanent delete everything linked to a game */
+async function cascadePermanentDeleteGame(gameId) {
+  const sessions = await GameSession.find({ gameId });
+  
+  if (sessions.length > 0) {
+    const playerIds = sessions.flatMap(session => 
+      session.players.map(p => p.playerId)
+    );
+
+    if (playerIds.length > 0) {
+      await Player.deleteMany({ _id: { $in: playerIds } });
+    }
+
+    await GameSession.deleteMany({ gameId });
+  }
+}
