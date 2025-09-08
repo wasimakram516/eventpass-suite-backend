@@ -2,6 +2,7 @@ const Game = require("../../models/Game");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const XLSX = require("xlsx");
+const mongoose = require("mongoose");
 
 // Download sample Excel template
 exports.downloadSampleTemplate = asyncHandler(async (req, res) => {
@@ -234,4 +235,48 @@ exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
   await game.save();
 
   return response(res, 200, "Question permanently deleted");
+});
+
+// Restore all questions
+exports.restoreAllQuestions = asyncHandler(async (req, res) => {
+  const games = await Game.find({ mode: "solo" });
+  let restoredCount = 0;
+
+  for (const game of games) {
+    const deletedQuestions = game.questions.filter(q => q.isDeleted);
+    if (deletedQuestions.length > 0) {
+      for (const question of deletedQuestions) {
+        await question.restore();
+      }
+      await game.save();
+      restoredCount += deletedQuestions.length;
+    }
+  }
+
+  if (restoredCount === 0) {
+    return response(res, 404, "No deleted questions found in solo games to restore");
+  }
+
+  return response(res, 200, `Restored ${restoredCount} questions`);
+});
+
+// Permanent delete all questions
+exports.permanentDeleteAllQuestions = asyncHandler(async (req, res) => {
+  const games = await Game.find({ mode: "solo" });
+  let deletedCount = 0;
+
+  for (const game of games) {
+    const deletedQuestions = game.questions.filter(q => q.isDeleted);
+    if (deletedQuestions.length > 0) {
+      game.questions = game.questions.filter(q => !q.isDeleted);
+      await game.save();
+      deletedCount += deletedQuestions.length;
+    }
+  }
+
+  if (deletedCount === 0) {
+    return response(res, 404, "No deleted questions found in solo games to permanently delete");
+  }
+
+  return response(res, 200, `Permanently deleted ${deletedCount} questions`);
 });
