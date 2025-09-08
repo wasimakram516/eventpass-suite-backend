@@ -168,12 +168,12 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
   return response(res, 200, "Question updated", q);
 });
 
-// Soft delete a question (keep name as deleteQuestion)
+// Delete Question
 exports.deleteQuestion = asyncHandler(async (req, res) => {
   const { gameId, questionId } = req.params;
   
   const game = await Game.findById(gameId).notDeleted();
-  if (!game) return response(res, 404, "Game not found");
+  if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
   
   const questionIndex = game.questions.findIndex(q => q._id.toString() === questionId);
   if (questionIndex === -1) return response(res, 404, "Question not found");
@@ -184,13 +184,15 @@ exports.deleteQuestion = asyncHandler(async (req, res) => {
   await game.save();
   return response(res, 200, "Question moved to recycle bin");
 });
- 
+
+// Restore Question
 exports.restoreQuestion = asyncHandler(async (req, res) => {
   const { id } = req.params; 
 
   const game = await Game.findOne({
     "questions._id": id,
-    "questions.isDeleted": true
+    "questions.isDeleted": true,
+    "mode": "pvp"
   });
   
   if (!game) return response(res, 404, "Deleted question not found");
@@ -206,12 +208,14 @@ exports.restoreQuestion = asyncHandler(async (req, res) => {
   return response(res, 200, "Question restored successfully");
 });
 
+// Permanently delete Question
 exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
   const { id } = req.params; 
   
   const game = await Game.findOne({
     "questions._id": id,
-    "questions.isDeleted": true 
+    "questions.isDeleted": true,
+    "mode": "pvp"
   });
   
   if (!game) return response(res, 404, "Deleted question not found");
@@ -220,4 +224,48 @@ exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
   
   await game.save();
   return response(res, 200, "Question permanently deleted");
+});
+
+// Restore all questions
+exports.restoreAllQuestions = asyncHandler(async (req, res) => {
+  const games = await Game.find({ mode: "pvp" });
+  let restoredCount = 0;
+
+  for (const game of games) {
+    const deletedQuestions = game.questions.filter(q => q.isDeleted);
+    if (deletedQuestions.length > 0) {
+      for (const question of deletedQuestions) {
+        await question.restore();
+      }
+      await game.save();
+      restoredCount += deletedQuestions.length;
+    }
+  }
+
+  if (restoredCount === 0) {
+    return response(res, 404, "No deleted questions found in PvP games to restore");
+  }
+
+  return response(res, 200, `Restored ${restoredCount} questions`);
+});
+
+// Permanent delete all questions
+exports.permanentDeleteAllQuestions = asyncHandler(async (req, res) => {
+  const games = await Game.find({ mode: "pvp" });
+  let deletedCount = 0;
+
+  for (const game of games) {
+    const deletedQuestions = game.questions.filter(q => q.isDeleted);
+    if (deletedQuestions.length > 0) {
+      game.questions = game.questions.filter(q => !q.isDeleted);
+      await game.save();
+      deletedCount += deletedQuestions.length;
+    }
+  }
+
+  if (deletedCount === 0) {
+    return response(res, 404, "No deleted questions found in PvP games to permanently delete");
+  }
+
+  return response(res, 200, `Permanently deleted ${deletedCount} questions`);
 });
