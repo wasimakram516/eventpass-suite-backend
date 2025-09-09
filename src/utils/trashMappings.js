@@ -250,15 +250,6 @@ const moduleMapping = {
       permanentDeleteAll: formController.permanentDeleteAllForms,
     },
   },
-  surveyrecipient: {
-    model: SurveyRecipient,
-    controller: {
-      restore: recipientController.restoreRecipient,
-      permanentDelete: recipientController.permanentDeleteRecipient,
-      restoreAll: recipientController.restoreAllRecipients,
-      permanentDeleteAll: recipientController.permanentDeleteAllRecipients,
-    },
-  },
 
   // Walkins
   walkin: { model: WalkIn, controller: checkInRegistrationController },
