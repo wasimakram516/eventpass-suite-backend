@@ -115,6 +115,34 @@ exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
   return response(res, 200, "Question permanently deleted");
 });
 
+// Restore all questions
+exports.restoreAllQuestions = asyncHandler(async (req, res) => {
+  const questions = await EventQuestion.findDeleted();
+  if (!questions.length) {
+    return response(res, 404, "No questions found in trash to restore");
+  }
+
+  for (const question of questions) {
+    await question.restore();
+  }
+
+  return response(res, 200, `Restored ${questions.length} questions`);
+});
+
+// Permanently delete all questions
+exports.permanentDeleteAllQuestions = asyncHandler(async (req, res) => {
+  const questions = await EventQuestion.findDeleted();
+  if (!questions.length) {
+    return response(res, 404, "No questions found in trash to delete");
+  }
+
+  for (const question of questions) {
+    await question.deleteOne();
+  }
+
+  return response(res, 200, `Permanently deleted ${questions.length} questions`);
+});
+
 // PUT: Vote (add/remove)
 exports.voteQuestion = asyncHandler(async (req, res) => {
   const { questionId } = req.params;
