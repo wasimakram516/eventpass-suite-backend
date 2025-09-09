@@ -210,6 +210,7 @@ exports.restoreForm = asyncHandler(async (req, res) => {
 exports.permanentDeleteForm = asyncHandler(async (req, res) => {
   const form = await SurveyForm.findOneDeleted({ _id: req.params.id });
   if (!form) return response(res, 404, "Form not found in trash");
+  await cascadePermanentDeleteForm(form._id);
 
   for (const q of form.questions || []) {
     for (const o of q.options || []) {
@@ -219,11 +220,53 @@ exports.permanentDeleteForm = asyncHandler(async (req, res) => {
     }
   }
 
-  await Promise.all([
-    SurveyResponse.deleteMany({ formId: form._id }),
-    SurveyRecipient.deleteMany({ formId: form._id }),
-  ]);
-
   await form.deleteOne();
   return response(res, 200, "Survey form permanently deleted");
 });
+
+// Restore all forms
+exports.restoreAllForms = asyncHandler(async (req, res) => {
+  const forms = await SurveyForm.findDeleted();
+  if (!forms.length) {
+    return response(res, 404, "No survey forms found in trash to restore");
+  }
+
+  for (const form of forms) {
+    await form.restore();
+  }
+
+  return response(res, 200, `Restored ${forms.length} survey forms`);
+});
+
+// Permanently delete all forms
+exports.permanentDeleteAllForms = asyncHandler(async (req, res) => {
+  const forms = await SurveyForm.findDeleted();
+  if (!forms.length) {
+    return response(res, 404, "No survey forms found in trash to delete");
+  }
+
+  for (const form of forms) {
+    await cascadePermanentDeleteForm(form._id);
+
+    for (const q of form.questions || []) {
+      for (const o of q.options || []) {
+        if (o?.imageUrl) {
+          await deleteImage(o.imageUrl);
+        }
+      }
+    }
+
+    await form.deleteOne();
+  }
+
+  return response(res, 200, `Permanently deleted ${forms.length} survey forms`);
+});
+
+// Helper function to cascade delete form data
+async function cascadePermanentDeleteForm(formId) {
+  await Promise.all([
+    SurveyResponse.deleteMany({ formId }),
+    SurveyRecipient.deleteMany({ formId }),
+  ]);
+}
+
