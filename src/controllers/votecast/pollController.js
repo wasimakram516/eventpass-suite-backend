@@ -189,6 +189,34 @@ exports.permanentDeletePoll = asyncHandler(async (req, res) => {
   return response(res, 200, "Poll permanently deleted");
 });
 
+// Restore all polls
+exports.restoreAllPolls = asyncHandler(async (req, res) => {
+  const polls = await Poll.findDeleted();
+  if (!polls.length) {
+    return response(res, 404, "No polls found in trash to restore");
+  }
+
+  for (const poll of polls) {
+    await poll.restore();
+  }
+
+  return response(res, 200, `Restored ${polls.length} polls`);
+});
+
+// Permanently delete all polls
+exports.permanentDeleteAllPolls = asyncHandler(async (req, res) => {
+  const polls = await Poll.findDeleted();
+  if (!polls.length) {
+    return response(res, 404, "No polls found in trash to delete");
+  }
+
+  for (const poll of polls) {
+    await poll.deleteOne();
+  }
+
+  return response(res, 200, `Permanently deleted ${polls.length} polls`);
+});
+
 // POST clone poll
 exports.clonePoll = asyncHandler(async (req, res) => {
   const { id } = req.params;
