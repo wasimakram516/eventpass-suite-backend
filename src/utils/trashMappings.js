@@ -10,6 +10,7 @@ const Game = require("../models/Game");
 const GameSession = require("../models/GameSession");
 const Player = require("../models/Player");
 const SurveyForm = require("../models/SurveyForm");
+const SurveyRecipient = require("../models/SurveyRecipient");
 const SurveyResponse = require("../models/SurveyResponse");
 const Visitor = require("../models/Visitor");
 const WalkIn = require("../models/WalkIn");
@@ -36,6 +37,7 @@ const qnQuestionController = require("../controllers/quiznest/QNquestionControll
 const questionController = require("../controllers/stageq/questionController");
 const visitorController = require("../controllers/stageq/visitorController");
 const formController = require("../controllers/SurveyGuru/formController");
+const recipientController = require("../controllers/SurveyGuru/recipientController");
 const responseController = require("../controllers/SurveyGuru/responseController");
 const pvpGameController = require("../controllers/eventduel/pvpGameController");
 const pvpGameSessionController = require("../controllers/eventduel/pvpGameSessionController");
@@ -248,13 +250,13 @@ const moduleMapping = {
       permanentDeleteAll: formController.permanentDeleteAllForms,
     },
   },
-  surveyresponse: {
-    model: SurveyResponse,
+  surveyrecipient: {
+    model: SurveyRecipient,
     controller: {
-      restore: responseController.restoreResponse,
-      permanentDelete: responseController.permanentDeleteResponse,
-      restoreAll: responseController.restoreAllResponses,
-      permanentDeleteAll: responseController.permanentDeleteAllResponses,
+      restore: recipientController.restoreRecipient,
+      permanentDelete: recipientController.permanentDeleteRecipient,
+      restoreAll: recipientController.restoreAllRecipients,
+      permanentDeleteAll: recipientController.permanentDeleteAllRecipients,
     },
   },
 
