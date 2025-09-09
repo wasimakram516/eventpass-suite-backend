@@ -8,7 +8,6 @@ const Event = require("../../models/Event");
 const Registration = require("../../models/Registration");
 const SurveyForm = require("../../models/SurveyForm");
 const SurveyRecipient = require("../../models/SurveyRecipient");
-const SurveyResponse = require("../../models/SurveyResponse");
 const env = require("../../config/env");
 
 // recipientController.js
@@ -135,65 +134,8 @@ exports.deleteRecipient = asyncHandler(async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return response(res, 400, "Invalid recipient id");
   const rec = await SurveyRecipient.findById(id);
   if (!rec) return response(res, 404, "Recipient not found");
-  await rec.softDelete(req.user.id);
-  return response(res, 200, "Recipient moved to recycle bin");
-});
-
-// Restore recipient
-exports.restoreRecipient = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!mongoose.Types.ObjectId.isValid(id)) return response(res, 400, "Invalid recipient id");
-  
-  const recipient = await SurveyRecipient.findOneDeleted({ _id: id });
-  if (!recipient) return response(res, 404, "Recipient not found in trash");
-
-  await recipient.restore();
-  
-  return response(res, 200, "Recipient restored", recipient);
-});
-
-// Permanently delete recipient
-exports.permanentDeleteRecipient = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!mongoose.Types.ObjectId.isValid(id)) return response(res, 400, "Invalid recipient id");
-  
-  const recipient = await SurveyRecipient.findOneDeleted({ _id: id });
-  if (!recipient) return response(res, 404, "Recipient not found in trash");
-
-  await SurveyResponse.deleteMany({ recipientId: recipient._id });
-  
-  await recipient.deleteOne();
-  return response(res, 200, "Recipient permanently deleted");
-});
-
-// Restore all recipients
-exports.restoreAllRecipients = asyncHandler(async (req, res) => {
-  const recipients = await SurveyRecipient.findDeleted();
-  if (!recipients.length) {
-    return response(res, 404, "No recipients found in trash to restore");
-  }
-
-  for (const recipient of recipients) {
-    await recipient.restore();
-  }
-
-  return response(res, 200, `Restored ${recipients.length} recipients`);
-});
-
-// Permanently delete all recipients
-exports.permanentDeleteAllRecipients = asyncHandler(async (req, res) => {
-  const recipients = await SurveyRecipient.findDeleted();
-  if (!recipients.length) {
-    return response(res, 404, "No recipients found in trash to delete");
-  }
-
-  for (const recipient of recipients) {
-    await SurveyResponse.deleteMany({ recipientId: recipient._id });
-    
-    await recipient.deleteOne();
-  }
-
-  return response(res, 200, `Permanently deleted ${recipients.length} recipients`);
+  await rec.deleteOne();
+  return response(res, 200, "Recipient deleted");
 });
 
 // DELETE /surveyguru/forms/:formId/recipients
