@@ -9,7 +9,6 @@ const SpinWheelParticipant = require("../models/SpinWheelParticipant");
 const Game = require("../models/Game");
 const GameSession = require("../models/GameSession");
 const SurveyForm = require("../models/SurveyForm");
-const Visitor = require("../models/Visitor");
 const WalkIn = require("../models/WalkIn");
 const DisplayMedia = require("../models/DisplayMedia");
 const WallConfig = require("../models/WallConfig");
@@ -31,7 +30,6 @@ const usersController = require("../controllers/usersController");
 const qnGameController = require("../controllers/quiznest/QNgameController");
 const qnQuestionController = require("../controllers/quiznest/QNquestionController");
 const questionController = require("../controllers/stageq/questionController");
-const visitorController = require("../controllers/stageq/visitorController");
 const formController = require("../controllers/SurveyGuru/formController");
 const pvpGameController = require("../controllers/eventduel/pvpGameController");
 const pvpGameSessionController = require("../controllers/eventduel/pvpGameSessionController");
@@ -232,7 +230,6 @@ const moduleMapping = {
       permanentDeleteAll: questionController.permanentDeleteAllQuestions,
     },
   },
-  visitor: { model: Visitor, controller: visitorController },
 
   // SurveyGuru
   surveyform: {
