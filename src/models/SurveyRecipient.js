@@ -29,9 +29,6 @@ SurveyRecipientSchema.index(
   { unique: true, collation: { locale: "en", strength: 2 } }
 );
 
-// Soft delete support
-SurveyRecipientSchema.plugin(require("../db/plugins/softDelete"));
-
 module.exports =
   mongoose.models.SurveyRecipient ||
   mongoose.model("SurveyRecipient", SurveyRecipientSchema);
