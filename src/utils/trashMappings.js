@@ -8,9 +8,7 @@ const SpinWheel = require("../models/SpinWheel");
 const SpinWheelParticipant = require("../models/SpinWheelParticipant");
 const Game = require("../models/Game");
 const GameSession = require("../models/GameSession");
-const Player = require("../models/Player");
 const SurveyForm = require("../models/SurveyForm");
-const SurveyResponse = require("../models/SurveyResponse");
 const Visitor = require("../models/Visitor");
 const WalkIn = require("../models/WalkIn");
 const DisplayMedia = require("../models/DisplayMedia");
@@ -31,12 +29,10 @@ const wallConfigController = require("../controllers/mosaicwall/wallConfigContro
 const globalConfigController = require("../controllers/globalConfigController");
 const usersController = require("../controllers/usersController");
 const qnGameController = require("../controllers/quiznest/QNgameController");
-const qnPlayerController = require("../controllers/quiznest/QNplayerController");
 const qnQuestionController = require("../controllers/quiznest/QNquestionController");
 const questionController = require("../controllers/stageq/questionController");
 const visitorController = require("../controllers/stageq/visitorController");
 const formController = require("../controllers/SurveyGuru/formController");
-const responseController = require("../controllers/SurveyGuru/responseController");
 const pvpGameController = require("../controllers/eventduel/pvpGameController");
 const pvpGameSessionController = require("../controllers/eventduel/pvpGameSessionController");
 const pvpQuestionController = require("../controllers/eventduel/pvpQuestionController");
@@ -246,15 +242,6 @@ const moduleMapping = {
       permanentDelete: formController.permanentDeleteForm,
       restoreAll: formController.restoreAllForms,
       permanentDeleteAll: formController.permanentDeleteAllForms,
-    },
-  },
-  surveyresponse: {
-    model: SurveyResponse,
-    controller: {
-      restore: responseController.restoreResponse,
-      permanentDelete: responseController.permanentDeleteResponse,
-      restoreAll: responseController.restoreAllResponses,
-      permanentDeleteAll: responseController.permanentDeleteAllResponses,
     },
   },
 
