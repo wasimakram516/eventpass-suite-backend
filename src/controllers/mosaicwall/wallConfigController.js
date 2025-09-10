@@ -1,4 +1,5 @@
 const WallConfig = require("../../models/WallConfig");
+const DisplayMedia = require("../../models/DisplayMedia");
 const Business = require("../../models/Business");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
@@ -125,7 +126,7 @@ exports.deleteWallConfig = asyncHandler(async (req, res) => {
   return response(res, 200, "Wall configuration moved to recycle bin.");
 });
 
-exports.restoreWallConfig = asyncHandler(async (req, res) => {
+exports.restoreWall = asyncHandler(async (req, res) => {
   const config = await WallConfig.findOneDeleted({ _id: req.params.id });
   if (!config) return response(res, 404, "Wall configuration not found in trash.");
 
@@ -133,10 +134,41 @@ exports.restoreWallConfig = asyncHandler(async (req, res) => {
   return response(res, 200, "Wall configuration restored.", config);
 });
 
-exports.permanentDeleteWallConfig = asyncHandler(async (req, res) => {
+// Helper function to cascade permanent delete wall config and its display media
+const cascadePermanentDeleteWall = async (wallId) => {
+  const displayMedia = await DisplayMedia.find({ wall: wallId });
+  
+  for (const media of displayMedia) {
+    await media.deleteOne();
+  }
+  
+  await WallConfig.findByIdAndDelete(wallId);
+};
+
+exports.permanentDeleteWall = asyncHandler(async (req, res) => {
   const config = await WallConfig.findOneDeleted({ _id: req.params.id });
   if (!config) return response(res, 404, "Wall configuration not found in trash.");
 
-  await config.deleteOne();
+  await cascadePermanentDeleteWall(config._id);
   return response(res, 200, "Wall configuration permanently deleted.");
+});
+
+exports.restoreAllWalls = asyncHandler(async (req, res) => {
+  const deletedWalls = await WallConfig.findDeleted();
+  
+  for (const wall of deletedWalls) {
+    await wall.restore();
+  }
+  
+  return response(res, 200, `${deletedWalls.length} wall configurations restored.`);
+});
+
+exports.permanentDeleteAllWalls = asyncHandler(async (req, res) => {
+  const deletedWalls = await WallConfig.findDeleted();
+  
+  for (const wall of deletedWalls) {
+    await cascadePermanentDeleteWall(wall._id);
+  }
+  
+  return response(res, 200, `${deletedWalls.length} wall configurations permanently deleted.`);
 });
