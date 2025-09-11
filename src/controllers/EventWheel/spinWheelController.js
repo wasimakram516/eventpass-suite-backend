@@ -1,4 +1,5 @@
 const SpinWheel = require("../../models/SpinWheel");
+const SpinWheelParticipant = require("../../models/SpinWheelParticipant");
 const Business = require("../../models/Business");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
@@ -116,6 +117,17 @@ exports.restoreSpinWheel = asyncHandler(async (req, res) => {
   return response(res, 200, "SpinWheel restored", wheel);
 });
 
+// function to cascade permanent delete spin wheel and its participants
+const cascadePermanentDeleteSpinWheel = async (spinWheelId) => {
+  const participants = await SpinWheelParticipant.find({ spinWheel: spinWheelId });
+  
+  for (const participant of participants) {
+    await participant.deleteOne();
+  }
+  
+  await SpinWheel.findByIdAndDelete(spinWheelId);
+};
+
 // Permanently delete SpinWheel
 exports.permanentDeleteSpinWheel = asyncHandler(async (req, res) => {
   const wheel = await SpinWheel.findOneDeleted({ _id: req.params.id });
@@ -124,6 +136,28 @@ exports.permanentDeleteSpinWheel = asyncHandler(async (req, res) => {
   if (wheel.logoUrl) await deleteImage(wheel.logoUrl);
   if (wheel.backgroundUrl) await deleteImage(wheel.backgroundUrl);
 
-  await wheel.deleteOne();
+  await cascadePermanentDeleteSpinWheel(wheel._id);
   return response(res, 200, "SpinWheel permanently deleted");
+});
+
+exports.restoreAllSpinWheels = asyncHandler(async (req, res) => {
+  const deletedWheels = await SpinWheel.findDeleted();
+  
+  for (const wheel of deletedWheels) {
+    await wheel.restore();
+  }
+  
+  return response(res, 200, `${deletedWheels.length} spin wheels restored.`);
+});
+
+exports.permanentDeleteAllSpinWheels = asyncHandler(async (req, res) => {
+  const deletedWheels = await SpinWheel.findDeleted();
+  
+  for (const wheel of deletedWheels) {
+    if (wheel.logoUrl) await deleteImage(wheel.logoUrl);
+    if (wheel.backgroundUrl) await deleteImage(wheel.backgroundUrl);
+    await cascadePermanentDeleteSpinWheel(wheel._id);
+  }
+  
+  return response(res, 200, `${deletedWheels.length} spin wheels permanently deleted.`);
 });

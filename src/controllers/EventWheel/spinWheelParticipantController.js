@@ -140,6 +140,28 @@ const permanentDeleteParticipant = asyncHandler(async (req, res) => {
   return response(res, 200, "Participant permanently deleted");
 });
 
+// Restore all participants
+const restoreAllParticipants = asyncHandler(async (req, res) => {
+  const deletedParticipants = await SpinWheelParticipant.findDeleted();
+  
+  for (const participant of deletedParticipants) {
+    await participant.restore();
+  }
+  
+  return response(res, 200, `${deletedParticipants.length} participants restored.`);
+});
+
+// Permanently delete all participants
+const permanentDeleteAllParticipants = asyncHandler(async (req, res) => {
+  const deletedParticipants = await SpinWheelParticipant.findDeleted();
+  
+  for (const participant of deletedParticipants) {
+    await participant.deleteOne();
+  }
+  
+  return response(res, 200, `${deletedParticipants.length} participants permanently deleted.`);
+});
+
 // Public API to Get SpinWheel Details
 const getPublicSpinWheel = asyncHandler(async (req, res) => {
   const wheel = await SpinWheel.findById(req.params.id);
@@ -159,5 +181,7 @@ module.exports = {
   deleteParticipant,
   restoreParticipant,
   permanentDeleteParticipant,
+  restoreAllParticipants,
+  permanentDeleteAllParticipants,
   getPublicSpinWheel,
 };
