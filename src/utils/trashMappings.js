@@ -204,9 +204,10 @@ const moduleMapping = {
       restore: pvpGameSessionController.restoreGameSession,
       permanentDelete: pvpGameSessionController.permanentDeleteGameSession,
       restoreAll: pvpGameSessionController.restoreAllGameSessions,
-      permanentDeleteAll: pvpGameSessionController.permanentDeleteAllGameSessions,
+      permanentDeleteAll:
+        pvpGameSessionController.permanentDeleteAllGameSessions,
     },
-    condition: { "gameId.mode": "pvp" }, 
+    condition: { "gameId.mode": "pvp" },
   },
   pvpquestion: {
     model: Game,
@@ -247,4 +248,3 @@ const moduleMapping = {
 };
 
 module.exports = moduleMapping;
-

@@ -191,12 +191,10 @@ exports.getTrash = asyncHandler(async (req, res) => {
 
   const results = {};
 
-  const fetchModule = async (key) => {
-    const entry = moduleMapping[key];
-    if (!entry?.model) return;
-
-    const { model, condition, customAggregation } = entry;
-    results[key] = await fetchDeletedItems({
+  if (moduleKey && moduleMapping[moduleKey]) {
+    // Single module
+    const { model, condition, customAggregation } = moduleMapping[moduleKey];
+    results[moduleKey] = await fetchDeletedItems({
       model,
       query,
       condition,
@@ -204,12 +202,25 @@ exports.getTrash = asyncHandler(async (req, res) => {
       limit: Number(limit),
       customAggregation,
     });
-  };
-
-  if (moduleKey && moduleMapping[moduleKey]) {
-    await fetchModule(moduleKey);
-  } else {
-    await Promise.all(Object.keys(moduleMapping).map(fetchModule));
+  } else if (!moduleKey) {
+    // All modules (only when explicitly requested with no model param)
+    await Promise.all(
+      Object.entries(moduleMapping).map(async ([key, { model, condition, customAggregation }]) => {
+        try {
+          results[key] = await fetchDeletedItems({
+            model,
+            query,
+            condition,
+            page: Number(page),
+            limit: Number(limit),
+            customAggregation,
+          });
+        } catch (err) {
+          console.error(`Error fetching trash for ${key}:`, err.message);
+          results[key] = { items: [], total: 0 };
+        }
+      })
+    );
   }
 
   return response(res, 200, "Fetched trash items", { items: results });
