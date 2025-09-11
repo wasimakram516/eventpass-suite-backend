@@ -86,7 +86,7 @@ exports.deleteDisplayMedia = asyncHandler(async (req, res) => {
   return response(res, 200, "Media moved to recycle bin.");
 });
 
-exports.restoreDisplayMedia = asyncHandler(async (req, res) => {
+exports.restoreMedia = asyncHandler(async (req, res) => {
   const item = await DisplayMedia.findOneDeleted({ _id: req.params.id });
   if (!item) return response(res, 404, "Media not found in trash.");
 
@@ -99,7 +99,7 @@ exports.restoreDisplayMedia = asyncHandler(async (req, res) => {
   return response(res, 200, "Media restored.", item);
 });
 
-exports.permanentDeleteDisplayMedia = asyncHandler(async (req, res) => {
+exports.permanentDeleteMedia = asyncHandler(async (req, res) => {
   const item = await DisplayMedia.findOneDeleted({ _id: req.params.id });
   if (!item) return response(res, 404, "Media not found in trash.");
 
@@ -111,4 +111,25 @@ exports.permanentDeleteDisplayMedia = asyncHandler(async (req, res) => {
   emitToRoom(wall.slug, "mediaUpdate", updatedMediaList);
 
   return response(res, 200, "Media permanently deleted.");
+});
+
+exports.restoreAllMedia = asyncHandler(async (req, res) => {
+  const deletedMedia = await DisplayMedia.findDeleted();
+  
+  for (const media of deletedMedia) {
+    await media.restore();
+  }
+  
+  return response(res, 200, `${deletedMedia.length} media items restored.`);
+});
+
+exports.permanentDeleteAllMedia = asyncHandler(async (req, res) => {
+  const deletedMedia = await DisplayMedia.findDeleted();
+  
+  for (const media of deletedMedia) {
+    if (media.imageUrl) await deleteImage(media.imageUrl);
+    await media.deleteOne();
+  }
+  
+  return response(res, 200, `${deletedMedia.length} media items permanently deleted.`);
 });
