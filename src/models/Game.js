@@ -27,6 +27,8 @@ const gameSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+gameSchema.index({ businessId: 1, mode: 1, isDeleted: 1 });
+gameSchema.index({ createdAt: 1, isDeleted: 1 });
 
 // Soft delete support
 questionSchema.plugin(require("../db/plugins/softDelete"));

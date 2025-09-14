@@ -28,6 +28,7 @@ SurveyRecipientSchema.index(
   { formId: 1, email: 1 },
   { unique: true, collation: { locale: "en", strength: 2 } }
 );
+SurveyRecipientSchema.index({ businessId: 1, status: 1, createdAt: 1 });
 
 module.exports =
   mongoose.models.SurveyRecipient ||

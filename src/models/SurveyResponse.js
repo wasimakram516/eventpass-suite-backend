@@ -28,6 +28,8 @@ const SurveyResponseSchema = new mongoose.Schema(
 );
 
 SurveyResponseSchema.index({ formId: 1, "attendee.email": 1 });
+SurveyResponseSchema.index({ formId: 1, createdAt: 1, isDeleted: 1 });
+SurveyResponseSchema.index({ recipientId: 1, isDeleted: 1 });
 
 // Soft delete support
 SurveyResponseSchema.plugin(require("../db/plugins/softDelete"));

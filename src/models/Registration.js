@@ -37,6 +37,8 @@ RegistrationSchema.pre("validate", function (next) {
   next();
 });
 
+RegistrationSchema.index({ eventId: 1, isDeleted: 1 });
+
 // Soft delete support
 RegistrationSchema.plugin(require("../db/plugins/softDelete"));
 

@@ -18,6 +18,7 @@ const BusinessSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+BusinessSchema.index({ owner: 1, isDeleted: 1 });
 
 // Soft delete plugin
 BusinessSchema.plugin(require("../db/plugins/softDelete"));

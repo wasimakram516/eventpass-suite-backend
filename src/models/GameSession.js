@@ -25,6 +25,9 @@ const GameSessionSchema = new mongoose.Schema({
   endTime: { type: Date },
 
 }, { timestamps: true });
+GameSessionSchema.index({ status: 1, isDeleted: 1 });
+GameSessionSchema.index({ gameId: 1, isDeleted: 1 });
+GameSessionSchema.index({ createdAt: 1, isDeleted: 1 });
 
 // Soft delete support
 GameSessionSchema.plugin(require("../db/plugins/softDelete"));

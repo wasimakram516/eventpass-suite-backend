@@ -27,6 +27,7 @@ const SurveyFormSchema = new mongoose.Schema({
 
 // Unique per business (safer than global uniqueness)
 SurveyFormSchema.index({ businessId: 1, slug: 1 }, { unique: true });
+SurveyFormSchema.index({ businessId: 1, isDeleted: 1 });
 
 // Soft delete support
 SurveyFormSchema.plugin(require("../db/plugins/softDelete"));

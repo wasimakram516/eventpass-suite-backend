@@ -16,6 +16,8 @@ const DisplayMediaSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+DisplayMediaSchema.index({ wall: 1, isDeleted: 1, createdAt: 1 });
+
 // Soft delete support
 DisplayMediaSchema.plugin(require("../db/plugins/softDelete"));
 

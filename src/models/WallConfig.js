@@ -22,6 +22,8 @@ const WallConfigSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
+WallConfigSchema.index({ business: 1, isDeleted: 1 });
+
 // Soft delete support
 WallConfigSchema.plugin(require("../db/plugins/softDelete"));
 // Partial unique index for slug

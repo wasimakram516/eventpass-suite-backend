@@ -16,6 +16,8 @@ const VisitorSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+VisitorSchema.index({ isDeleted: 1 });
+VisitorSchema.index({ "eventHistory.business": 1, isDeleted: 1 });
 
 // Soft delete support
 VisitorSchema.plugin(require("../db/plugins/softDelete"));

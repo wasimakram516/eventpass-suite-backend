@@ -1,6 +1,3 @@
-// constants/modules.js
-
-// Keep i18n objects for FE; resolve only route + role-specific buttons server-side.
 const BASE = [
   {
     key: "quiznest",

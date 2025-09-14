@@ -6,6 +6,7 @@ const WalkInSchema = new mongoose.Schema({
   scannedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }, // staff who scanned QR code
   scannedAt: { type: Date, default: Date.now }
 });
+WalkInSchema.index({ eventId: 1, isDeleted: 1, scannedAt: -1 });
 
 // Soft delete support
 WalkInSchema.plugin(require("../db/plugins/softDelete"));

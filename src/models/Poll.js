@@ -13,6 +13,8 @@ const PollSchema = new mongoose.Schema({
   status: { type: String, enum: ['active', 'archived'], default: 'active' },
   type: { type: String, enum: ['options', 'slider'], default: 'options' },
 }, { timestamps: true });
+PollSchema.index({ business: 1, isDeleted: 1 });
+PollSchema.index({ createdAt: 1, isDeleted: 1 });
 
 // Soft delete support
 PollSchema.plugin(require('../db/plugins/softDelete'));
