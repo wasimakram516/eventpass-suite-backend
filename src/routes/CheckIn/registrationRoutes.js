@@ -5,6 +5,7 @@ const {
   getRegistrationsByEvent,
   deleteRegistration,
   getAllCheckInRegistrationsByEvent,
+  verifyRegistrationByToken,
 } = require("../../controllers/CheckIn/registrationController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
@@ -12,6 +13,9 @@ const CheckInAccess = [protect, checkPermission.checkin];
 
 // Create a new public registration (no auth required)
 router.post("/", createRegistration);
+
+// Verify registration via QR token (protected)
+router.get("/verify", CheckInAccess, verifyRegistrationByToken);
 
 // Get paginated registrations for a specific event (protected)
 router.get("/event/:slug", CheckInAccess, getRegistrationsByEvent);

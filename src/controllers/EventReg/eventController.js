@@ -421,27 +421,27 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   return response(res, 200, "Event permanently deleted");
 });
 
-// Permanent delete ALL events
+// PERMANENT DELETE ALL public events (only those without registrations)
 exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
   const events = await Event.findDeleted({ eventType: "public" });
   if (!events.length) {
     return response(res, 404, "No public events found in trash to delete");
   }
 
+  const deletableEventIds = [];
   for (const ev of events) {
-    const registrationsCount = await Registration.countDocuments({
-      eventId: ev._id,
-    });
-    if (registrationsCount > 0) {
-      continue; // skip events with registrations
+    const regCount = await Registration.countDocuments({ eventId: ev._id });
+    if (regCount === 0) {
+      deletableEventIds.push(ev._id);
     }
-
-    if (ev.logoUrl) await deleteImage(ev.logoUrl);
-    if (ev.brandingMediaUrl) await deleteImage(ev.brandingMediaUrl);
-    if (ev.agendaUrl) await deleteImage(ev.agendaUrl);
-
-    await ev.deleteOne();
   }
 
-  return response(res, 200, "All eligible events permanently deleted");
+  const result = await Event.deleteMany({ _id: { $in: deletableEventIds } });
+
+  return response(
+    res,
+    200,
+    `Permanently deleted ${result.deletedCount} public events (without registrations)`
+  );
 });
+

@@ -412,12 +412,21 @@ exports.permanentDeleteRegistration = asyncHandler(async (req, res) => {
   return response(res, 200, "Registration permanently deleted");
 });
 
-// Permanent delete ALL registrations
+// PERMANENT DELETE ALL public registrations (cascade walk-ins)
 exports.permanentDeleteAllRegistrations = asyncHandler(async (req, res) => {
+  const regs = await Registration.findDeleted();
+  if (!regs.length) {
+    return response(res, 404, "No registrations found in trash to delete");
+  }
+
+  const regIds = regs.map((r) => r._id);
+
+  await WalkIn.deleteMany({ registrationId: { $in: regIds } });
   const result = await Registration.deleteManyDeleted();
+
   return response(
     res,
     200,
-    `Permanently deleted ${result.deletedCount} registrations`
+    `Permanently deleted ${result.deletedCount} registrations and their walk-ins`
   );
 });

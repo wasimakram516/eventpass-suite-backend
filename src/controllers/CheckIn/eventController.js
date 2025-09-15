@@ -216,7 +216,7 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
   return response(res, 200, "Event moved to Recycle Bin");
 });
 
-// PERMANENT DELETE public event
+// PERMANENT DELETE employee event (cascade registrations + walk-ins)
 exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -224,16 +224,14 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   }
 
   const event = await Event.findById(id);
-  if (!event) return response(res, 404, "Event not found");
+  if (!event || event.eventType !== "employee") {
+    return response(res, 404, "Employee event not found");
+  }
 
-  // 🔒 Restrict if *any* registrations exist (active or trashed)
-  const totalRegs = await Registration.countDocuments({ eventId: event._id });
-  if (totalRegs > 0) {
-    return response(
-      res,
-      400,
-      "Cannot permanently delete an event with registrations in DB"
-    );
+  // Check if registrations exist
+  const regs = await Registration.find({ eventId: event._id });
+  if (regs.length > 0) {
+    return response(res, 400, "Cannot delete event with existing registrations");
   }
 
   if (event.logoUrl) await deleteImage(event.logoUrl);
@@ -241,7 +239,7 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   if (event.agendaUrl) await deleteImage(event.agendaUrl);
 
   await event.deleteOne();
-  return response(res, 200, "Event permanently deleted");
+  return response(res, 200, "Employee event permanently deleted");
 });
 
 // RESTORE ALL
@@ -263,19 +261,26 @@ exports.restoreAllEvents = asyncHandler(async (req, res) => {
   return response(res, 200, `Restored ${events.length} events`);
 });
 
-// PERMANENT DELETE ALL
+// PERMANENT DELETE ALL employee events (only those without registrations)
 exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
   const events = await Event.findDeleted({ eventType: "employee" });
-  if (!events.length) return response(res, 404, "No employee events in trash");
+  if (!events.length) {
+    return response(res, 404, "No employee events in trash");
+  }
 
-  let deletedCount = 0;
+  const deletableEventIds = [];
   for (const ev of events) {
     const regCount = await Registration.countDocuments({ eventId: ev._id });
     if (regCount === 0) {
-      await ev.deleteOne();
-      deletedCount++;
+      deletableEventIds.push(ev._id);
     }
   }
 
-  return response(res, 200, `Permanently deleted ${deletedCount} public events (without registrations)`);
+  const result = await Event.deleteMany({ _id: { $in: deletableEventIds } });
+
+  return response(
+    res,
+    200,
+    `Permanently deleted ${result.deletedCount} employee events (without registrations)`
+  );
 });
