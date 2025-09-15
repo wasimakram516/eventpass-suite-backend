@@ -370,7 +370,10 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
         },
       ]),
       Visitor.countDocuments(
-  isAdmin ? baseTrash : { ...baseTrash, "eventHistory.business": businessId }),
+        isAdmin
+          ? baseTrash
+          : { ...baseTrash, "eventHistory.business": businessId }
+      ),
       EventQuestion.aggregate([
         {
           $match: isAdmin
@@ -447,8 +450,11 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
       role: "staff",
     });
 
-    userStats = { staff: staffCount };
-    trashUserStats = { staff: trashStaffCount };
+    userStats = { admin: 0, business: 0, staff: staffCount };
+    trashUserStats = { admin: 0, business: 0, staff: trashStaffCount };
+
+    totalBusinesses = 0;
+    trashBusinesses = 0;
   }
 
   // ---------- MODULE RESPONSE ----------
