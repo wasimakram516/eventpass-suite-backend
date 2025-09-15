@@ -191,6 +191,7 @@ async function cascadeDeleteUser(userId) {
         {},
         { $pull: { eventHistory: { business: businessId } } }
       );
+      await Visitor.deleteMany({ "eventHistory.business": businessId });
 
       /** ===== SpinWheels ===== */
       const wheels = await SpinWheel.find({ business: businessId });
