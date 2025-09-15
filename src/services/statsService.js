@@ -450,8 +450,8 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
       role: "staff",
     });
 
-    userStats = { admin: 0, business: 0, staff: staffCount };
-    trashUserStats = { admin: 0, business: 0, staff: trashStaffCount };
+    userStats = { staff: staffCount };
+    trashUserStats = { staff: trashStaffCount };
 
     totalBusinesses = 0;
     trashBusinesses = 0;

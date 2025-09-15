@@ -19,6 +19,7 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
   }
 
   return response(res, 200, "Fetched dashboard metrics", {
+    scope,
     modules: metrics.modules,
     lastUpdated: metrics.lastUpdated,
   });
