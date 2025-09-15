@@ -93,7 +93,7 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
   const trashPublicWalkIns = trashWalkinCounts.find(r => r._id === "public")?.count || 0;
   const trashEmployeeWalkIns = trashWalkinCounts.find(r => r._id === "employee")?.count || 0;
 
-  // ---------- GAMES & PLAYERS ----------
+  // ---------- GAMES ----------
   const [gameCounts, trashGameCounts] = await Promise.all([
     Game.aggregate([
       { $match: isAdmin ? baseActive : { ...baseActive, businessId } },
@@ -105,32 +105,29 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
     ]),
   ]);
 
-  const [playerCounts, trashPlayerCounts] = await Promise.all([
-    Player.aggregate([
-      { $match: baseActive },
-      { $lookup: { from: "games", localField: "gameId", foreignField: "_id", as: "game" } },
-      { $unwind: "$game" },
-      { $match: isAdmin ? {} : { "game.businessId": businessId } },
-      { $group: { _id: "$game.mode", count: { $sum: 1 } } },
-    ]),
-    Player.aggregate([
-      { $match: baseTrash },
-      { $lookup: { from: "games", localField: "gameId", foreignField: "_id", as: "game" } },
-      { $unwind: "$game" },
-      { $match: isAdmin ? {} : { "game.businessId": businessId } },
-      { $group: { _id: "$game.mode", count: { $sum: 1 } } },
-    ]),
-  ]);
-
   const soloGames = gameCounts.find(g => g._id === "solo")?.count || 0;
   const pvpGames = gameCounts.find(g => g._id === "pvp")?.count || 0;
   const trashSoloGames = trashGameCounts.find(g => g._id === "solo")?.count || 0;
   const trashPvpGames = trashGameCounts.find(g => g._id === "pvp")?.count || 0;
 
-  const soloPlayers = playerCounts.find(p => p._id === "solo")?.count || 0;
-  const pvpPlayers = playerCounts.find(p => p._id === "pvp")?.count || 0;
-  const trashSoloPlayers = trashPlayerCounts.find(p => p._id === "solo")?.count || 0;
-  const trashPvpPlayers = trashPlayerCounts.find(p => p._id === "pvp")?.count || 0;
+  // ---------- SOLO PLAYERS (from GameSessions) ----------
+  const soloPlayerAgg = await GameSession.aggregate([
+    { $lookup: { from: "games", localField: "gameId", foreignField: "_id", as: "game" } },
+    { $unwind: "$game" },
+    { $match: { "game.mode": "solo", ...(isAdmin ? baseActive : { ...baseActive, "game.businessId": businessId }) } },
+    { $unwind: "$players" },
+    { $group: { _id: null, count: { $sum: 1 } } }
+  ]);
+  const soloPlayers = soloPlayerAgg[0]?.count || 0;
+
+  // ---------- PVP SESSIONS ----------
+  const pvpSessionAgg = await GameSession.aggregate([
+    { $lookup: { from: "games", localField: "gameId", foreignField: "_id", as: "game" } },
+    { $unwind: "$game" },
+    { $match: { "game.mode": "pvp", ...(isAdmin ? baseActive : { ...baseActive, "game.businessId": businessId }) } },
+    { $group: { _id: null, count: { $sum: 1 } } }
+  ]);
+  const pvpSessions = pvpSessionAgg[0]?.count || 0;
 
   // ---------- SURVEYS / POLLS / SPINWHEELS ----------
   const [
@@ -140,10 +137,10 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
     trashSurveyForms,
     totalSurveyResponses,
     trashSurveyResponses,
+    totalSurveyRecipients,
+    trashSurveyRecipients,
     totalSpinWheels,
-    trashSpinWheels,
-    totalSpinWheelParticipants,
-    trashSpinWheelParticipants,
+    trashSpinWheels
   ] = await Promise.all([
     Poll.countDocuments(isAdmin ? baseActive : { ...baseActive, business: businessId }),
     Poll.countDocuments(isAdmin ? baseTrash : { ...baseTrash, business: businessId }),
@@ -151,11 +148,20 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
     SurveyForm.countDocuments(isAdmin ? baseTrash : { ...baseTrash, businessId }),
     SurveyResponse.countDocuments(isAdmin ? {} : { businessId }),
     SurveyResponse.countDocuments(baseTrash),
+    SurveyRecipient.countDocuments(isAdmin ? {} : { businessId }),
+    SurveyRecipient.countDocuments(baseTrash),
     SpinWheel.countDocuments(isAdmin ? baseActive : { ...baseActive, business: businessId }),
-    SpinWheel.countDocuments(isAdmin ? baseTrash : { ...baseTrash, businessId }),
-    SpinWheelParticipant.countDocuments(baseActive),
-    SpinWheelParticipant.countDocuments(baseTrash),
+    SpinWheel.countDocuments(isAdmin ? baseTrash : { ...baseTrash, business: businessId })
   ]);
+
+  // SpinWheel participants aggregated by wheel
+  const participantsByWheel = await SpinWheelParticipant.aggregate([
+    { $lookup: { from: "spinwheels", localField: "wheelId", foreignField: "_id", as: "wheel" } },
+    { $unwind: "$wheel" },
+    { $match: isAdmin ? baseActive : { ...baseActive, "wheel.business": businessId, "wheel.isDeleted": { $ne: true } } },
+    { $group: { _id: "$wheel._id", participants: { $sum: 1 } } }
+  ]);
+  const totalSpinWheelParticipants = participantsByWheel.reduce((acc, w) => acc + w.participants, 0);
 
   // ---------- VISITORS / QUESTIONS ----------
   const [visitorStats, trashVisitors, questionStats, trashQuestions] = await Promise.all([
@@ -209,14 +215,14 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
 
   // ---------- MODULE RESPONSE ----------
   const modules = {
-    quiznest: { totals: { games: soloGames, players: soloPlayers }, trash: { games: trashSoloGames, players: trashSoloPlayers } },
-    eventduel: { totals: { games: pvpGames, players: pvpPlayers }, trash: { games: trashPvpGames, players: trashPvpPlayers } },
+    quiznest: { totals: { games: soloGames, players: soloPlayers }, trash: { games: trashSoloGames, players: 0 } },
+    eventduel: { totals: { games: pvpGames, sessions: pvpSessions }, trash: { games: trashPvpGames, sessions: 0 } },
     eventreg: { totals: { events: publicEventsCount, registrations: publicRegs, walkins: publicWalkIns }, trash: { events: trashPublicEvents, registrations: trashPublicRegs, walkins: trashPublicWalkIns } },
     checkin: { totals: { events: employeeEventsCount, registrations: employeeRegs, walkins: employeeWalkIns }, trash: { events: trashEmployeeEvents, registrations: trashEmployeeRegs, walkins: trashEmployeeWalkIns } },
     stageq: { totals: { ...eventQuestionStats, visitors: visitorStats[0]?.total || 0 }, trash: { questions: trashQuestions, visitors: trashVisitors } },
     mosaicwall: { totals: { media: trashDisplayMedia, configs: trashWallConfigs }, trash: { media: trashDisplayMedia, configs: trashWallConfigs } },
-    eventwheel: { totals: { wheels: totalSpinWheels, participants: totalSpinWheelParticipants }, trash: { wheels: trashSpinWheels, participants: trashSpinWheelParticipants } },
-    surveyguru: { totals: { forms: totalSurveyForms, responses: totalSurveyResponses }, trash: { forms: trashSurveyForms, responses: trashSurveyResponses } },
+    eventwheel: { totals: { wheels: totalSpinWheels, participants: totalSpinWheelParticipants }, trash: { wheels: trashSpinWheels, participants: 0 } },
+    surveyguru: { totals: { forms: totalSurveyForms, responses: totalSurveyResponses, recipients: totalSurveyRecipients }, trash: { forms: trashSurveyForms, responses: trashSurveyResponses, recipients: trashSurveyRecipients } },
     votecast: { totals: { polls: totalPolls }, trash: { polls: trashPolls } },
     global: { totals: { businesses: totalBusinesses, users: userStats }, trash: { businesses: trashBusinesses, users: trashUsers } },
   };
