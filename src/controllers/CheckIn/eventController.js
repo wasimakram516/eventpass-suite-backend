@@ -65,7 +65,7 @@ exports.getEventById = asyncHandler(async (req, res) => {
 
 // CREATE employee event
 exports.createEvent = asyncHandler(async (req, res) => {
-  const { name, slug, startDate, endDate, venue, description, showQrAfterRegistration } = req.body;
+  const { name, slug, startDate, endDate, venue, description,businessSlug, showQrAfterRegistration } = req.body;
   let { capacity } = req.body;
 
   if (!name || !slug || !startDate || !endDate || !venue || !businessSlug) {
