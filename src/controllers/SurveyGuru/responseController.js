@@ -6,6 +6,7 @@ const XLSX = require("xlsx");
 const SurveyResponse = require("../../models/SurveyResponse");
 const SurveyRecipient = require("../../models/SurveyRecipient");
 const SurveyForm = require("../../models/SurveyForm");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // PUBLIC: submit response by slug, optional ?token= to link a recipient
 exports.submitResponseBySlug = asyncHandler(async (req, res) => {
@@ -35,6 +36,11 @@ exports.submitResponseBySlug = asyncHandler(async (req, res) => {
     await recipient.save();
   }
 
+  // Fire background recompute
+  recomputeAndEmit(form.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 201, "Survey response submitted", { _id: saved._id });
 });
 
@@ -46,7 +52,10 @@ exports.listResponsesByForm = asyncHandler(async (req, res) => {
   }
 
   const rows = await SurveyResponse.find({ formId })
-    .populate("recipientId", "fullName email company status token respondedAt createdAt")
+    .populate(
+      "recipientId",
+      "fullName email company status token respondedAt createdAt"
+    )
     .sort({ createdAt: -1 })
     .lean();
 
@@ -75,7 +84,10 @@ exports.exportResponsesCsv = asyncHandler(async (req, res) => {
 
   // Fetch responses with recipient info populated
   const rowsRaw = await SurveyResponse.find({ formId })
-    .populate("recipientId", "fullName email company status token respondedAt createdAt")
+    .populate(
+      "recipientId",
+      "fullName email company status token respondedAt createdAt"
+    )
     .sort({ createdAt: 1 })
     .lean();
 
@@ -90,7 +102,9 @@ exports.exportResponsesCsv = asyncHandler(async (req, res) => {
       "Attendee Name": r.attendee?.name || "",
       "Attendee Email": r.attendee?.email || "",
       "Attendee Company": r.attendee?.company || "",
-      "Submitted At": r.submittedAt ? new Date(r.submittedAt).toISOString() : "",
+      "Submitted At": r.submittedAt
+        ? new Date(r.submittedAt).toISOString()
+        : "",
     };
 
     // Original recipient info (if available)
@@ -133,7 +147,9 @@ exports.exportResponsesCsv = asyncHandler(async (req, res) => {
           val = String(ans.number);
         }
       }
-      const headerLabel = (q.label || `Q${idx + 1}`).replace(/\s+/g, " ").trim();
+      const headerLabel = (q.label || `Q${idx + 1}`)
+        .replace(/\s+/g, " ")
+        .trim();
       row[headerLabel] = val;
     });
 

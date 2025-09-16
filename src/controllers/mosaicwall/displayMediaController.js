@@ -5,10 +5,12 @@ const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
 const { deleteImage } = require("../../config/cloudinary");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const { emitToRoom } = require("../../utils/socketUtils");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // Get all media
 exports.getDisplayMedia = asyncHandler(async (req, res) => {
-  const items = await DisplayMedia.find().notDeleted()
+  const items = await DisplayMedia.find()
+    .notDeleted()
     .sort({ createdAt: -1 })
     .populate("wall");
   return response(
@@ -21,7 +23,9 @@ exports.getDisplayMedia = asyncHandler(async (req, res) => {
 
 // Get one media item by ID
 exports.getMediaById = asyncHandler(async (req, res) => {
-  const item = await DisplayMedia.findById(req.params.id).notDeleted().populate("wall");
+  const item = await DisplayMedia.findById(req.params.id)
+    .notDeleted()
+    .populate("wall");
   if (!item) return response(res, 404, "Media not found.");
   return response(res, 200, "Media retrieved.", item);
 });
@@ -45,8 +49,15 @@ exports.createDisplayMedia = asyncHandler(async (req, res) => {
     wall: wall._id,
   });
 
-  const updatedMediaList = await DisplayMedia.find({ wall: wall._id }).sort({ createdAt: -1 });
+  const updatedMediaList = await DisplayMedia.find({ wall: wall._id }).sort({
+    createdAt: -1,
+  });
   emitToRoom(wall.slug, "mediaUpdate", updatedMediaList);
+
+  // Fire background recompute
+  recomputeAndEmit(wall.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 201, "Media created successfully.", media);
 });
@@ -60,15 +71,25 @@ exports.updateDisplayMedia = asyncHandler(async (req, res) => {
 
   if (req.file) {
     await deleteImage(item.imageUrl);
-    const uploaded = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+    const uploaded = await uploadToCloudinary(
+      req.file.buffer,
+      req.file.mimetype
+    );
     item.imageUrl = uploaded.secure_url;
   }
 
   await item.save();
 
   const wall = await WallConfig.findById(item.wall);
-  const updatedMediaList = await DisplayMedia.find({ wall: wall._id }).sort({ createdAt: -1 });
+  const updatedMediaList = await DisplayMedia.find({ wall: wall._id }).sort({
+    createdAt: -1,
+  });
   emitToRoom(wall.slug, "mediaUpdate", updatedMediaList);
+
+  // Fire background recompute
+  recomputeAndEmit(wall.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, "Media updated successfully.", item);
 });
@@ -80,8 +101,16 @@ exports.deleteDisplayMedia = asyncHandler(async (req, res) => {
   await item.softDelete(req.user.id);
 
   const wall = await WallConfig.findById(item.wall);
-  const updatedMediaList = await DisplayMedia.find({ wall: wall._id, isDeleted: false }).sort({ createdAt: -1 });
+  const updatedMediaList = await DisplayMedia.find({
+    wall: wall._id,
+    isDeleted: false,
+  }).sort({ createdAt: -1 });
   emitToRoom(wall.slug, "mediaUpdate", updatedMediaList);
+
+  // Fire background recompute
+  recomputeAndEmit(wall.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, "Media moved to recycle bin.");
 });
@@ -93,8 +122,16 @@ exports.restoreMedia = asyncHandler(async (req, res) => {
   await item.restore();
 
   const wall = await WallConfig.findById(item.wall);
-  const updatedMediaList = await DisplayMedia.find({ wall: wall._id, isDeleted: false }).sort({ createdAt: -1 });
+  const updatedMediaList = await DisplayMedia.find({
+    wall: wall._id,
+    isDeleted: false,
+  }).sort({ createdAt: -1 });
   emitToRoom(wall.slug, "mediaUpdate", updatedMediaList);
+
+  // Fire background recompute
+  recomputeAndEmit(wall.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, "Media restored.", item);
 });
@@ -107,29 +144,51 @@ exports.permanentDeleteMedia = asyncHandler(async (req, res) => {
   await item.deleteOne();
 
   const wall = await WallConfig.findById(item.wall);
-  const updatedMediaList = await DisplayMedia.find({ wall: wall._id, isDeleted: false }).sort({ createdAt: -1 });
+  const updatedMediaList = await DisplayMedia.find({
+    wall: wall._id,
+    isDeleted: false,
+  }).sort({ createdAt: -1 });
   emitToRoom(wall.slug, "mediaUpdate", updatedMediaList);
+
+  // Fire background recompute
+  recomputeAndEmit(wall.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, "Media permanently deleted.");
 });
 
 exports.restoreAllMedia = asyncHandler(async (req, res) => {
   const deletedMedia = await DisplayMedia.findDeleted();
-  
+
   for (const media of deletedMedia) {
     await media.restore();
   }
-  
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, `${deletedMedia.length} media items restored.`);
 });
 
 exports.permanentDeleteAllMedia = asyncHandler(async (req, res) => {
   const deletedMedia = await DisplayMedia.findDeleted();
-  
+
   for (const media of deletedMedia) {
     if (media.imageUrl) await deleteImage(media.imageUrl);
     await media.deleteOne();
   }
-  
-  return response(res, 200, `${deletedMedia.length} media items permanently deleted.`);
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(
+    res,
+    200,
+    `${deletedMedia.length} media items permanently deleted.`
+  );
 });

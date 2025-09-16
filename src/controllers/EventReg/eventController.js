@@ -7,6 +7,7 @@ const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
 const { deleteImage } = require("../../config/cloudinary");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
 const response = require("../../utils/response");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // Get all events for a business
 exports.getEventDetails = asyncHandler(async (req, res) => {
@@ -211,12 +212,17 @@ exports.createEvent = asyncHandler(async (req, res) => {
     description,
     logoUrl,
     brandingMediaUrl,
-    agendaUrl, 
+    agendaUrl,
     capacity,
     businessId,
     formFields: parsedFormFields,
     showQrAfterRegistration,
   });
+
+  // Fire background recompute
+  recomputeAndEmit(businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 201, "Event created successfully", newEvent);
 });
@@ -349,6 +355,11 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     new: true,
   });
 
+  // Fire background recompute
+  recomputeAndEmit(updatedEvent.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Event updated successfully", updatedEvent);
 });
 
@@ -365,7 +376,13 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
     return response(res, 404, "Public event not found");
   }
 
+  const businessId = event.businessId;
   await event.softDelete(req.user.id);
+
+  // Fire background recompute
+  recomputeAndEmit(businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
   return response(res, 200, "Event moved to recycle bin");
 });
 
@@ -378,6 +395,11 @@ exports.restoreEvent = asyncHandler(async (req, res) => {
   if (!event) return response(res, 404, "Event not found in trash");
 
   await event.restore();
+
+  // Fire background recompute
+  recomputeAndEmit(event.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
   return response(res, 200, "Event restored successfully", event);
 });
 
@@ -391,6 +413,12 @@ exports.restoreAllEvents = asyncHandler(async (req, res) => {
   for (const ev of events) {
     await ev.restore();
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, `Restored ${events.length} events`);
 });
 
@@ -417,7 +445,14 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   if (event.brandingMediaUrl) await deleteImage(event.brandingMediaUrl);
   if (event.agendaUrl) await deleteImage(event.agendaUrl);
 
+  const businessId = event.businessId;
   await event.deleteOne();
+
+  // Fire background recompute
+  recomputeAndEmit(businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Event permanently deleted");
 });
 
@@ -438,10 +473,14 @@ exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
 
   const result = await Event.deleteMany({ _id: { $in: deletableEventIds } });
 
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(
     res,
     200,
     `Permanently deleted ${result.deletedCount} public events (without registrations)`
   );
 });
-

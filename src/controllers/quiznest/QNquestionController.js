@@ -2,7 +2,7 @@ const Game = require("../../models/Game");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const XLSX = require("xlsx");
-const mongoose = require("mongoose");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // Download sample Excel template
 exports.downloadSampleTemplate = asyncHandler(async (req, res) => {
@@ -77,7 +77,11 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
     for (let i = 1; i <= choicesCount; i++) {
       const optionKey = `Option${i}`;
       const value = row[optionKey];
-      if (value === undefined || value === null || value.toString().trim() === "") {
+      if (
+        value === undefined ||
+        value === null ||
+        value.toString().trim() === ""
+      ) {
         throw new Error(
           `Row "${questionText}": Missing or invalid ${optionKey}`
         );
@@ -114,6 +118,11 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
   game.questions = questions;
   await game.save();
 
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Questions uploaded successfully", {
     count: questions.length,
   });
@@ -124,7 +133,9 @@ exports.getQuestions = asyncHandler(async (req, res) => {
   const game = await Game.findById(req.params.gameId).notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
-  const activeQuestions = game.questions.filter(question => !question.isDeleted);
+  const activeQuestions = game.questions.filter(
+    (question) => !question.isDeleted
+  );
   return response(res, 200, "Questions retrieved", activeQuestions);
 });
 
@@ -156,6 +167,11 @@ exports.addQuestion = asyncHandler(async (req, res) => {
 
   await game.save();
 
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 201, "Question added", game.questions.at(-1));
 });
 
@@ -183,6 +199,10 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
   q.hint = hint ?? q.hint; // update hint if provided
 
   await game.save();
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
   return response(res, 200, "Question updated", q);
 });
 
@@ -196,35 +216,48 @@ exports.deleteQuestion = asyncHandler(async (req, res) => {
   await q.softDelete(req.user.id);
   await game.save();
 
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Question moved to recycle bin");
 });
 
 exports.restoreQuestion = asyncHandler(async (req, res) => {
-  const { id } = req.params; 
+  const { id } = req.params;
   const game = await Game.findOne({
     "questions._id": id,
     "questions.isDeleted": true,
-    "mode": "solo" 
+    mode: "solo",
   });
-  if (!game) return response(res, 404, "Deleted question not found in solo games");
+  if (!game)
+    return response(res, 404, "Deleted question not found in solo games");
 
   const q = game.questions.id(id);
-  if (!q || !q.isDeleted) return response(res, 404, "Question not found in trash");
+  if (!q || !q.isDeleted)
+    return response(res, 404, "Question not found in trash");
 
   await q.restore();
   await game.save();
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, "Question restored", q);
 });
 
 exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
-  const { id } = req.params; 
+  const { id } = req.params;
   const game = await Game.findOne({
     "questions._id": id,
     "questions.isDeleted": true,
-    "mode": "solo"
+    mode: "solo",
   });
-  if (!game) return response(res, 404, "Deleted question not found in solo games");
+  if (!game)
+    return response(res, 404, "Deleted question not found in solo games");
 
   const questionIndex = game.questions.findIndex(
     (q) => q._id.toString() === id
@@ -233,6 +266,11 @@ exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
 
   game.questions.splice(questionIndex, 1);
   await game.save();
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, "Question permanently deleted");
 });
@@ -243,7 +281,7 @@ exports.restoreAllQuestions = asyncHandler(async (req, res) => {
   let restoredCount = 0;
 
   for (const game of games) {
-    const deletedQuestions = game.questions.filter(q => q.isDeleted);
+    const deletedQuestions = game.questions.filter((q) => q.isDeleted);
     if (deletedQuestions.length > 0) {
       for (const question of deletedQuestions) {
         await question.restore();
@@ -254,8 +292,17 @@ exports.restoreAllQuestions = asyncHandler(async (req, res) => {
   }
 
   if (restoredCount === 0) {
-    return response(res, 404, "No deleted questions found in solo games to restore");
+    return response(
+      res,
+      404,
+      "No deleted questions found in solo games to restore"
+    );
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, `Restored ${restoredCount} questions`);
 });
@@ -266,17 +313,26 @@ exports.permanentDeleteAllQuestions = asyncHandler(async (req, res) => {
   let deletedCount = 0;
 
   for (const game of games) {
-    const deletedQuestions = game.questions.filter(q => q.isDeleted);
+    const deletedQuestions = game.questions.filter((q) => q.isDeleted);
     if (deletedQuestions.length > 0) {
-      game.questions = game.questions.filter(q => !q.isDeleted);
+      game.questions = game.questions.filter((q) => !q.isDeleted);
       await game.save();
       deletedCount += deletedQuestions.length;
     }
   }
 
   if (deletedCount === 0) {
-    return response(res, 404, "No deleted questions found in solo games to permanently delete");
+    return response(
+      res,
+      404,
+      "No deleted questions found in solo games to permanently delete"
+    );
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, `Permanently deleted ${deletedCount} questions`);
 });

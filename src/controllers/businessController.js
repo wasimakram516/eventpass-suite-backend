@@ -22,6 +22,7 @@ const asyncHandler = require("../middlewares/asyncHandler");
 const { uploadToCloudinary } = require("../utils/uploadToCloudinary");
 const { deleteImage } = require("../config/cloudinary");
 const { generateUniqueSlug } = require("../utils/slugGenerator");
+const { recomputeAndEmit } = require("../socket/dashboardSocket");
 
 // Create Business
 exports.createBusiness = asyncHandler(async (req, res) => {
@@ -60,12 +61,19 @@ exports.createBusiness = asyncHandler(async (req, res) => {
 
   owner.business = business._id;
   await owner.save();
+
+  // Fire background recompute
+  recomputeAndEmit(owner.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 201, "Business created successfully", business);
 });
 
 // Get All Businesses
 exports.getAllBusinesses = asyncHandler(async (req, res) => {
-  const businesses = await Business.find().notDeleted()
+  const businesses = await Business.find()
+    .notDeleted()
     .populate("owner", "name email role")
     .sort({ createdAt: -1 });
 
@@ -74,10 +82,9 @@ exports.getAllBusinesses = asyncHandler(async (req, res) => {
 
 // Get Business by ID (with owner populated)
 exports.getBusinessById = asyncHandler(async (req, res) => {
-  const business = await Business.findById(req.params.id).notDeleted().populate(
-    "owner",
-    "name email role"
-  );
+  const business = await Business.findById(req.params.id)
+    .notDeleted()
+    .populate("owner", "name email role");
 
   if (!business) return response(res, 404, "Business not found");
   return response(res, 200, "Business found", business);
@@ -85,10 +92,9 @@ exports.getBusinessById = asyncHandler(async (req, res) => {
 
 // Get Business by Slug (with owner populated)
 exports.getBusinessBySlug = asyncHandler(async (req, res) => {
-  const business = await Business.findOne({ slug: req.params.slug }).notDeleted().populate(
-    "owner",
-    "name email role"
-  );
+  const business = await Business.findOne({ slug: req.params.slug })
+    .notDeleted()
+    .populate("owner", "name email role");
 
   if (!business) return response(res, 404, "Business not found");
   return response(res, 200, "Business found", business);
@@ -125,6 +131,12 @@ exports.updateBusiness = asyncHandler(async (req, res) => {
   }
 
   await business.save();
+
+  // Fire background recompute
+  recomputeAndEmit(req.params.id || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Business updated successfully", business);
 });
 
@@ -142,7 +154,7 @@ async function cascadeDeleteBusiness(businessId) {
 
   /** ===== Surveys ===== */
   const forms = await SurveyForm.find({ businessId });
-  const formIds = forms.map(f => f._id);
+  const formIds = forms.map((f) => f._id);
   if (formIds.length) {
     await SurveyResponse.deleteMany({ formId: { $in: formIds } });
     await SurveyRecipient.deleteMany({ formId: { $in: formIds } });
@@ -151,7 +163,7 @@ async function cascadeDeleteBusiness(businessId) {
 
   /** ===== Games & Sessions ===== */
   const games = await Game.find({ businessId });
-  const gameIds = games.map(g => g._id);
+  const gameIds = games.map((g) => g._id);
   if (gameIds.length) {
     await GameSession.deleteMany({ gameId: { $in: gameIds } });
     await Player.deleteMany({}); // adjust if Player has businessId/gameId ref
@@ -160,7 +172,7 @@ async function cascadeDeleteBusiness(businessId) {
 
   /** ===== Events ===== */
   const events = await Event.find({ businessId });
-  const eventIds = events.map(e => e._id);
+  const eventIds = events.map((e) => e._id);
   if (eventIds.length) {
     await WalkIn.deleteMany({ eventId: { $in: eventIds } });
     await Registration.deleteMany({ eventId: { $in: eventIds } });
@@ -180,7 +192,7 @@ async function cascadeDeleteBusiness(businessId) {
 
   /** ===== SpinWheels ===== */
   const wheels = await SpinWheel.find({ business: businessId });
-  const wheelIds = wheels.map(w => w._id);
+  const wheelIds = wheels.map((w) => w._id);
   if (wheelIds.length) {
     await SpinWheelParticipant.deleteMany({ spinWheel: { $in: wheelIds } });
     await SpinWheel.deleteMany({ _id: { $in: wheelIds } });
@@ -188,7 +200,7 @@ async function cascadeDeleteBusiness(businessId) {
 
   /** ===== Walls ===== */
   const walls = await WallConfig.find({ business: businessId });
-  const wallIds = walls.map(w => w._id);
+  const wallIds = walls.map((w) => w._id);
   if (wallIds.length) {
     await DisplayMedia.deleteMany({ wall: { $in: wallIds } });
     await WallConfig.deleteMany({ _id: { $in: wallIds } });
@@ -215,6 +227,12 @@ exports.deleteBusiness = asyncHandler(async (req, res) => {
   if (!business) return response(res, 404, "Business not found");
 
   await business.softDelete(req.user?.id);
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Business moved to Recycle Bin", business);
 });
 
@@ -233,12 +251,23 @@ exports.restoreBusiness = asyncHandler(async (req, res) => {
   }
 
   await business.restore();
+
+  // Fire background recompute
+  recomputeAndEmit(req.params.id || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
   return response(res, 200, "Business restored successfully", business);
 });
 
 // Permanent delete single business
 exports.permanentDeleteBusiness = asyncHandler(async (req, res) => {
   await cascadeDeleteBusiness(req.params.id);
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Business and related data permanently deleted");
 });
 
@@ -258,6 +287,11 @@ exports.restoreAllBusinesses = asyncHandler(async (req, res) => {
     }
   }
 
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, `Restored ${businesses.length} businesses`);
 });
 
@@ -270,5 +304,14 @@ exports.permanentDeleteAllBusinesses = asyncHandler(async (req, res) => {
     await cascadeDeleteBusiness(b._id);
   }
 
-  return response(res, 200, `Permanently deleted ${businesses.length} businesses`);
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(
+    res,
+    200,
+    `Permanently deleted ${businesses.length} businesses`
+  );
 });

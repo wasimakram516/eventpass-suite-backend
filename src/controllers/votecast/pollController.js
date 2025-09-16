@@ -3,6 +3,7 @@ const Business = require("../../models/Business");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const XLSX = require("xlsx");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // GET polls
 exports.getPolls = asyncHandler(async (req, res) => {
@@ -13,7 +14,9 @@ exports.getPolls = asyncHandler(async (req, res) => {
   if (status) filter.status = status;
 
   if (businessSlug) {
-    const business = await Business.findOne({ slug: businessSlug }).notDeleted();
+    const business = await Business.findOne({
+      slug: businessSlug,
+    }).notDeleted();
     if (!business) return response(res, 404, "Business not found");
     filter.business = business._id;
   } else if (user.role === "business") {
@@ -21,7 +24,9 @@ exports.getPolls = asyncHandler(async (req, res) => {
     filter.business = { $in: businesses.map((b) => b._id) };
   }
 
-  const polls = await Poll.find(filter).notDeleted().populate("business", "name slug");
+  const polls = await Poll.find(filter)
+    .notDeleted()
+    .populate("business", "name slug");
   return response(res, 200, "Polls fetched", polls);
 });
 
@@ -90,6 +95,11 @@ exports.createPoll = asyncHandler(async (req, res) => {
     type: type || "options",
   });
 
+  // Fire background recompute
+  recomputeAndEmit(business._id || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 201, "Poll created", poll);
 });
 
@@ -152,6 +162,12 @@ exports.updatePoll = asyncHandler(async (req, res) => {
   }
 
   await poll.save();
+
+  // Fire background recompute
+  recomputeAndEmit(poll.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Poll updated", poll);
 });
 
@@ -168,6 +184,12 @@ exports.deletePoll = asyncHandler(async (req, res) => {
   if (!isAdmin && !isOwner) return response(res, 403, "Permission denied");
 
   await poll.softDelete(req.user.id);
+
+  // Fire background recompute
+  recomputeAndEmit(poll.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Poll moved to recycle bin");
 });
 
@@ -177,6 +199,12 @@ exports.restorePoll = asyncHandler(async (req, res) => {
   if (!poll) return response(res, 404, "Poll not found in trash");
 
   await poll.restore();
+
+  // Fire background recompute
+  recomputeAndEmit(poll.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Poll restored", poll);
 });
 
@@ -186,6 +214,12 @@ exports.permanentDeletePoll = asyncHandler(async (req, res) => {
   if (!poll) return response(res, 404, "Poll not found in trash");
 
   await poll.deleteOne();
+
+  // Fire background recompute
+  recomputeAndEmit(poll.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Poll permanently deleted");
 });
 
@@ -200,6 +234,11 @@ exports.restoreAllPolls = asyncHandler(async (req, res) => {
     await poll.restore();
   }
 
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, `Restored ${polls.length} polls`);
 });
 
@@ -213,6 +252,11 @@ exports.permanentDeleteAllPolls = asyncHandler(async (req, res) => {
   for (const poll of polls) {
     await poll.deleteOne();
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, `Permanently deleted ${polls.length} polls`);
 });
@@ -236,6 +280,12 @@ exports.clonePoll = asyncHandler(async (req, res) => {
   });
 
   await clonedPoll.save();
+
+  // Fire background recompute
+  recomputeAndEmit(clonedPoll.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 201, "Poll cloned successfully", clonedPoll);
 });
 

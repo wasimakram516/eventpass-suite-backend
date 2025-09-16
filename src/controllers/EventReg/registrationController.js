@@ -16,6 +16,8 @@ const {
   pickCompany,
 } = require("../../utils/customFieldUtils");
 const { buildBadgeZpl } = require("../../utils/zebraZpl");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
+const e = require("express");
 
 // CREATE public registration
 exports.createRegistration = asyncHandler(async (req, res) => {
@@ -199,6 +201,11 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     // await sendWhatsappMessage(phone, whatsappText, qrUpload.secure_url);
   }
 
+  // Fire background recompute
+  recomputeAndEmit(event.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 201, "Registration successful", newRegistration);
 });
 
@@ -337,6 +344,11 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     token: registration.token,
   });
 
+  // Fire background recompute
+  recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Registration verified and walk-in recorded", {
     fullName: registration.fullName,
     email: registration.email,
@@ -362,10 +374,12 @@ exports.deleteRegistration = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid registration ID");
   }
 
-  const registration = await Registration.findById(id);
+  const registration = await Registration.findById(id).populate("eventId");
   if (!registration) {
     return response(res, 404, "Registration not found");
   }
+
+  const businessId = registration.eventId?.businessId;
 
   await registration.softDelete(req.user.id);
 
@@ -373,6 +387,11 @@ exports.deleteRegistration = asyncHandler(async (req, res) => {
   await Event.findByIdAndUpdate(registration.eventId, {
     $inc: { registrations: -1 },
   });
+
+  // Fire background recompute
+  recomputeAndEmit(businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, "Registration moved to recycle bin");
 });
@@ -383,7 +402,16 @@ exports.restoreRegistration = asyncHandler(async (req, res) => {
   if (!reg) return response(res, 404, "Registration not found in trash");
 
   await reg.restore();
-  await Event.findByIdAndUpdate(reg.eventId, { $inc: { registrations: 1 } });
+  const event = await Event.findByIdAndUpdate(
+    reg.eventId,
+    { $inc: { registrations: 1 } },
+    { new: true, lean: true }
+  );
+
+  // Fire background recompute
+  recomputeAndEmit(event.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, "Registration restored successfully", reg);
 });
@@ -400,15 +428,31 @@ exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
     await Event.findByIdAndUpdate(reg.eventId, { $inc: { registrations: 1 } });
   }
 
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, `Restored ${regs.length} registrations`);
 });
 
 // Permanent delete single registration
 exports.permanentDeleteRegistration = asyncHandler(async (req, res) => {
-  const reg = await Registration.findOneDeleted({ _id: req.params.id });
+  const reg = await Registration.findOneDeleted({
+    _id: req.params.id,
+  }).populate("eventId", "businessId"); // only fetch businessId
+
   if (!reg) return response(res, 404, "Registration not found in trash");
 
+  const businessId = reg.eventId?.businessId || null;
+
   await reg.deleteOne();
+
+  // Fire background recompute
+  recomputeAndEmit(businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Registration permanently deleted");
 });
 
@@ -423,6 +467,11 @@ exports.permanentDeleteAllRegistrations = asyncHandler(async (req, res) => {
 
   await WalkIn.deleteMany({ registrationId: { $in: regIds } });
   const result = await Registration.deleteManyDeleted();
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(
     res,

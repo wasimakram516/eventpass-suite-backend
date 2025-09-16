@@ -2,7 +2,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const app = require("./src/app");
 const env = require("./src/config/env");
-const registerAllSocketModules = require("./src/socket/modules");
+const registerAllSocketModules = require("./src/socket");
 const { setSocketIo } = require("./src/utils/socketUtils");
 
 const PORT = env.server.port;

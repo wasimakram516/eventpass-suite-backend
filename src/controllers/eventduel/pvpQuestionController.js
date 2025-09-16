@@ -2,6 +2,7 @@ const Game = require("../../models/Game");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const XLSX = require("xlsx");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // Download sample Excel template
 exports.downloadSampleTemplate = asyncHandler(async (req, res) => {
@@ -56,7 +57,8 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
   if (!req.file) return response(res, 400, "No file uploaded");
 
   const game = await Game.findById(gameId);
-  if (!game || game.mode !== "pvp") return response(res, 404, "PvP game not found");
+  if (!game || game.mode !== "pvp")
+    return response(res, 404, "PvP game not found");
 
   const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -79,7 +81,8 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
 
     const correctAnswer = row["CorrectAnswer"]?.toString().trim();
     const correctIndex = answers.findIndex((a) => a === correctAnswer);
-    if (correctIndex === -1) throw new Error(`Row ${index + 2}: Invalid CorrectAnswer`);
+    if (correctIndex === -1)
+      throw new Error(`Row ${index + 2}: Invalid CorrectAnswer`);
 
     const hint = row["Hint"]?.toString().trim() || "";
 
@@ -94,19 +97,23 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
   game.questions = questions;
   await game.save();
 
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Questions uploaded", { count: questions.length });
 });
-
 
 // Get all questions for a game
 exports.getQuestions = asyncHandler(async (req, res) => {
   const { gameId } = req.params;
-  
+
   const game = await Game.findById(gameId).notDeleted();
   if (!game) return response(res, 404, "Game not found");
-  
-  const activeQuestions = game.questions.filter(q => !q.isDeleted);
-  
+
+  const activeQuestions = game.questions.filter((q) => !q.isDeleted);
+
   return response(res, 200, "Questions fetched", activeQuestions);
 });
 
@@ -119,7 +126,8 @@ exports.addQuestion = asyncHandler(async (req, res) => {
   }
 
   const game = await Game.findById(req.params.gameId);
-  if (!game || game.mode !== "pvp") return response(res, 404, "PvP game not found");
+  if (!game || game.mode !== "pvp")
+    return response(res, 404, "PvP game not found");
 
   if (answers.length !== game.choicesCount) {
     return response(
@@ -138,6 +146,11 @@ exports.addQuestion = asyncHandler(async (req, res) => {
 
   await game.save();
 
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 201, "Question added", game.questions.at(-1));
 });
 
@@ -146,7 +159,8 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
   const { question, answers, correctAnswerIndex, hint } = req.body;
 
   const game = await Game.findById(req.params.gameId);
-  if (!game || game.mode !== "pvp") return response(res, 404, "PvP game not found");
+  if (!game || game.mode !== "pvp")
+    return response(res, 404, "PvP game not found");
 
   const q = game.questions.id(req.params.questionId);
   if (!q) return response(res, 404, "Question not found");
@@ -165,64 +179,93 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
   q.hint = hint ?? q.hint; // update hint if provided
 
   await game.save();
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Question updated", q);
 });
 
 // Delete Question
 exports.deleteQuestion = asyncHandler(async (req, res) => {
   const { gameId, questionId } = req.params;
-  
+
   const game = await Game.findById(gameId).notDeleted();
   if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
-  
-  const questionIndex = game.questions.findIndex(q => q._id.toString() === questionId);
+
+  const questionIndex = game.questions.findIndex(
+    (q) => q._id.toString() === questionId
+  );
   if (questionIndex === -1) return response(res, 404, "Question not found");
-  
-  game.questions[questionIndex].isDeleted = true; 
+
+  game.questions[questionIndex].isDeleted = true;
   game.questions[questionIndex].deletedAt = new Date();
-  game.questions[questionIndex].deletedBy = req.user.id; 
+  game.questions[questionIndex].deletedBy = req.user.id;
   await game.save();
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Question moved to recycle bin");
 });
 
 // Restore Question
 exports.restoreQuestion = asyncHandler(async (req, res) => {
-  const { id } = req.params; 
+  const { id } = req.params;
 
   const game = await Game.findOne({
     "questions._id": id,
     "questions.isDeleted": true,
-    "mode": "pvp"
+    mode: "pvp",
   });
-  
+
   if (!game) return response(res, 404, "Deleted question not found");
-  
-  const questionIndex = game.questions.findIndex(q => q._id.toString() === id && q.isDeleted);
-  if (questionIndex === -1) return response(res, 404, "Question not found in trash");
-  
+
+  const questionIndex = game.questions.findIndex(
+    (q) => q._id.toString() === id && q.isDeleted
+  );
+  if (questionIndex === -1)
+    return response(res, 404, "Question not found in trash");
+
   game.questions[questionIndex].isDeleted = false;
-  delete game.questions[questionIndex].deletedAt; 
-  delete game.questions[questionIndex].deletedBy; 
-  
+  delete game.questions[questionIndex].deletedAt;
+  delete game.questions[questionIndex].deletedBy;
+
   await game.save();
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Question restored successfully");
 });
 
 // Permanently delete Question
 exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
-  const { id } = req.params; 
-  
+  const { id } = req.params;
+
   const game = await Game.findOne({
     "questions._id": id,
     "questions.isDeleted": true,
-    "mode": "pvp"
+    mode: "pvp",
   });
-  
+
   if (!game) return response(res, 404, "Deleted question not found");
-  
-  game.questions = game.questions.filter(q => q._id.toString() !== id); 
-  
+
+  game.questions = game.questions.filter((q) => q._id.toString() !== id);
+
   await game.save();
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Question permanently deleted");
 });
 
@@ -232,7 +275,7 @@ exports.restoreAllQuestions = asyncHandler(async (req, res) => {
   let restoredCount = 0;
 
   for (const game of games) {
-    const deletedQuestions = game.questions.filter(q => q.isDeleted);
+    const deletedQuestions = game.questions.filter((q) => q.isDeleted);
     if (deletedQuestions.length > 0) {
       for (const question of deletedQuestions) {
         await question.restore();
@@ -243,8 +286,17 @@ exports.restoreAllQuestions = asyncHandler(async (req, res) => {
   }
 
   if (restoredCount === 0) {
-    return response(res, 404, "No deleted questions found in PvP games to restore");
+    return response(
+      res,
+      404,
+      "No deleted questions found in PvP games to restore"
+    );
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, `Restored ${restoredCount} questions`);
 });
@@ -255,17 +307,26 @@ exports.permanentDeleteAllQuestions = asyncHandler(async (req, res) => {
   let deletedCount = 0;
 
   for (const game of games) {
-    const deletedQuestions = game.questions.filter(q => q.isDeleted);
+    const deletedQuestions = game.questions.filter((q) => q.isDeleted);
     if (deletedQuestions.length > 0) {
-      game.questions = game.questions.filter(q => !q.isDeleted);
+      game.questions = game.questions.filter((q) => !q.isDeleted);
       await game.save();
       deletedCount += deletedQuestions.length;
     }
   }
 
   if (deletedCount === 0) {
-    return response(res, 404, "No deleted questions found in PvP games to permanently delete");
+    return response(
+      res,
+      404,
+      "No deleted questions found in PvP games to permanently delete"
+    );
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, `Permanently deleted ${deletedCount} questions`);
 });

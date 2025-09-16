@@ -5,6 +5,7 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const WalkIn = require("../../models/WalkIn");
 const { buildBadgeZpl } = require("../../utils/zebraZpl");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // CREATE employee registration
 exports.createRegistration = asyncHandler(async (req, res) => {
@@ -52,6 +53,11 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   event.registrations += 1;
   await event.save();
 
+  // Fire background recompute
+  recomputeAndEmit(event.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 201, "Employee registration successful", {
   employeeId,
   employeeName: employee.employeeName,
@@ -92,6 +98,11 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     token: reg.token,
   });
 
+  // Fire background recompute
+  recomputeAndEmit(reg.eventId.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+  
   return response(res, 200, "Registration verified and walk-in recorded", {
     employeeId: reg.employeeId,
     employeeName: employee?.employeeName,

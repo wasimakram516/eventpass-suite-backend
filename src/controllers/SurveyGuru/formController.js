@@ -8,6 +8,7 @@ const SurveyRecipient = require("../../models/SurveyRecipient");
 
 const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
 const { deleteImage } = require("../../config/cloudinary");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // ---------- helpers ----------
 const parseJson = (v) => {
@@ -102,6 +103,12 @@ exports.createForm = asyncHandler(async (req, res) => {
   body.questions = await attachOptionImages(body.questions, req.files || [], null);
 
   const form = await SurveyForm.create(body);
+
+  // Fire background recompute
+    recomputeAndEmit(businessId || null).catch((err) =>
+      console.error("Background recompute failed:", err.message)
+    );
+
   return response(res, 201, "Survey form created", form);
 });
 
@@ -182,6 +189,12 @@ exports.updateForm = asyncHandler(async (req, res) => {
   patch.questions = await attachOptionImages(patch.questions, req.files || [], prev);
 
   const updated = await SurveyForm.findByIdAndUpdate(id, patch, { new: true });
+
+  // Fire background recompute
+    recomputeAndEmit(updated.businessId || null).catch((err) =>
+      console.error("Background recompute failed:", err.message)
+    );
+
   return response(res, 200, "Survey form updated", updated);
 });
 
@@ -194,6 +207,12 @@ exports.deleteForm = asyncHandler(async (req, res) => {
   if (!form) return response(res, 404, "Survey form not found");
 
   await form.softDelete(req.user.id);
+
+  // Fire background recompute
+    recomputeAndEmit(form.businessId || null).catch((err) =>
+      console.error("Background recompute failed:", err.message)
+    );
+
   return response(res, 200, "Survey form moved to recycle bin");
 });
 
@@ -203,6 +222,12 @@ exports.restoreForm = asyncHandler(async (req, res) => {
   if (!form) return response(res, 404, "Form not found in trash");
 
   await form.restore();
+
+  // Fire background recompute
+    recomputeAndEmit(form.businessId || null).catch((err) =>
+      console.error("Background recompute failed:", err.message)
+    );
+
   return response(res, 200, "Survey form restored", form);
 });
 
@@ -221,6 +246,12 @@ exports.permanentDeleteForm = asyncHandler(async (req, res) => {
   }
 
   await form.deleteOne();
+
+  // Fire background recompute
+    recomputeAndEmit(form.businessId || null).catch((err) =>
+      console.error("Background recompute failed:", err.message)
+    );
+
   return response(res, 200, "Survey form permanently deleted");
 });
 
@@ -234,6 +265,11 @@ exports.restoreAllForms = asyncHandler(async (req, res) => {
   for (const form of forms) {
     await form.restore();
   }
+
+  // Fire background recompute
+    recomputeAndEmit(null).catch((err) =>
+      console.error("Background recompute failed:", err.message)
+    );
 
   return response(res, 200, `Restored ${forms.length} survey forms`);
 });
@@ -258,6 +294,11 @@ exports.permanentDeleteAllForms = asyncHandler(async (req, res) => {
 
     await form.deleteOne();
   }
+
+  // Fire background recompute
+    recomputeAndEmit(null).catch((err) =>
+      console.error("Background recompute failed:", err.message)
+    );
 
   return response(res, 200, `Permanently deleted ${forms.length} survey forms`);
 });

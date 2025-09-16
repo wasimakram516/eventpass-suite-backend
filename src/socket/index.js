@@ -1,5 +1,6 @@
-const mosaicWallSocket = require("./mosaicwall/mosaicWallSocket");
-const eventDuelSocket = require("./eventduel/eventDuelSocket");
+const mosaicWallSocket = require("./modules/mosaicwall/mosaicWallSocket");
+const eventDuelSocket = require("./modules/eventduel/eventDuelSocket");
+const { dashboardSocket } = require("./dashboardSocket");
 
 const socketHandler = (io) => {
   io.on("connection", (socket) => {
@@ -7,6 +8,7 @@ const socketHandler = (io) => {
 
     mosaicWallSocket(io, socket);
     eventDuelSocket(io, socket);
+    dashboardSocket(io, socket);
 
     socket.on("ping", () => {
       socket.emit("pong");

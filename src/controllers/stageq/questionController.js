@@ -3,6 +3,7 @@ const EventQuestion = require("../../models/EventQuestion");
 const Visitor = require("../../models/Visitor");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // GET all questions for a business
 exports.getQuestionsByBusiness = asyncHandler(async (req, res) => {
@@ -11,7 +12,8 @@ exports.getQuestionsByBusiness = asyncHandler(async (req, res) => {
   const business = await Business.findOne({ slug: businessSlug }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
-  const questions = await EventQuestion.find({ business: business._id }).notDeleted()
+  const questions = await EventQuestion.find({ business: business._id })
+    .notDeleted()
     .populate("visitor", "name phone company")
     .sort({ createdAt: -1 });
 
@@ -35,17 +37,24 @@ exports.submitQuestion = asyncHandler(async (req, res) => {
       name,
       phone,
       company,
-      eventHistory: [{ business: business._id, count: 1, lastInteraction: new Date() }],
+      eventHistory: [
+        { business: business._id, count: 1, lastInteraction: new Date() },
+      ],
     });
   } else {
     const existing = visitor.eventHistory.find(
       (e) => e.business.toString() === business._id.toString()
     );
+    
     if (existing) {
       existing.count += 1;
       existing.lastInteraction = new Date();
     } else {
-      visitor.eventHistory.push({ business: business._id, count: 1, lastInteraction: new Date() });
+      visitor.eventHistory.push({
+        business: business._id,
+        count: 1,
+        lastInteraction: new Date(),
+      });
     }
     await visitor.save();
   }
@@ -55,6 +64,11 @@ exports.submitQuestion = asyncHandler(async (req, res) => {
     text,
     visitor: visitor._id,
   });
+
+  // Fire background recompute
+  recomputeAndEmit(business._id || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   const populated = await question.populate("visitor", "name company");
   return response(res, 201, "Question submitted", populated);
@@ -66,7 +80,9 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
   const { answered, text } = req.body;
   const user = req.user;
 
-  const question = await EventQuestion.findById(questionId).populate("business").notDeleted();
+  const question = await EventQuestion.findById(questionId)
+    .populate("business")
+    .notDeleted();
   if (!question) return response(res, 404, "Question not found");
 
   const isAdmin = user.role === "admin";
@@ -78,6 +94,12 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
   if (text) question.text = text;
 
   await question.save();
+
+  // Fire background recompute
+  recomputeAndEmit(question.business._id || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Question updated", question);
 });
 
@@ -86,7 +108,9 @@ exports.deleteQuestion = asyncHandler(async (req, res) => {
   const { questionId } = req.params;
   const user = req.user;
 
-  const question = await EventQuestion.findById(questionId).populate("business");
+  const question = await EventQuestion.findById(questionId).populate(
+    "business"
+  );
   if (!question) return response(res, 404, "Question not found");
 
   const isAdmin = user.role === "admin";
@@ -94,6 +118,12 @@ exports.deleteQuestion = asyncHandler(async (req, res) => {
   if (!isAdmin && !isOwner) return response(res, 403, "Not authorized");
 
   await question.softDelete(req.user.id);
+
+  // Fire background recompute
+  recomputeAndEmit(question.business._id || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Question moved to recycle bin");
 });
 
@@ -103,6 +133,12 @@ exports.restoreQuestion = asyncHandler(async (req, res) => {
   if (!question) return response(res, 404, "Question not found in trash");
 
   await question.restore();
+
+  // Fire background recompute
+  recomputeAndEmit(question.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Question restored", question);
 });
 
@@ -112,6 +148,12 @@ exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
   if (!question) return response(res, 404, "Question not found in trash");
 
   await question.deleteOne();
+
+  // Fire background recompute
+  recomputeAndEmit(question.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Question permanently deleted");
 });
 
@@ -125,6 +167,11 @@ exports.restoreAllQuestions = asyncHandler(async (req, res) => {
   for (const question of questions) {
     await question.restore();
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, `Restored ${questions.length} questions`);
 });
@@ -140,7 +187,16 @@ exports.permanentDeleteAllQuestions = asyncHandler(async (req, res) => {
     await question.deleteOne();
   }
 
-  return response(res, 200, `Permanently deleted ${questions.length} questions`);
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(
+    res,
+    200,
+    `Permanently deleted ${questions.length} questions`
+  );
 });
 
 // PUT: Vote (add/remove)

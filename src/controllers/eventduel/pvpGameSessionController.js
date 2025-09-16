@@ -7,6 +7,7 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const { emitToRoom } = require("../../utils/socketUtils");
 const { emitPvpSessionWithQuestions } = require("../../utils/pvpUtils");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // Get all sessions for a specific game by slug
 exports.getGameSessions = asyncHandler(async (req, res) => {
@@ -124,7 +125,8 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
   await session.save();
 
   // Re-fetch latest 5 sessions and emit updated list
-  const allSessions = await GameSession.find({ gameId: session.gameId }).notDeleted()
+  const allSessions = await GameSession.find({ gameId: session.gameId })
+    .notDeleted()
     .populate("players.playerId winner gameId")
     .sort({ createdAt: -1 })
     .limit(5);
@@ -225,8 +227,10 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
   const [p1, p2] = session.players;
 
   // A player is "finalized" if they finished all questions OR their timer hit the full duration
-  const p1Final = (p1?.attemptedQuestions ?? 0) >= totalQ || (p1?.timeTaken ?? 0) >= duration;
-  const p2Final = (p2?.attemptedQuestions ?? 0) >= totalQ || (p2?.timeTaken ?? 0) >= duration;
+  const p1Final =
+    (p1?.attemptedQuestions ?? 0) >= totalQ || (p1?.timeTaken ?? 0) >= duration;
+  const p2Final =
+    (p2?.attemptedQuestions ?? 0) >= totalQ || (p2?.timeTaken ?? 0) >= duration;
   const bothFinalized = p1Final && p2Final;
 
   if (session.status === "active" && bothFinalized) {
@@ -267,8 +271,12 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
     const mapIndexesToQuestions = (indexes) =>
       (indexes || []).map((i) => game.questions[i]);
 
-    const player1Questions = mapIndexesToQuestions(session.questionsAssigned.Player1);
-    const player2Questions = mapIndexesToQuestions(session.questionsAssigned.Player2);
+    const player1Questions = mapIndexesToQuestions(
+      session.questionsAssigned.Player1
+    );
+    const player2Questions = mapIndexesToQuestions(
+      session.questionsAssigned.Player2
+    );
 
     const populatedSession = await GameSession.findById(session._id).populate(
       "players.playerId winner gameId"
@@ -281,9 +289,13 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
     });
   }
 
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Player result saved", playerStats);
 });
-
 
 // End session & decide winner
 exports.endGameSession = asyncHandler(async (req, res) => {
@@ -365,29 +377,45 @@ exports.resetGameSessions = asyncHandler(async (req, res) => {
   emitToRoom(game.slug, "pvpCurrentSession", null);
   emitToRoom(game.slug, "pvpAllSessions", []);
 
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
   return response(res, 200, "All sessions and players moved to recycle bin");
 });
 
 // Restore a single game session
 exports.restoreGameSession = asyncHandler(async (req, res) => {
   const { id } = req.params;
- 
+
   if (!id) return response(res, 400, "Missing session ID in URL params");
 
-  const session = await GameSession.findOne({ _id: id, isDeleted: true }).populate('gameId');
+  const session = await GameSession.findOne({
+    _id: id,
+    isDeleted: true,
+  }).populate("gameId");
   if (!session) return response(res, 404, "Deleted session not found");
 
   const game = session.gameId;
-  if (!game || game.mode !== "pvp") return response(res, 404, "Game not found or not PvP");
+  if (!game || game.mode !== "pvp")
+    return response(res, 404, "Game not found or not PvP");
 
   await session.restore();
 
-  const playerIds = session.players.map(p => p.playerId);
-  const players = await Player.find({ _id: { $in: playerIds }, isDeleted: true });
+  const playerIds = session.players.map((p) => p.playerId);
+  const players = await Player.find({
+    _id: { $in: playerIds },
+    isDeleted: true,
+  });
 
   for (const player of players) {
     await player.restore();
   }
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, "Game session and associated players restored");
 });
@@ -398,13 +426,13 @@ exports.restoreAllGameSessions = asyncHandler(async (req, res) => {
     {
       $lookup: {
         from: "games",
-        localField: "gameId", 
+        localField: "gameId",
         foreignField: "_id",
         as: "game",
       },
     },
     { $unwind: "$game" },
-    { $match: { "game.mode": "pvp" } }, 
+    { $match: { "game.mode": "pvp" } },
   ]);
 
   if (!sessions.length) {
@@ -415,13 +443,21 @@ exports.restoreAllGameSessions = asyncHandler(async (req, res) => {
     const session = await GameSession.findById(sessionData._id);
     await session.restore();
 
-    const playerIds = session.players.map(p => p.playerId);
-    const players = await Player.find({ _id: { $in: playerIds }, isDeleted: true });
+    const playerIds = session.players.map((p) => p.playerId);
+    const players = await Player.find({
+      _id: { $in: playerIds },
+      isDeleted: true,
+    });
 
     for (const player of players) {
       await player.restore();
     }
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, `Restored ${sessions.length} game sessions`);
 });
@@ -429,22 +465,34 @@ exports.restoreAllGameSessions = asyncHandler(async (req, res) => {
 exports.permanentDeleteGameSession = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const session = await GameSession.findOne({ _id: id, isDeleted: true });
+  const session = await GameSession.findOne({
+    _id: id,
+    isDeleted: true,
+  }).populate("gameId", "businessId");
   if (!session) {
     return response(res, 404, "Deleted session not found");
   }
 
-  const playerIds = session.players.map(p => p.playerId);
+  const playerIds = session.players.map((p) => p.playerId);
   if (playerIds.length > 0) {
     await Player.deleteMany({ _id: { $in: playerIds } });
   }
 
   await GameSession.deleteOne({ _id: id });
 
-  return response(res, 200, "PvP session and associated players permanently deleted");
+  // Fire background recompute
+  recomputeAndEmit(session.gameId.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(
+    res,
+    200,
+    "PvP session and associated players permanently deleted"
+  );
 });
 
-// Permanently delete all game sessions  
+// Permanently delete all game sessions
 exports.permanentDeleteAllGameSessions = asyncHandler(async (req, res) => {
   const sessions = await GameSession.aggregate([
     { $match: { isDeleted: true } },
@@ -452,12 +500,12 @@ exports.permanentDeleteAllGameSessions = asyncHandler(async (req, res) => {
       $lookup: {
         from: "games",
         localField: "gameId",
-        foreignField: "_id", 
+        foreignField: "_id",
         as: "game",
       },
     },
     { $unwind: "$game" },
-    { $match: { "game.mode": "pvp" } }, 
+    { $match: { "game.mode": "pvp" } },
   ]);
 
   if (!sessions.length) {
@@ -465,14 +513,23 @@ exports.permanentDeleteAllGameSessions = asyncHandler(async (req, res) => {
   }
 
   for (const sessionData of sessions) {
-    const playerIds = sessionData.players.map(p => p.playerId);
+    const playerIds = sessionData.players.map((p) => p.playerId);
     if (playerIds.length > 0) {
       await Player.deleteMany({ _id: { $in: playerIds } });
     }
     await GameSession.deleteOne({ _id: sessionData._id });
   }
 
-  return response(res, 200, `Permanently deleted ${sessions.length} game sessions`);
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(
+    res,
+    200,
+    `Permanently deleted ${sessions.length} game sessions`
+  );
 });
 
 // Export all player results to Excel

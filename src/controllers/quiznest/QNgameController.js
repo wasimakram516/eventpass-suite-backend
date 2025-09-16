@@ -7,6 +7,7 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
 const { deleteImage } = require("../../config/cloudinary");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // Create Game using businessSlug
 exports.createGame = asyncHandler(async (req, res) => {
@@ -74,6 +75,11 @@ exports.createGame = asyncHandler(async (req, res) => {
     mode: "solo",
   });
 
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 201, "Game created", game);
 });
 
@@ -124,6 +130,12 @@ exports.updateGame = asyncHandler(async (req, res) => {
   }
 
   await game.save();
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Solo Game updated", game);
 });
 
@@ -170,6 +182,12 @@ exports.deleteGame = asyncHandler(async (req, res) => {
   }
 
   await game.softDelete(req.user.id);
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Game moved to recycle bin");
 });
 
@@ -178,6 +196,12 @@ exports.restoreGame = asyncHandler(async (req, res) => {
   if (!game) return response(res, 404, "Game not found in trash");
 
   await game.restore();
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Game restored", game);
 });
 
@@ -193,6 +217,12 @@ exports.permanentDeleteGame = asyncHandler(async (req, res) => {
   if (game.backgroundImage) await deleteImage(game.backgroundImage);
 
   await game.deleteOne();
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Game permanently deleted");
 });
 
@@ -206,6 +236,12 @@ exports.restoreAllGames = asyncHandler(async (req, res) => {
   for (const game of games) {
     await game.restore();
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, `Restored ${games.length} games`);
 });
 
@@ -225,6 +261,11 @@ exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
 
     await game.deleteOne();
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, "All eligible games permanently deleted");
 });

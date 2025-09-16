@@ -2,13 +2,18 @@ const mongoose = require("mongoose");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const XLSX = require("xlsx");
-const { pickEmail, pickFullName, pickCompany } = require("../../utils/customFieldUtils");
+const {
+  pickEmail,
+  pickFullName,
+  pickCompany,
+} = require("../../utils/customFieldUtils");
 
 const Event = require("../../models/Event");
 const Registration = require("../../models/Registration");
 const SurveyForm = require("../../models/SurveyForm");
 const SurveyRecipient = require("../../models/SurveyRecipient");
 const env = require("../../config/env");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // recipientController.js
 exports.listRecipients = asyncHandler(async (req, res) => {
@@ -81,10 +86,7 @@ exports.syncFromEventRegistrations = asyncHandler(async (req, res) => {
       pickFullName(reg.customFields) ||
       "";
 
-    const company =
-      reg.company ||
-      pickCompany(reg.customFields) ||
-      "";
+    const company = reg.company || pickCompany(reg.customFields) || "";
 
     const token = reg.token || "";
 
@@ -119,6 +121,11 @@ exports.syncFromEventRegistrations = asyncHandler(async (req, res) => {
     }
   }
 
+  // Fire background recompute
+  recomputeAndEmit(form.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Sync complete", {
     eventName: event.name,
     added,
@@ -131,7 +138,8 @@ exports.syncFromEventRegistrations = asyncHandler(async (req, res) => {
 // DELETE /surveyguru/recipients/:id
 exports.deleteRecipient = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  if (!mongoose.Types.ObjectId.isValid(id)) return response(res, 400, "Invalid recipient id");
+  if (!mongoose.Types.ObjectId.isValid(id))
+    return response(res, 400, "Invalid recipient id");
   const rec = await SurveyRecipient.findById(id);
   if (!rec) return response(res, 404, "Recipient not found");
   await rec.deleteOne();
@@ -141,9 +149,18 @@ exports.deleteRecipient = asyncHandler(async (req, res) => {
 // DELETE /surveyguru/forms/:formId/recipients
 exports.clearRecipients = asyncHandler(async (req, res) => {
   const { formId } = req.params;
-  if (!mongoose.Types.ObjectId.isValid(formId)) return response(res, 400, "Invalid formId");
+  if (!mongoose.Types.ObjectId.isValid(formId))
+    return response(res, 400, "Invalid formId");
   const result = await SurveyRecipient.deleteMany({ formId });
-  return response(res, 200, "All recipients cleared", { deleted: result.deletedCount || 0 });
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(res, 200, "All recipients cleared", {
+    deleted: result.deletedCount || 0,
+  });
 });
 
 // GET /surveyguru/recipients/export?formId=...
@@ -175,16 +192,14 @@ exports.exportRecipients = asyncHandler(async (req, res) => {
   // Prepare rows for Excel
   const allRecipientData = recipients.map((r) => ({
     "Full Name": r.fullName || "",
-    "Email": r.email || "",
-    "Company": r.company || "",
-    "Status": r.status || "",
-    "Token": r.token || "",
-    "Responded At": r.respondedAt
-      ? new Date(r.respondedAt).toISOString()
-      : "",
-    "Survey Link": `${base}${publicPath}/${form.slug}?token=${encodeURIComponent(
-      r.token
-    )}`,
+    Email: r.email || "",
+    Company: r.company || "",
+    Status: r.status || "",
+    Token: r.token || "",
+    "Responded At": r.respondedAt ? new Date(r.respondedAt).toISOString() : "",
+    "Survey Link": `${base}${publicPath}/${
+      form.slug
+    }?token=${encodeURIComponent(r.token)}`,
     "Created At": r.createdAt ? new Date(r.createdAt).toISOString() : "",
   }));
 

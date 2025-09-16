@@ -8,6 +8,7 @@ const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
 const { deleteImage } = require("../../config/cloudinary");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
 const response = require("../../utils/response");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // GET all employee events
 exports.getEventDetails = asyncHandler(async (req, res) => {
@@ -27,7 +28,9 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
   const events = await Event.find({
     businessId,
     eventType: "employee",
-  }).notDeleted().sort({ startDate: -1 });
+  })
+    .notDeleted()
+    .sort({ startDate: -1 });
 
   return response(res, 200, "CheckIn Events fetched successfully", {
     events,
@@ -65,7 +68,16 @@ exports.getEventById = asyncHandler(async (req, res) => {
 
 // CREATE employee event
 exports.createEvent = asyncHandler(async (req, res) => {
-  const { name, slug, startDate, endDate, venue, description,businessSlug, showQrAfterRegistration } = req.body;
+  const {
+    name,
+    slug,
+    startDate,
+    endDate,
+    venue,
+    description,
+    businessSlug,
+    showQrAfterRegistration,
+  } = req.body;
   let { capacity } = req.body;
 
   if (!name || !slug || !startDate || !endDate || !venue || !businessSlug) {
@@ -80,7 +92,11 @@ exports.createEvent = asyncHandler(async (req, res) => {
   }
 
   if (parsedEndDate < parsedStartDate) {
-    return response(res, 400, "End date must be greater than or equal to start date");
+    return response(
+      res,
+      400,
+      "End date must be greater than or equal to start date"
+    );
   }
 
   const business = await Business.findOne({ slug: businessSlug });
@@ -128,8 +144,13 @@ exports.createEvent = asyncHandler(async (req, res) => {
     businessId,
     eventType: "employee",
     employeeData,
-      showQrAfterRegistration,
+    showQrAfterRegistration,
   });
+
+  // Fire background recompute
+  recomputeAndEmit(businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 201, "Employee event created successfully", newEvent);
 });
@@ -137,7 +158,16 @@ exports.createEvent = asyncHandler(async (req, res) => {
 // UPDATE employee event
 exports.updateEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { name, slug, startDate, endDate, venue, description, capacity, showQrAfterRegistration } = req.body;
+  const {
+    name,
+    slug,
+    startDate,
+    endDate,
+    venue,
+    description,
+    capacity,
+    showQrAfterRegistration,
+  } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return response(res, 400, "Invalid Event ID");
@@ -156,7 +186,11 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   }
 
   if (parsedEndDate < parsedStartDate) {
-    return response(res, 400, "End date must be greater than or equal to start date");
+    return response(
+      res,
+      400,
+      "End date must be greater than or equal to start date"
+    );
   }
 
   const updates = {
@@ -194,20 +228,30 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     }
   }
 
-if (
-  typeof showQrAfterRegistration === "boolean" ||
-  showQrAfterRegistration === "true" ||
-  showQrAfterRegistration === "false"
-) {
-  updates.showQrAfterRegistration =
-    showQrAfterRegistration === "true" || showQrAfterRegistration === true;
-}
+  if (
+    typeof showQrAfterRegistration === "boolean" ||
+    showQrAfterRegistration === "true" ||
+    showQrAfterRegistration === "false"
+  ) {
+    updates.showQrAfterRegistration =
+      showQrAfterRegistration === "true" || showQrAfterRegistration === true;
+  }
 
-const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
-  new: true,
-});
+  const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
+    new: true,
+  });
 
-  return response(res, 200, "Employee event updated successfully", updatedEvent);
+  // Fire background recompute
+  recomputeAndEmit(event.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(
+    res,
+    200,
+    "Employee event updated successfully",
+    updatedEvent
+  );
 });
 
 // SOFT DELETE employee event
@@ -223,6 +267,12 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
   }
 
   await event.softDelete(req.user?.id);
+
+  // Fire background recompute
+  recomputeAndEmit(event.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Event moved to Recycle Bin");
 });
 
@@ -241,14 +291,26 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   // Check if registrations exist
   const regs = await Registration.find({ eventId: event._id });
   if (regs.length > 0) {
-    return response(res, 400, "Cannot delete event with existing registrations");
+    return response(
+      res,
+      400,
+      "Cannot delete event with existing registrations"
+    );
   }
 
   if (event.logoUrl) await deleteImage(event.logoUrl);
   if (event.brandingMediaUrl) await deleteImage(event.brandingMediaUrl);
   if (event.agendaUrl) await deleteImage(event.agendaUrl);
 
+  const businessId = event.businessId;
+
   await event.deleteOne();
+
+  // Fire background recompute
+  recomputeAndEmit(businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "Employee event permanently deleted");
 });
 
@@ -267,6 +329,11 @@ exports.restoreAllEvents = asyncHandler(async (req, res) => {
       await ev.restore();
     }
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, `Restored ${events.length} events`);
 });
@@ -287,6 +354,11 @@ exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
   }
 
   const result = await Event.deleteMany({ _id: { $in: deletableEventIds } });
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(
     res,

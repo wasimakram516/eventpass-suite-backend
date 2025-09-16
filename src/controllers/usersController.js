@@ -21,10 +21,14 @@ const { deleteImage } = require("../config/cloudinary");
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
 const sanitizeUser = require("../utils/sanitizeUser");
+const { emitUpdate } = require("./../utils/socketUtils");
+const { recomputeAndEmit } = require("../socket/dashboardSocket");
 
 // Get all users
 exports.getAllUsers = asyncHandler(async (req, res) => {
-  const users = await User.find().notDeleted().populate("business", "name slug logoUrl");
+  const users = await User.find()
+    .notDeleted()
+    .populate("business", "name slug logoUrl");
 
   const admins = [];
   const businessMap = new Map();
@@ -134,6 +138,10 @@ exports.updateUser = asyncHandler(async (req, res) => {
   }
 
   await user.save();
+  // Fire background recompute
+  recomputeAndEmit(user.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
   return response(res, 200, "User updated", sanitizeUser(user));
 });
 
@@ -157,7 +165,7 @@ async function cascadeDeleteUser(userId) {
 
       /** ===== Surveys ===== */
       const forms = await SurveyForm.find({ businessId });
-      const formIds = forms.map(f => f._id);
+      const formIds = forms.map((f) => f._id);
       if (formIds.length) {
         await SurveyResponse.deleteMany({ formId: { $in: formIds } });
         await SurveyRecipient.deleteMany({ formId: { $in: formIds } });
@@ -166,16 +174,16 @@ async function cascadeDeleteUser(userId) {
 
       /** ===== Games & Sessions ===== */
       const games = await Game.find({ businessId });
-      const gameIds = games.map(g => g._id);
+      const gameIds = games.map((g) => g._id);
       if (gameIds.length) {
         await GameSession.deleteMany({ gameId: { $in: gameIds } });
-        await Player.deleteMany({}); 
+        await Player.deleteMany({});
         await Game.deleteMany({ _id: { $in: gameIds } });
       }
 
       /** ===== Events ===== */
       const events = await Event.find({ businessId });
-      const eventIds = events.map(e => e._id);
+      const eventIds = events.map((e) => e._id);
       if (eventIds.length) {
         await WalkIn.deleteMany({ eventId: { $in: eventIds } });
         await Registration.deleteMany({ eventId: { $in: eventIds } });
@@ -195,7 +203,7 @@ async function cascadeDeleteUser(userId) {
 
       /** ===== SpinWheels ===== */
       const wheels = await SpinWheel.find({ business: businessId });
-      const wheelIds = wheels.map(w => w._id);
+      const wheelIds = wheels.map((w) => w._id);
       if (wheelIds.length) {
         await SpinWheelParticipant.deleteMany({ spinWheel: { $in: wheelIds } });
         await SpinWheel.deleteMany({ _id: { $in: wheelIds } });
@@ -203,7 +211,7 @@ async function cascadeDeleteUser(userId) {
 
       /** ===== Walls ===== */
       const walls = await WallConfig.find({ business: businessId });
-      const wallIds = walls.map(w => w._id);
+      const wallIds = walls.map((w) => w._id);
       if (wallIds.length) {
         await DisplayMedia.deleteMany({ wall: { $in: wallIds } });
         await WallConfig.deleteMany({ _id: { $in: wallIds } });
@@ -238,6 +246,12 @@ exports.deleteUser = asyncHandler(async (req, res) => {
   if (!user) return response(res, 404, "User not found");
 
   await user.softDelete(req.user?.id);
+
+  // Fire background recompute
+  recomputeAndEmit(user.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "User moved to Recycle Bin", user);
 });
 
@@ -257,12 +271,27 @@ exports.restoreUser = asyncHandler(async (req, res) => {
   }
 
   await user.restore();
+  
+  // Fire background recompute
+  recomputeAndEmit(user.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "User restored successfully", user);
 });
 
 // Permanent delete single user
 exports.permanentDeleteUser = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id);
+  if (!user) return response(res, 404, "User not found");
+
   await cascadeDeleteUser(req.params.id);
+
+  // Fire background recompute
+  recomputeAndEmit(user.business || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "User and related data permanently deleted");
 });
 
@@ -282,6 +311,11 @@ exports.restoreAllUsers = asyncHandler(async (req, res) => {
     }
   }
 
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, `Restored ${users.length} users`);
 });
 
@@ -293,6 +327,11 @@ exports.permanentDeleteAllUsers = asyncHandler(async (req, res) => {
   for (const u of users) {
     await cascadeDeleteUser(u._id);
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, `Permanently deleted ${users.length} users`);
 });

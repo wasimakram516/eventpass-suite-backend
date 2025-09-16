@@ -6,7 +6,8 @@ const { deleteImage } = require("../../config/cloudinary");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
-const GameSession = require("../../models/GameSession"); 
+const GameSession = require("../../models/GameSession");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 // Create PvP Game
 exports.createGame = asyncHandler(async (req, res) => {
   const {
@@ -70,6 +71,11 @@ exports.createGame = asyncHandler(async (req, res) => {
     mode: "pvp",
   });
 
+  // Fire background recompute
+  recomputeAndEmit(businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 201, "PvP game created", game);
 });
 
@@ -82,7 +88,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
     req.body;
 
   if (slug && slug !== game.slug) {
-    const sanitizedSlug = await generateUniqueSlug(Game,"slug",slug);
+    const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
     game.slug = sanitizedSlug;
   }
 
@@ -120,15 +126,26 @@ exports.updateGame = asyncHandler(async (req, res) => {
   }
 
   await game.save();
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "PvP Game updated", game);
 });
 
 // Get PvP games for a business
 exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
-  const business = await Business.findOne({ slug: req.params.slug }).notDeleted();
+  const business = await Business.findOne({
+    slug: req.params.slug,
+  }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
-  const games = await Game.find({ businessId: business._id, mode: "pvp" }).notDeleted();
+  const games = await Game.find({
+    businessId: business._id,
+    mode: "pvp",
+  }).notDeleted();
   return response(res, 200, `PvP Games fetched for ${business.name}`, games);
 });
 
@@ -152,10 +169,21 @@ exports.deleteGame = asyncHandler(async (req, res) => {
 
   const playersExist = await Player.exists({ gameId: game._id });
   if (playersExist) {
-    return response(res, 400, "Cannot delete game with existing sessions/players");
+    return response(
+      res,
+      400,
+      "Cannot delete game with existing sessions/players"
+    );
   }
 
+  const businessId = game.businessId;
   await game.softDelete(req.user.id);
+
+  // Fire background recompute
+  recomputeAndEmit(businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "PvP game moved to recycle bin");
 });
 
@@ -170,9 +198,16 @@ exports.restoreGame = asyncHandler(async (req, res) => {
     slug: game.slug,
     isDeleted: false,
   });
-  if (conflict) return response(res, 409, "Cannot restore: slug already in use");
+  if (conflict)
+    return response(res, 409, "Cannot restore: slug already in use");
 
   await game.restore();
+
+  // Fire background recompute
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "PvP game restored", game);
 });
 
@@ -185,9 +220,16 @@ exports.permanentDeleteGame = asyncHandler(async (req, res) => {
   if (game.nameImage) await deleteImage(game.nameImage);
   if (game.backgroundImage) await deleteImage(game.backgroundImage);
 
+  const businessId = game.businessId;
+
   await cascadePermanentDeleteGame(game._id);
 
   await game.deleteOne();
+
+  // Fire background recompute
+  recomputeAndEmit(businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
   return response(res, 200, "PvP game permanently deleted");
 });
 
@@ -201,6 +243,12 @@ exports.restoreAllGames = asyncHandler(async (req, res) => {
   for (const game of games) {
     await game.restore();
   }
+
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, `Restored ${games.length} games`);
 });
 
@@ -221,16 +269,21 @@ exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
     await game.deleteOne();
   }
 
+  // Fire background recompute
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 200, "All eligible games permanently deleted");
 });
 
 // Cascade permanent delete everything linked to a game
 async function cascadePermanentDeleteGame(gameId) {
   const sessions = await GameSession.find({ gameId });
-  
+
   if (sessions.length > 0) {
-    const playerIds = sessions.flatMap(session => 
-      session.players.map(p => p.playerId)
+    const playerIds = sessions.flatMap((session) =>
+      session.players.map((p) => p.playerId)
     );
 
     if (playerIds.length > 0) {
