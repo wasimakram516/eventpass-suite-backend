@@ -65,7 +65,7 @@ exports.getEventById = asyncHandler(async (req, res) => {
 
 // CREATE employee event
 exports.createEvent = asyncHandler(async (req, res) => {
-  const { name, slug, startDate, endDate, venue, description, businessSlug } = req.body;
+  const { name, slug, startDate, endDate, venue, description, showQrAfterRegistration } = req.body;
   let { capacity } = req.body;
 
   if (!name || !slug || !startDate || !endDate || !venue || !businessSlug) {
@@ -128,6 +128,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     businessId,
     eventType: "employee",
     employeeData,
+      showQrAfterRegistration,
   });
 
   return response(res, 201, "Employee event created successfully", newEvent);
@@ -136,7 +137,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
 // UPDATE employee event
 exports.updateEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { name, slug, startDate, endDate, venue, description, capacity } = req.body;
+  const { name, slug, startDate, endDate, venue, description, capacity, showQrAfterRegistration } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return response(res, 400, "Invalid Event ID");
@@ -193,9 +194,18 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     }
   }
 
-  const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
-    new: true,
-  });
+if (
+  typeof showQrAfterRegistration === "boolean" ||
+  showQrAfterRegistration === "true" ||
+  showQrAfterRegistration === "false"
+) {
+  updates.showQrAfterRegistration =
+    showQrAfterRegistration === "true" || showQrAfterRegistration === true;
+}
+
+const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
+  new: true,
+});
 
   return response(res, 200, "Employee event updated successfully", updatedEvent);
 });
