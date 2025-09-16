@@ -63,7 +63,7 @@ const MetricsSchema = new mongoose.Schema(
           answered: { type: Number, default: 0 },
           unanswered: { type: Number, default: 0 },
           visitors: { type: Number, default: 0 },
-          repeatVisitors: { type: Number, default: 0 },
+          //repeatVisitors: { type: Number, default: 0 },
         },
         trash: {
           questions: { type: Number, default: 0 },

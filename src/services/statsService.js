@@ -503,7 +503,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
         answered: eventQuestionStats.answered,
         unanswered: eventQuestionStats.unanswered,
         visitors: visitorStats[0]?.total || 0,
-        repeatVisitors: visitorStats[0]?.repeat || 0,
+        //repeatVisitors: visitorStats[0]?.repeat || 0,
       },
       trash: {
         questions: trashQuestions,
