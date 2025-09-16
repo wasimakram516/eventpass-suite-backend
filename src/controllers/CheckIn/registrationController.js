@@ -44,6 +44,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       tableNumber: employee.tableNumber,
       tableImage: employee.tableImage,
       token: reg.token,
+      showQrAfterRegistration: event.showQrAfterRegistration !== false,
     });
   }
 
@@ -52,12 +53,13 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   await event.save();
 
   return response(res, 201, "Employee registration successful", {
-    employeeId,
-    employeeName: employee.employeeName,
-    tableNumber: employee.tableNumber,
-    tableImage: employee.tableImage,
-    token: reg.token, 
-  });
+  employeeId,
+  employeeName: employee.employeeName,
+  tableNumber: employee.tableNumber,
+  tableImage: employee.tableImage,
+  token: reg.token,
+  showQrAfterRegistration: event.showQrAfterRegistration !== false,
+});
 });
 
 // VERIFY employee registration by QR token and create a WalkIn
@@ -85,7 +87,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   // Badge ZPL for printer
   const zpl = buildBadgeZpl({
     fullName: employee?.employeeName || `Employee ${reg.employeeId}`,
-    company: "", 
+    company: "",
     eventName: reg.eventId?.name,
     token: reg.token,
   });
