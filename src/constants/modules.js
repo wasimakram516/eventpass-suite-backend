@@ -74,7 +74,7 @@ const BASE = [
     },
     icon: "checkin",
     color: "#0277bd",
-    routes: { admin: "/cms/modules/checkin", staff: null },
+    routes: { admin: "/cms/modules/checkin", staff: "/staff/checkin/verify" },
   },
   {
     key: "votecast",
