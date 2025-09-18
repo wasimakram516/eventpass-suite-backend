@@ -83,7 +83,7 @@ const moduleMapping = {
       permanentDeleteAll:
         eventRegRegistrationController.permanentDeleteAllRegistrations,
     },
-    condition: { "eventId.eventType": "public" },
+    condition: { "event.eventType": "public" }, // <-- fixed
   },
 
   "registration-checkin": {
@@ -96,7 +96,7 @@ const moduleMapping = {
       permanentDeleteAll:
         checkInRegistrationController.permanentDeleteAllRegistrations,
     },
-    condition: { "eventId.eventType": "employee" },
+    condition: { "event.eventType": "employee" }, // <-- fixed
   },
 
   // Other modules
