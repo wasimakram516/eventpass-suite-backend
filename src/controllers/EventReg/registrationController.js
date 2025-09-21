@@ -25,9 +25,9 @@ const e = require("express");
 
 // DOWNLOAD sample Excel template
 exports.downloadSampleExcel = asyncHandler(async (req, res) => {
-  const { id } = req.params;
+  const { slug } = req.params;
 
-  const event = await Event.findById(id).notDeleted();
+  const event = await Event.findOne({slug}).notDeleted();
   if (!event) return response(res, 404, "Event not found");
 
   let headers = [];
@@ -45,7 +45,7 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
 
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename=${event.slug}_registrations_template.xlsx`
+    `attachment; filename=${slug}_registrations_template.xlsx`
   );
   res.setHeader(
     "Content-Type",
@@ -56,10 +56,10 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
 
 // BULK UPLOAD registrations
 exports.uploadRegistrations = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!id) return response(res, 400, "Event ID is required");
+  const { slug } = req.params;
+  if (!slug) return response(res, 400, "Event Slug is required");
 
-  const event = await Event.findById(id).notDeleted();
+  const event = await Event.findOne({slug}).notDeleted();
   if (!event) return response(res, 404, "Event not found");
 
   if (!req.file) return response(res, 400, "Excel file is required");

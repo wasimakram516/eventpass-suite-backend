@@ -31,7 +31,7 @@ router.get("/event/:slug/all", eventRegAccess, getAllPublicRegistrationsByEvent)
 // Delete a registration by ID (protected)
 router.delete("/:id", eventRegAccess, deleteRegistration);
 
-router.get("/event/:id/sample-excel", eventRegAccess, downloadSampleExcel);
-router.post("/event/:id/upload", eventRegAccess, upload.single("file"), uploadRegistrations);
+router.get("/event/:slug/sample-excel", eventRegAccess, downloadSampleExcel);
+router.post("/event/:slug/upload", eventRegAccess, upload.single("file"), uploadRegistrations);
 
 module.exports = router;
