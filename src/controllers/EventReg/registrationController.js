@@ -20,6 +20,7 @@ const {
 } = require("../../utils/customFieldUtils");
 const { buildBadgeZpl } = require("../../utils/zebraZpl");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
+const { emitUploadProgress } = require("../../socket/modules/eventreg/eventRegSocket");
 const e = require("express");
 
 // DOWNLOAD sample Excel template
@@ -99,6 +100,10 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
 
       await reg.save();
       results.push(reg);
+
+      // Emit progress after each record
+      emitUploadProgress(event._id.toString(), results.length, rows.length);
+
     } catch (err) {
       warnings.push(`Row ${index + 2} skipped: ${err.message}`);
     }
@@ -110,6 +115,14 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
   // Update event.registrations
   event.registrations = totalRegs;
   await event.save();
+
+  // Emit final 100% progress
+  emitUploadProgress(event._id.toString(), rows.length, rows.length);
+
+  // Trigger recompute for dashboards
+  recomputeAndEmit(event.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, "Upload completed", {
     imported: results.length,
