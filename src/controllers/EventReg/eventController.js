@@ -422,7 +422,7 @@ exports.restoreAllEvents = asyncHandler(async (req, res) => {
   return response(res, 200, `Restored ${events.length} events`);
 });
 
-// Permanent delete single event
+// Permanent delete single event (cascade delete registrations)
 exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   const event = await Event.findOneDeleted({
     _id: req.params.id,
@@ -430,17 +430,10 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   });
   if (!event) return response(res, 404, "Event not found in trash");
 
-  const registrationsCount = await Registration.countDocuments({
-    eventId: event._id,
-  });
-  if (registrationsCount > 0) {
-    return response(
-      res,
-      400,
-      "Cannot permanently delete an event with existing registrations"
-    );
-  }
+  // Delete related registrations first
+  await Registration.deleteMany({ eventId: event._id });
 
+  // Delete any media
   if (event.logoUrl) await deleteImage(event.logoUrl);
   if (event.brandingMediaUrl) await deleteImage(event.brandingMediaUrl);
   if (event.agendaUrl) await deleteImage(event.agendaUrl);
@@ -453,25 +446,27 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "Event permanently deleted");
+  return response(
+    res,
+    200,
+    "Event and its registrations permanently deleted"
+  );
 });
 
-// PERMANENT DELETE ALL public events (only those without registrations)
+// Permanent delete ALL public events (cascade delete registrations)
 exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
   const events = await Event.findDeleted({ eventType: "public" });
   if (!events.length) {
     return response(res, 404, "No public events found in trash to delete");
   }
 
-  const deletableEventIds = [];
-  for (const ev of events) {
-    const regCount = await Registration.countDocuments({ eventId: ev._id });
-    if (regCount === 0) {
-      deletableEventIds.push(ev._id);
-    }
-  }
+  const eventIds = events.map((ev) => ev._id);
 
-  const result = await Event.deleteMany({ _id: { $in: deletableEventIds } });
+  // Delete related registrations for all events
+  await Registration.deleteMany({ eventId: { $in: eventIds } });
+
+  // Delete events themselves
+  const result = await Event.deleteMany({ _id: { $in: eventIds } });
 
   // Fire background recompute
   recomputeAndEmit(null).catch((err) =>
@@ -481,6 +476,6 @@ exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
   return response(
     res,
     200,
-    `Permanently deleted ${result.deletedCount} public events (without registrations)`
+    `Permanently deleted ${result.deletedCount} public events and their registrations`
   );
 });
