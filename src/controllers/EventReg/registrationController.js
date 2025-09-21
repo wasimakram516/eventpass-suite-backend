@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const XLSX = require("xlsx");
 const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
 const QRCode = require("qrcode");
 const Registration = require("../../models/Registration");
@@ -14,10 +15,109 @@ const {
   pickEmail,
   pickPhone,
   pickCompany,
+  pick,
+  pickTitle,
 } = require("../../utils/customFieldUtils");
 const { buildBadgeZpl } = require("../../utils/zebraZpl");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const e = require("express");
+
+// DOWNLOAD sample Excel template
+exports.downloadSampleExcel = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const event = await Event.findById(id).notDeleted();
+  if (!event) return response(res, 404, "Event not found");
+
+  let headers = [];
+  if (event.formFields && event.formFields.length > 0) {
+    headers = event.formFields.map((f) => f.inputName);
+  } else {
+    headers = ["Full Name", "Email", "Phone", "Company"];
+  }
+  headers.push("Token");
+
+  const ws = XLSX.utils.aoa_to_sheet([headers]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Registrations");
+  const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=${event.slug}_registrations_template.xlsx`
+  );
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.send(buffer);
+});
+
+// BULK UPLOAD registrations
+exports.uploadRegistrations = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!id) return response(res, 400, "Event ID is required");
+
+  const event = await Event.findById(id).notDeleted();
+  if (!event) return response(res, 404, "Event not found");
+
+  if (!req.file) return response(res, 400, "Excel file is required");
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+  const sheetName = workbook.SheetNames[0];
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+  const results = [];
+  const warnings = [];
+
+  for (const [index, row] of rows.entries()) {
+    try {
+      const customFields = {};
+      let missingField = null;
+
+      for (const field of event.formFields) {
+        const value = row[field.inputName];
+        if (field.required && (!value || value === "")) {
+          missingField = field.inputName;
+          break;
+        }
+        if (value) {
+          customFields[field.inputName] = value;
+        }
+      }
+
+      if (missingField) {
+        warnings.push(`Row ${index + 2} skipped: Missing required field "${missingField}"`);
+        continue;
+      }
+
+      const reg = new Registration({
+        eventId: event._id,
+        customFields,
+        token: row["Token"], // schema hook handles null/duplicate
+      });
+
+      await reg.save();
+      results.push(reg);
+    } catch (err) {
+      warnings.push(`Row ${index + 2} skipped: ${err.message}`);
+    }
+  }
+
+  // Recount registrations for this event
+  const totalRegs = await Registration.countDocuments({ eventId: event._id }).notDeleted();
+
+  // Update event.registrations
+  event.registrations = totalRegs;
+  await event.save();
+
+  return response(res, 200, "Upload completed", {
+    imported: results.length,
+    skipped: warnings.length,
+    totalRegistrations: totalRegs,
+    warnings,
+  });
+});
 
 // CREATE public registration
 exports.createRegistration = asyncHandler(async (req, res) => {
@@ -320,13 +420,9 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   const staffUser = req.user;
 
   if (!token) return response(res, 400, "Token is required");
+  if (!staffUser?.id) return response(res, 401, "Unauthorized – no scanner info");
 
-  if (!staffUser?.id) {
-    return response(res, 401, "Unauthorized – no scanner info");
-  }
-  const registration = await Registration.findOne({ token }).populate(
-    "eventId"
-  );
+  const registration = await Registration.findOne({ token }).populate("eventId");
   if (!registration) return response(res, 404, "Registration not found");
 
   const walkin = new WalkIn({
@@ -336,32 +432,39 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   });
   await walkin.save();
 
-  // Generate ZPL
+const cf = registration.customFields
+  ? Object.fromEntries(registration.customFields)
+  : {};
+
+  const normalized = {
+    token: registration.token,
+    fullName:
+      pickFullName(cf) || registration.fullName || null,
+    email: pickEmail(cf) || registration.email || null,
+    phone: pickPhone(cf) || registration.phone || null,
+    company: pickCompany(cf) || registration.company || null,
+    title: pickTitle(cf) || null,
+  };
+
   const zpl = buildBadgeZpl({
-    fullName: registration.fullName,
-    company: registration.company,
+    fullName: normalized.fullName || "N/A",
+    company: normalized.company || "",
     eventName: registration.eventId?.name,
     token: registration.token,
   });
 
-  // Fire background recompute
   recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
   return response(res, 200, "Registration verified and walk-in recorded", {
-    fullName: registration.fullName,
-    email: registration.email,
-    phone: registration.phone,
-    company: registration.company,
+    ...normalized,
     eventName: registration.eventId?.name || "Unknown Event",
     eventId: registration.eventId?._id,
     createdAt: registration.createdAt,
     walkinId: walkin._id,
     scannedAt: walkin.scannedAt,
-    scannedBy: {
-      name: staffUser.name || staffUser.email,
-    },
+    scannedBy: { name: staffUser.name || staffUser.email },
     zpl,
   });
 });

@@ -30,11 +30,30 @@ const RegistrationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-RegistrationSchema.pre("validate", function (next) {
-  if (!this.token) {
-    this.token = nanoid(10);
+RegistrationSchema.pre("validate", async function (next) {
+  try {
+    // If no token was provided → always create one
+    if (!this.token) {
+      this.token = nanoid(10);
+      return next();
+    }
+
+    // If a token was provided, check for duplicates under same event
+    const existing = await mongoose.models.Registration.findOne({
+      eventId: this.eventId,
+      token: this.token,
+      _id: { $ne: this._id }, // exclude self in case of updates
+    });
+
+    if (existing) {
+      // Collision: replace with auto-generated token
+      this.token = nanoid(10);
+    }
+
+    next();
+  } catch (err) {
+    next(err);
   }
-  next();
 });
 
 RegistrationSchema.index({ eventId: 1, isDeleted: 1 });

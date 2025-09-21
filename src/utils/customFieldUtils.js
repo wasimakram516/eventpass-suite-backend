@@ -1,50 +1,49 @@
-/**
- * Normalize a field name by removing non-letter characters and converting to lowercase.
- * E.g., "E-mail", "E Mail", "email_address" → "email"
- */
-function normalize(str) {
-  return str.toLowerCase().replace(/[^a-z]/g, "");
+function normalize(str = "") {
+  return String(str).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/**
- * Pick a value from a customFields object by fuzzy matching normalized keys.
- * @param {Object<string, any>} customFields
- * @param {string} matchKey - e.g. "email", "fullname", "phone"
- * @returns {any|null}
- */
-function pickCustom(customFields, matchKey) {
+function pick(customFields, matchKey, extraKeys = []) {
   if (!customFields || typeof customFields !== "object") return null;
 
   const target = normalize(matchKey);
+  const candidates = new Set([target, ...extraKeys.map(normalize)]);
 
-  for (const key of Object.keys(customFields)) {
-    if (normalize(key) === target) return customFields[key];
+  for (const [origKey, val] of Object.entries(customFields)) {
+    const nk = normalize(origKey);
+    if (candidates.has(nk)) return val;
   }
-
   return null;
 }
 
-/** Shorthand helpers **/
 function pickFullName(fields) {
-  return pickCustom(fields, "fullname") || pickCustom(fields, "name");
+  if (!fields) return null;
+
+  // Try "Full Name" first
+  const fn = pick(fields, "fullname", ["full name", "name"]);
+  if (fn) return String(fn).trim();
+
+  // Otherwise try First + Last
+  const first =
+    pick(fields, "firstname", ["first name", "given name"]) || null;
+  const last =
+    pick(fields, "lastname", ["last name", "surname"]) || null;
+
+  const combined = [first, last].filter(Boolean).join(" ").trim();
+  return combined || null;
 }
 
-function pickEmail(fields) {
-  return pickCustom(fields, "email");
-}
-
-function pickPhone(fields) {
-  return pickCustom(fields, "phone");
-}
-
-function pickCompany(fields) {
-  return pickCustom(fields, "company");
-}
+const pickEmail = (f) => pick(f, "email", ["e-mail", "email address"]);
+const pickPhone = (f) =>
+  pick(f, "phone", ["phone number", "mobile", "contact", "whatsapp"]);
+const pickCompany = (f) =>
+  pick(f, "company", ["organization", "organisation", "business"]);
+const pickTitle = (f) =>
+  pick(f, "title", ["designation", "job title", "position", "role"]);
 
 module.exports = {
-  pickCustom,
   pickFullName,
   pickEmail,
   pickPhone,
   pickCompany,
+  pickTitle,
 };
