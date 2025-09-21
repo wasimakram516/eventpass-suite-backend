@@ -38,11 +38,10 @@ RegistrationSchema.pre("validate", async function (next) {
       return next();
     }
 
-    // If a token was provided, check for duplicates under same event
+    // Global uniqueness check for provided token
     const existing = await mongoose.models.Registration.findOne({
-      eventId: this.eventId,
       token: this.token,
-      _id: { $ne: this._id }, // exclude self in case of updates
+      _id: { $ne: this._id },
     });
 
     if (existing) {
@@ -55,6 +54,7 @@ RegistrationSchema.pre("validate", async function (next) {
     next(err);
   }
 });
+
 
 RegistrationSchema.index({ eventId: 1, isDeleted: 1 });
 
