@@ -20,14 +20,16 @@ const {
 } = require("../../utils/customFieldUtils");
 const { buildBadgeZpl } = require("../../utils/zebraZpl");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
-const { emitUploadProgress } = require("../../socket/modules/eventreg/eventRegSocket");
+const {
+  emitUploadProgress,
+} = require("../../socket/modules/eventreg/eventRegSocket");
 const e = require("express");
 
 // DOWNLOAD sample Excel template
 exports.downloadSampleExcel = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const event = await Event.findOne({slug}).notDeleted();
+  const event = await Event.findOne({ slug }).notDeleted();
   if (!event) return response(res, 404, "Event not found");
 
   let headers = [];
@@ -59,14 +61,39 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   if (!slug) return response(res, 400, "Event Slug is required");
 
-  const event = await Event.findOne({slug}).notDeleted();
+  const event = await Event.findOne({ slug }).notDeleted();
   if (!event) return response(res, 404, "Event not found");
 
   if (!req.file) return response(res, 400, "Excel file is required");
 
   const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
   const sheetName = workbook.SheetNames[0];
-  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+    defval: "", // keep empty cells as empty string
+  });
+
+  if (!rows.length) {
+    return response(res, 400, "Uploaded file is empty");
+  }
+
+  // Validate headers
+  const headerRow = Object.keys(rows[0]);
+  const expectedHeaders = [
+    ...event.formFields.map((f) => f.inputName),
+    "Token",
+  ];
+
+  const missingHeaders = expectedHeaders.filter((h) => !headerRow.includes(h));
+
+  if (missingHeaders.length > 0) {
+    return response(
+      res,
+      400,
+      `Invalid Excel format. Missing or misspelled columns: ${missingHeaders.join(
+        ", "
+      )}`
+    );
+  }
 
   const results = [];
   const warnings = [];
@@ -88,7 +115,9 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
       }
 
       if (missingField) {
-        warnings.push(`Row ${index + 2} skipped: Missing required field "${missingField}"`);
+        warnings.push(
+          `Row ${index + 2} skipped: Missing required field "${missingField}"`
+        );
         continue;
       }
 
@@ -103,14 +132,15 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
 
       // Emit progress after each record
       emitUploadProgress(event._id.toString(), results.length, rows.length);
-
     } catch (err) {
       warnings.push(`Row ${index + 2} skipped: ${err.message}`);
     }
   }
 
   // Recount registrations for this event
-  const totalRegs = await Registration.countDocuments({ eventId: event._id }).notDeleted();
+  const totalRegs = await Registration.countDocuments({
+    eventId: event._id,
+  }).notDeleted();
 
   // Update event.registrations
   event.registrations = totalRegs;
@@ -433,9 +463,12 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   const staffUser = req.user;
 
   if (!token) return response(res, 400, "Token is required");
-  if (!staffUser?.id) return response(res, 401, "Unauthorized – no scanner info");
+  if (!staffUser?.id)
+    return response(res, 401, "Unauthorized – no scanner info");
 
-  const registration = await Registration.findOne({ token }).populate("eventId");
+  const registration = await Registration.findOne({ token }).populate(
+    "eventId"
+  );
   if (!registration) return response(res, 404, "Registration not found");
 
   const walkin = new WalkIn({
@@ -445,14 +478,13 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   });
   await walkin.save();
 
-const cf = registration.customFields
-  ? Object.fromEntries(registration.customFields)
-  : {};
+  const cf = registration.customFields
+    ? Object.fromEntries(registration.customFields)
+    : {};
 
   const normalized = {
     token: registration.token,
-    fullName:
-      pickFullName(cf) || registration.fullName || null,
+    fullName: pickFullName(cf) || registration.fullName || null,
     email: pickEmail(cf) || registration.email || null,
     phone: pickPhone(cf) || registration.phone || null,
     company: pickCompany(cf) || registration.company || null,
