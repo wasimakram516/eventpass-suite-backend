@@ -40,10 +40,14 @@ const pickCompany = (f) =>
 const pickTitle = (f) =>
   pick(f, "title", ["designation", "job title", "position", "role"]);
 
+const pickBadgeIdentifier = (f) =>
+  pick(f, "badge", ["badge id", "badge identifier", "badge number"]);
+
 module.exports = {
   pickFullName,
   pickEmail,
   pickPhone,
   pickCompany,
   pickTitle,
+  pickBadgeIdentifier,
 };

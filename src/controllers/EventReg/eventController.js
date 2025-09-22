@@ -12,22 +12,12 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 // Get all events for a business
 exports.getEventDetails = asyncHandler(async (req, res) => {
   const { businessSlug } = req.query;
-
-  if (!businessSlug) {
-    return response(res, 400, "Business slug is required");
-  }
+  if (!businessSlug) return response(res, 400, "Business slug is required");
 
   const business = await Business.findOne({ slug: businessSlug });
-  if (!business) {
-    return response(res, 404, "Business not found");
-  }
+  if (!business) return response(res, 404, "Business not found");
 
-  const businessId = business._id;
-
-  const events = await Event.find({
-    businessId,
-    eventType: "public",
-  })
+  const events = await Event.find({ businessId: business._id, eventType: "public" })
     .notDeleted()
     .sort({ startDate: -1 });
 
@@ -40,19 +30,16 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
 // Get a single event by Slug
 exports.getEventBySlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-
   const event = await Event.findOne({ slug }).notDeleted();
   if (!event || event.eventType !== "public") {
     return response(res, 400, "Public event not found");
   }
-
   return response(res, 200, "Event fetched successfully.", event);
 });
 
 // GET single event by ID
 exports.getEventById = asyncHandler(async (req, res) => {
   const { id } = req.params;
-
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return response(res, 400, "Invalid Event ID");
   }
@@ -61,7 +48,6 @@ exports.getEventById = asyncHandler(async (req, res) => {
   if (!event || event.eventType !== "public") {
     return response(res, 400, "Public event not found");
   }
-
   return response(res, 200, "Event fetched successfully.", event);
 });
 
@@ -72,10 +58,7 @@ exports.getEventsByBusinessId = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid businessId");
   }
 
-  const events = await Event.find({
-    businessId,
-    eventType: "public",
-  })
+  const events = await Event.find({ businessId, eventType: "public" })
     .notDeleted()
     .sort({ startDate: -1 });
 
@@ -89,14 +72,9 @@ exports.getEventsByBusinessId = asyncHandler(async (req, res) => {
 exports.getEventsByBusinessSlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const business = await Business.findOne({ slug }).notDeleted();
-  if (!business) {
-    return response(res, 404, "Business not found");
-  }
+  if (!business) return response(res, 404, "Business not found");
 
-  const events = await Event.find({
-    businessId: business._id,
-    eventType: "public",
-  })
+  const events = await Event.find({ businessId: business._id, eventType: "public" })
     .notDeleted()
     .sort({ startDate: -1 });
 
@@ -127,23 +105,15 @@ exports.createEvent = asyncHandler(async (req, res) => {
 
   const parsedStartDate = new Date(startDate);
   const parsedEndDate = new Date(endDate);
-
   if (isNaN(parsedStartDate.getTime()) || isNaN(parsedEndDate.getTime())) {
     return response(res, 400, "Invalid start or end date");
   }
-
   if (parsedEndDate < parsedStartDate) {
-    return response(
-      res,
-      400,
-      "End date must be greater than or equal to start date"
-    );
+    return response(res, 400, "End date must be greater than or equal to start date");
   }
 
   const business = await Business.findOne({ slug: businessSlug });
-  if (!business) {
-    return response(res, 404, "Business not found");
-  }
+  if (!business) return response(res, 404, "Business not found");
 
   const businessId = business._id;
   const uniqueSlug = await generateUniqueSlug(Event, "slug", slug);
@@ -154,47 +124,34 @@ exports.createEvent = asyncHandler(async (req, res) => {
 
   let logoUrl = null;
   if (req.files?.logo) {
-    const uploadResult = await uploadToCloudinary(
-      req.files.logo[0].buffer,
-      req.files.logo[0].mimetype
-    );
+    const uploadResult = await uploadToCloudinary(req.files.logo[0].buffer, req.files.logo[0].mimetype);
     logoUrl = uploadResult.secure_url;
   }
 
   let brandingMediaUrl = null;
   if (req.files?.brandingMedia) {
-    const uploadResult = await uploadToCloudinary(
-      req.files.brandingMedia[0].buffer,
-      req.files.brandingMedia[0].mimetype
-    );
+    const uploadResult = await uploadToCloudinary(req.files.brandingMedia[0].buffer, req.files.brandingMedia[0].mimetype);
     brandingMediaUrl = uploadResult.secure_url;
   }
 
   let agendaUrl = null;
   if (req.files?.agenda) {
-    const uploadResult = await uploadToCloudinary(
-      req.files.agenda[0].buffer,
-      req.files.agenda[0].mimetype
-    );
+    const uploadResult = await uploadToCloudinary(req.files.agenda[0].buffer, req.files.agenda[0].mimetype);
     agendaUrl = uploadResult.secure_url;
   }
 
-  // Parse and validate formFields (stringified JSON from FormData)
+  // Parse and validate formFields
   let parsedFormFields = [];
   if (formFields) {
     try {
-      const rawFields =
-        typeof formFields === "string" ? JSON.parse(formFields) : formFields;
+      const rawFields = typeof formFields === "string" ? JSON.parse(formFields) : formFields;
       if (Array.isArray(rawFields)) {
         parsedFormFields = rawFields.map((field) => ({
           inputName: field.inputName,
           inputType: field.inputType,
-          values:
-            ["radio", "list"].includes(field.inputType) &&
-            Array.isArray(field.values)
-              ? field.values
-              : [],
+          values: ["radio", "list"].includes(field.inputType) && Array.isArray(field.values) ? field.values : [],
           required: field.required === true,
+          visible: field.visible !== false, // default true
         }));
       }
     } catch (err) {
@@ -219,7 +176,6 @@ exports.createEvent = asyncHandler(async (req, res) => {
     showQrAfterRegistration,
   });
 
-  // Fire background recompute
   recomputeAndEmit(businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
@@ -247,32 +203,18 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   }
 
   const event = await Event.findById(id);
-  if (!event) {
-    return response(res, 404, "Event not found");
-  }
+  if (!event) return response(res, 404, "Event not found");
 
   const parsedStartDate = startDate ? new Date(startDate) : event.startDate;
   const parsedEndDate = endDate ? new Date(endDate) : event.endDate;
-
   if (isNaN(parsedStartDate.getTime()) || isNaN(parsedEndDate.getTime())) {
     return response(res, 400, "Invalid start or end date");
   }
-
   if (parsedEndDate < parsedStartDate) {
-    return response(
-      res,
-      400,
-      "End date must be greater than or equal to start date"
-    );
+    return response(res, 400, "End date must be greater than or equal to start date");
   }
 
-  const updates = {
-    name,
-    startDate: parsedStartDate,
-    endDate: parsedEndDate,
-    venue,
-    description,
-  };
+  const updates = { name, startDate: parsedStartDate, endDate: parsedEndDate, venue, description };
 
   if (capacity && Number(capacity) > 0) {
     updates.capacity = Number(capacity);
@@ -284,54 +226,35 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   }
 
   if (req.files?.logo) {
-    if (event.logoUrl) {
-      await deleteImage(event.logoUrl);
-    }
-    const uploadResult = await uploadToCloudinary(
-      req.files.logo[0].buffer,
-      req.files.logo[0].mimetype
-    );
+    if (event.logoUrl) await deleteImage(event.logoUrl);
+    const uploadResult = await uploadToCloudinary(req.files.logo[0].buffer, req.files.logo[0].mimetype);
     updates.logoUrl = uploadResult.secure_url;
   }
 
   if (req.files?.brandingMedia) {
-    if (event.brandingMediaUrl) {
-      await deleteImage(event.brandingMediaUrl);
-    }
-    const uploadResult = await uploadToCloudinary(
-      req.files.brandingMedia[0].buffer,
-      req.files.brandingMedia[0].mimetype
-    );
+    if (event.brandingMediaUrl) await deleteImage(event.brandingMediaUrl);
+    const uploadResult = await uploadToCloudinary(req.files.brandingMedia[0].buffer, req.files.brandingMedia[0].mimetype);
     updates.brandingMediaUrl = uploadResult.secure_url;
   }
 
   if (req.files?.agenda) {
-    if (event.agendaUrl) {
-      await deleteImage(event.agendaUrl);
-    }
-    const uploadResult = await uploadToCloudinary(
-      req.files.agenda[0].buffer,
-      req.files.agenda[0].mimetype
-    );
+    if (event.agendaUrl) await deleteImage(event.agendaUrl);
+    const uploadResult = await uploadToCloudinary(req.files.agenda[0].buffer, req.files.agenda[0].mimetype);
     updates.agendaUrl = uploadResult.secure_url;
   }
 
-  // Handle updated formFields (string or array)
+  // Handle updated formFields
   let parsedFormFields = [];
   if (formFields) {
     try {
-      const rawFields =
-        typeof formFields === "string" ? JSON.parse(formFields) : formFields;
+      const rawFields = typeof formFields === "string" ? JSON.parse(formFields) : formFields;
       if (Array.isArray(rawFields)) {
         parsedFormFields = rawFields.map((field) => ({
           inputName: field.inputName,
           inputType: field.inputType,
-          values:
-            ["radio", "list"].includes(field.inputType) &&
-            Array.isArray(field.values)
-              ? field.values
-              : [],
+          values: ["radio", "list"].includes(field.inputType) && Array.isArray(field.values) ? field.values : [],
           required: field.required === true,
+          visible: field.visible !== false, // default true
         }));
       }
     } catch (err) {
@@ -339,7 +262,6 @@ exports.updateEvent = asyncHandler(async (req, res) => {
       return response(res, 400, "Invalid format for formFields");
     }
   }
-
   updates.formFields = parsedFormFields;
 
   if (
@@ -351,11 +273,8 @@ exports.updateEvent = asyncHandler(async (req, res) => {
       showQrAfterRegistration === "true" || showQrAfterRegistration === true;
   }
 
-  const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
-    new: true,
-  });
+  const updatedEvent = await Event.findByIdAndUpdate(id, updates, { new: true });
 
-  // Fire background recompute
   recomputeAndEmit(updatedEvent.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );

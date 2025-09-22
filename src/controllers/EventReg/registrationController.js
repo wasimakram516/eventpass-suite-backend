@@ -10,13 +10,12 @@ const response = require("../../utils/response");
 const sendEmail = require("../../services/emailService");
 const sendWhatsappMessage = require("../../services/whatsappService");
 const {
-  pickCustom,
   pickFullName,
   pickEmail,
   pickPhone,
   pickCompany,
-  pick,
   pickTitle,
+  pickBadgeIdentifier,
 } = require("../../utils/customFieldUtils");
 const { buildBadgeZpl } = require("../../utils/zebraZpl");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
@@ -489,6 +488,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     phone: pickPhone(cf) || registration.phone || null,
     company: pickCompany(cf) || registration.company || null,
     title: pickTitle(cf) || null,
+    badgeIdentifier: pickBadgeIdentifier(cf) || null,
   };
 
   const zpl = buildBadgeZpl({

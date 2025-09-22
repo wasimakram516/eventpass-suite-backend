@@ -29,6 +29,8 @@ const EventSchema = new mongoose.Schema({
     required: true,
     default: "public",
   },
+
+  /** ===== Custom Form Fields ===== */
   formFields: [
     {
       inputName: { type: String, required: true },
@@ -37,10 +39,13 @@ const EventSchema = new mongoose.Schema({
         enum: ["text", "number", "radio", "list"],
         required: true,
       },
-      values: [String], // Used only if inputType is radio or list
+      values: [String], 
       required: { type: Boolean, default: false },
+      visible: { type: Boolean, default: true }, 
     },
   ],
+
+  /** ===== Employee Data (for employee events) ===== */
   employeeData: [
     {
       employeeId: { type: String, required: true },
