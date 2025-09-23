@@ -17,7 +17,10 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
   const business = await Business.findOne({ slug: businessSlug });
   if (!business) return response(res, 404, "Business not found");
 
-  const events = await Event.find({ businessId: business._id, eventType: "public" })
+  const events = await Event.find({
+    businessId: business._id,
+    eventType: "public",
+  })
     .notDeleted()
     .sort({ startDate: -1 });
 
@@ -74,7 +77,10 @@ exports.getEventsByBusinessSlug = asyncHandler(async (req, res) => {
   const business = await Business.findOne({ slug }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
-  const events = await Event.find({ businessId: business._id, eventType: "public" })
+  const events = await Event.find({
+    businessId: business._id,
+    eventType: "public",
+  })
     .notDeleted()
     .sort({ startDate: -1 });
 
@@ -109,7 +115,11 @@ exports.createEvent = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid start or end date");
   }
   if (parsedEndDate < parsedStartDate) {
-    return response(res, 400, "End date must be greater than or equal to start date");
+    return response(
+      res,
+      400,
+      "End date must be greater than or equal to start date"
+    );
   }
 
   const business = await Business.findOne({ slug: businessSlug });
@@ -124,19 +134,64 @@ exports.createEvent = asyncHandler(async (req, res) => {
 
   let logoUrl = null;
   if (req.files?.logo) {
-    const uploadResult = await uploadToCloudinary(req.files.logo[0].buffer, req.files.logo[0].mimetype);
+    const uploadResult = await uploadToCloudinary(
+      req.files.logo[0].buffer,
+      req.files.logo[0].mimetype
+    );
     logoUrl = uploadResult.secure_url;
   }
 
-  let brandingMediaUrl = null;
-  if (req.files?.brandingMedia) {
-    const uploadResult = await uploadToCloudinary(req.files.brandingMedia[0].buffer, req.files.brandingMedia[0].mimetype);
-    brandingMediaUrl = uploadResult.secure_url;
+  // Build branding media array (files and/or direct URLs)
+  const brandingMediaFiles = req.files?.brandingMedia || [];
+  const brandingMediaMetaRaw = req.body.brandingMediaMeta;
+  const brandingMediaUrlsRaw = req.body.brandingMediaUrls;
+
+  function parseJsonArray(raw) {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
   }
+  function stitchFromFiles(files = [], meta = []) {
+    return files.map((_, i) => {
+      const m = meta[i] || {};
+      return { name: m.name || "", website: m.website || "" };
+    });
+  }
+
+  const brandingMediaMeta = parseJsonArray(brandingMediaMetaRaw);
+  const baseFromFiles = stitchFromFiles(brandingMediaFiles, brandingMediaMeta);
+  const uploadedBrandingUrls = [];
+  for (const f of brandingMediaFiles) {
+    const up = await uploadToCloudinary(f.buffer, f.mimetype);
+    uploadedBrandingUrls.push(up.secure_url);
+  }
+
+  const brandingMediaFromUrls = parseJsonArray(brandingMediaUrlsRaw)
+    .filter((x) => x && x.logoUrl)
+    .map((x) => ({
+      name: x.name || "",
+      website: x.website || "",
+      logoUrl: x.logoUrl,
+    }));
+
+  const brandingMedia = [
+    ...baseFromFiles.map((item, idx) => ({
+      ...item,
+      logoUrl: uploadedBrandingUrls[idx] || "",
+    })),
+    ...brandingMediaFromUrls,
+  ];
 
   let agendaUrl = null;
   if (req.files?.agenda) {
-    const uploadResult = await uploadToCloudinary(req.files.agenda[0].buffer, req.files.agenda[0].mimetype);
+    const uploadResult = await uploadToCloudinary(
+      req.files.agenda[0].buffer,
+      req.files.agenda[0].mimetype
+    );
     agendaUrl = uploadResult.secure_url;
   }
 
@@ -144,12 +199,17 @@ exports.createEvent = asyncHandler(async (req, res) => {
   let parsedFormFields = [];
   if (formFields) {
     try {
-      const rawFields = typeof formFields === "string" ? JSON.parse(formFields) : formFields;
+      const rawFields =
+        typeof formFields === "string" ? JSON.parse(formFields) : formFields;
       if (Array.isArray(rawFields)) {
         parsedFormFields = rawFields.map((field) => ({
           inputName: field.inputName,
           inputType: field.inputType,
-          values: ["radio", "list"].includes(field.inputType) && Array.isArray(field.values) ? field.values : [],
+          values:
+            ["radio", "list"].includes(field.inputType) &&
+            Array.isArray(field.values)
+              ? field.values
+              : [],
           required: field.required === true,
           visible: field.visible !== false, // default true
         }));
@@ -168,7 +228,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     venue,
     description,
     logoUrl,
-    brandingMediaUrl,
+    ...(brandingMedia.length ? { brandingMedia } : {}),
     agendaUrl,
     capacity,
     businessId,
@@ -211,10 +271,20 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid start or end date");
   }
   if (parsedEndDate < parsedStartDate) {
-    return response(res, 400, "End date must be greater than or equal to start date");
+    return response(
+      res,
+      400,
+      "End date must be greater than or equal to start date"
+    );
   }
 
-  const updates = { name, startDate: parsedStartDate, endDate: parsedEndDate, venue, description };
+  const updates = {
+    name,
+    startDate: parsedStartDate,
+    endDate: parsedEndDate,
+    venue,
+    description,
+  };
 
   if (capacity && Number(capacity) > 0) {
     updates.capacity = Number(capacity);
@@ -227,19 +297,92 @@ exports.updateEvent = asyncHandler(async (req, res) => {
 
   if (req.files?.logo) {
     if (event.logoUrl) await deleteImage(event.logoUrl);
-    const uploadResult = await uploadToCloudinary(req.files.logo[0].buffer, req.files.logo[0].mimetype);
+    const uploadResult = await uploadToCloudinary(
+      req.files.logo[0].buffer,
+      req.files.logo[0].mimetype
+    );
     updates.logoUrl = uploadResult.secure_url;
   }
 
-  if (req.files?.brandingMedia) {
-    if (event.brandingMediaUrl) await deleteImage(event.brandingMediaUrl);
-    const uploadResult = await uploadToCloudinary(req.files.brandingMedia[0].buffer, req.files.brandingMedia[0].mimetype);
-    updates.brandingMediaUrl = uploadResult.secure_url;
+  if (req.body.clearAllBrandingLogos === "true") {
+    if (Array.isArray(event.brandingMedia) && event.brandingMedia.length) {
+      for (const m of event.brandingMedia) {
+        if (m?.logoUrl) {
+          try {
+            await deleteImage(m.logoUrl);
+          } catch {}
+        }
+      }
+    }
+    updates.brandingMedia = [];
+  } else if (
+    req.files?.brandingMedia ||
+    req.body.brandingMediaUrls ||
+    req.body.brandingMediaMeta ||
+    req.body.removeBrandingLogoIds
+  ) {
+    const brandingMediaFiles = req.files?.brandingMedia || [];
+    const parseJsonArray = (raw) => {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return [];
+      }
+    };
+    const stitchFromFiles = (files = [], meta = []) =>
+      files.map((_, i) => {
+        const m = meta[i] || {};
+        return { name: m.name || "", website: m.website || "" };
+      });
+
+    const removeIds = parseJsonArray(req.body.removeBrandingLogoIds);
+    if (removeIds.length && Array.isArray(event.brandingMedia)) {
+      for (const media of event.brandingMedia) {
+        if (removeIds.includes(media._id?.toString()) && media.logoUrl) {
+          try {
+            await deleteImage(media.logoUrl);
+          } catch {}
+        }
+      }
+    }
+
+    const brandingMediaMeta = parseJsonArray(req.body.brandingMediaMeta);
+    const baseFromFiles = stitchFromFiles(
+      brandingMediaFiles,
+      brandingMediaMeta
+    );
+
+    const uploadedBrandingUrls = [];
+    for (const f of brandingMediaFiles) {
+      const up = await uploadToCloudinary(f.buffer, f.mimetype);
+      uploadedBrandingUrls.push(up.secure_url);
+    }
+
+    const fromUrls = parseJsonArray(req.body.brandingMediaUrls)
+      .filter((x) => x && x.logoUrl)
+      .map((x) => ({
+        name: x.name || "",
+        website: x.website || "",
+        logoUrl: x.logoUrl,
+      }));
+
+    updates.brandingMedia = [
+      ...fromUrls,
+      ...baseFromFiles.map((item, idx) => ({
+        ...item,
+        logoUrl: uploadedBrandingUrls[idx] || "",
+      })),
+    ];
   }
 
   if (req.files?.agenda) {
     if (event.agendaUrl) await deleteImage(event.agendaUrl);
-    const uploadResult = await uploadToCloudinary(req.files.agenda[0].buffer, req.files.agenda[0].mimetype);
+    const uploadResult = await uploadToCloudinary(
+      req.files.agenda[0].buffer,
+      req.files.agenda[0].mimetype
+    );
     updates.agendaUrl = uploadResult.secure_url;
   }
 
@@ -247,12 +390,17 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   let parsedFormFields = [];
   if (formFields) {
     try {
-      const rawFields = typeof formFields === "string" ? JSON.parse(formFields) : formFields;
+      const rawFields =
+        typeof formFields === "string" ? JSON.parse(formFields) : formFields;
       if (Array.isArray(rawFields)) {
         parsedFormFields = rawFields.map((field) => ({
           inputName: field.inputName,
           inputType: field.inputType,
-          values: ["radio", "list"].includes(field.inputType) && Array.isArray(field.values) ? field.values : [],
+          values:
+            ["radio", "list"].includes(field.inputType) &&
+            Array.isArray(field.values)
+              ? field.values
+              : [],
           required: field.required === true,
           visible: field.visible !== false, // default true
         }));
@@ -273,7 +421,9 @@ exports.updateEvent = asyncHandler(async (req, res) => {
       showQrAfterRegistration === "true" || showQrAfterRegistration === true;
   }
 
-  const updatedEvent = await Event.findByIdAndUpdate(id, updates, { new: true });
+  const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
+    new: true,
+  });
 
   recomputeAndEmit(updatedEvent.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
@@ -354,7 +504,15 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
 
   // Delete any media
   if (event.logoUrl) await deleteImage(event.logoUrl);
-  if (event.brandingMediaUrl) await deleteImage(event.brandingMediaUrl);
+  if (Array.isArray(event.brandingMedia) && event.brandingMedia.length) {
+    for (const m of event.brandingMedia) {
+      if (m?.logoUrl) {
+        try {
+          await deleteImage(m.logoUrl);
+        } catch {}
+      }
+    }
+  }
   if (event.agendaUrl) await deleteImage(event.agendaUrl);
 
   const businessId = event.businessId;
@@ -365,11 +523,7 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(
-    res,
-    200,
-    "Event and its registrations permanently deleted"
-  );
+  return response(res, 200, "Event and its registrations permanently deleted");
 });
 
 // Permanent delete ALL public events (cascade delete registrations)
