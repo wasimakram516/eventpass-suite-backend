@@ -1,7 +1,11 @@
 const mongoose = require("mongoose");
 
 const EventSchema = new mongoose.Schema({
-  businessId: { type: mongoose.Schema.Types.ObjectId, ref: "Business", required: true },
+  businessId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Business",
+    required: true,
+  },
   name: { type: String, required: true },
   slug: { type: String, required: true },
   startDate: { type: Date, required: true },
@@ -18,7 +22,13 @@ const EventSchema = new mongoose.Schema({
   venue: { type: String, required: true },
   description: { type: String },
   logoUrl: { type: String },
-  brandingMediaUrl: { type: String },
+  brandingMedia: [
+    {
+      name: { type: String },
+      logoUrl: { type: String },
+      website: { type: String },
+    },
+  ],
   agendaUrl: { type: String },
   capacity: { type: Number, default: 999 },
   showQrAfterRegistration: { type: Boolean, default: false },
@@ -39,9 +49,9 @@ const EventSchema = new mongoose.Schema({
         enum: ["text", "number", "radio", "list"],
         required: true,
       },
-      values: [String], 
+      values: [String],
       required: { type: Boolean, default: false },
-      visible: { type: Boolean, default: true }, 
+      visible: { type: Boolean, default: true },
     },
   ],
 
