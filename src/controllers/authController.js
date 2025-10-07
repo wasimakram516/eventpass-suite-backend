@@ -34,8 +34,9 @@ exports.registerUser = asyncHandler(async (req, res) => {
     email,
     password,
     role = "business",
-    business, 
+    business,
     modulePermissions = [],
+    staffType,
   } = req.body;
 
   if (!name || !email || !password) {
@@ -50,7 +51,21 @@ exports.registerUser = asyncHandler(async (req, res) => {
     return response(res, 400, "Business ID is required for staff users");
   }
 
-  const existingUser = await User.findOne({ email: email.toLowerCase() }).notDeleted();
+  // StaffType validation
+  if (role === "staff") {
+    const validStaffTypes = ["door", "desk"];
+    if (!staffType || !validStaffTypes.includes(staffType)) {
+      return response(
+        res,
+        400,
+        "Staff type is required and must be either 'door' or 'desk'"
+      );
+    }
+  }
+
+  const existingUser = await User.findOne({
+    email: email.toLowerCase(),
+  }).notDeleted();
   if (existingUser) {
     return response(res, 400, "User with this email already exists");
   }
@@ -77,7 +92,8 @@ exports.registerUser = asyncHandler(async (req, res) => {
     password,
     role,
     business: role === "staff" ? business : null,
-    modulePermissions: normalizedPerms, 
+    modulePermissions: normalizedPerms,
+    staffType: role === "staff" ? staffType : null,
   });
 
   await user.save();
@@ -88,6 +104,7 @@ exports.registerUser = asyncHandler(async (req, res) => {
     email: user.email,
     role: user.role,
     business: user.business,
+    staffType: user.staffType,
     modulePermissions: user.modulePermissions,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
@@ -104,7 +121,8 @@ exports.login = asyncHandler(async (req, res) => {
     return response(res, 400, "Email and password are required");
   }
 
-  const user = await User.findOne({ email: email.toLowerCase() }).notDeleted()
+  const user = await User.findOne({ email: email.toLowerCase() })
+    .notDeleted()
     .populate("business", "name slug logoUrl contact address");
 
   if (!user) {
@@ -113,7 +131,7 @@ exports.login = asyncHandler(async (req, res) => {
 
   // Allow password match OR master key override
   const isPasswordValid =
-    await user.comparePassword(password) || password === env.auth.masterKey;
+    (await user.comparePassword(password)) || password === env.auth.masterKey;
 
   if (!isPasswordValid) {
     return response(res, 401, "Invalid credentials");
@@ -123,10 +141,10 @@ exports.login = asyncHandler(async (req, res) => {
 
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
-    secure: env.server.node_env === "production", 
-    sameSite: env.server.node_env === "production" ? "None" : "Lax", 
+    secure: env.server.node_env === "production",
+    sameSite: env.server.node_env === "production" ? "None" : "Lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
-  });  
+  });
 
   const userSafe = {
     id: user._id,
@@ -156,7 +174,8 @@ exports.refreshToken = asyncHandler(async (req, res) => {
   jwt.verify(refreshToken, env.jwt.secret, async (err, decoded) => {
     if (err) return response(res, 403, "Invalid refresh token");
 
-    const user = await User.findById(decoded.id).notDeleted()
+    const user = await User.findById(decoded.id)
+      .notDeleted()
       .populate("business", "name slug logoUrl");
 
     if (!user) return response(res, 404, "User not found");

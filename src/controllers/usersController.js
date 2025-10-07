@@ -116,16 +116,31 @@ exports.getUserById = asyncHandler(async (req, res) => {
 
 // Update user (admin)
 exports.updateUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role, businessId, modulePermissions } =
-    req.body;
+  const {
+    name,
+    email,
+    password,
+    role,
+    businessId,
+    modulePermissions,
+    staffType,
+  } = req.body;
+
   const user = await User.findById(req.params.id);
   if (!user) return response(res, 404, "User not found");
 
-  // Only admin can update other users
-  user.name = name || user.name;
-  user.email = email || user.email;
-  user.role = role || user.role;
-  user.password = password || user.password;
+  // Update basic info
+  if (name) user.name = name;
+  if (email) user.email = email;
+  if (password) user.password = password;
+  if (role) user.role = role;
+
+  // Staff type handling
+  if (user.role === "staff") {
+    if (staffType) user.staffType = staffType;
+  } else {
+    user.staffType = null;
+  }
 
   if (businessId) {
     const business = await Business.findById(businessId);
@@ -271,7 +286,7 @@ exports.restoreUser = asyncHandler(async (req, res) => {
   }
 
   await user.restore();
-  
+
   // Fire background recompute
   recomputeAndEmit(user.business || null).catch((err) =>
     console.error("Background recompute failed:", err.message)

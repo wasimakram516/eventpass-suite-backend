@@ -16,6 +16,12 @@ const userSchema = new mongoose.Schema(
       enum: ["admin", "business", "staff"],
       default: "business",
     },
+    
+    staffType: {
+      type: String,
+      enum: ["door", "desk"],
+      default: null,
+    },
 
     business: {
       type: mongoose.Schema.Types.ObjectId,
@@ -50,5 +56,13 @@ userSchema.pre("save", async function (next) {
 userSchema.methods.comparePassword = function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
+
+// Enforce staffType only for staff users
+userSchema.pre("save", function (next) {
+  if (this.role !== "staff") {
+    this.staffType = null; // reset if not staff
+  }
+  next();
+});
 
 module.exports = mongoose.models.User || mongoose.model("User", userSchema);
