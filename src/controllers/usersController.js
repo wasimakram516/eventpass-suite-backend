@@ -28,7 +28,7 @@ const { recomputeAndEmit } = require("../socket/dashboardSocket");
 exports.getAllUsers = asyncHandler(async (req, res) => {
   const users = await User.find()
     .notDeleted()
-    .populate("business", "name slug logoUrl");
+    .populate("business", "name slug logoUrl contact address");
 
   const admins = [];
   const businessMap = new Map();
@@ -85,7 +85,7 @@ exports.getAllStaffUsersByBusiness = asyncHandler(async (req, res) => {
     role: "staff", // Only fetch staff members
     _id: { $ne: currentUserId }, // Exclude current user
   })
-    .populate("business", "name slug logoUrl")
+    .populate("business", "name slug logoUrl contact address")
     .sort({ createdAt: -1 });
 
   const safeUsers = users.map((user) => sanitizeUser(user));
@@ -108,7 +108,7 @@ exports.getUnassignedUsers = asyncHandler(async (req, res) => {
 exports.getUserById = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id).populate(
     "business",
-    "name slug logoUrl"
+    "name slug logoUrl contact address"
   );
   if (!user) return response(res, 404, "User not found");
   return response(res, 200, "User found", sanitizeUser(user));
