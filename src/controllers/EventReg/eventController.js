@@ -101,6 +101,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     description,
     businessSlug,
     showQrAfterRegistration,
+    showQrOnBadge,
   } = req.body;
 
   let { capacity, formFields } = req.body;
@@ -234,6 +235,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     businessId,
     formFields: parsedFormFields,
     showQrAfterRegistration,
+    showQrOnBadge,
   });
 
   recomputeAndEmit(businessId || null).catch((err) =>
@@ -256,6 +258,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     capacity,
     formFields,
     showQrAfterRegistration,
+    showQrOnBadge,
   } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -419,6 +422,14 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   ) {
     updates.showQrAfterRegistration =
       showQrAfterRegistration === "true" || showQrAfterRegistration === true;
+  }
+
+  if (
+    typeof showQrOnBadge === "boolean" ||
+    showQrOnBadge === "true" ||
+    showQrOnBadge === "false"
+  ) {
+    updates.showQrOnBadge = showQrOnBadge === "true" || showQrOnBadge === true;
   }
 
   const updatedEvent = await Event.findByIdAndUpdate(id, updates, {

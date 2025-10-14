@@ -32,6 +32,7 @@ const EventSchema = new mongoose.Schema({
   agendaUrl: { type: String },
   capacity: { type: Number, default: 999 },
   showQrAfterRegistration: { type: Boolean, default: false },
+  showQrOnBadge: { type: Boolean, default: true },
   registrations: { type: Number, default: 0 },
   eventType: {
     type: String,

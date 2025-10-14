@@ -506,6 +506,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     ...normalized,
     eventName: registration.eventId?.name || "Unknown Event",
     eventId: registration.eventId?._id,
+    showQrOnBadge: registration.eventId?.showQrOnBadge,
     createdAt: registration.createdAt,
     walkinId: walkin._id,
     scannedAt: walkin.scannedAt,
