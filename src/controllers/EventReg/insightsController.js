@@ -17,16 +17,32 @@ exports.getFieldDistribution = asyncHandler(async (req, res) => {
 
     const topLimit = topN ? parseInt(topN) : null;
 
-    const pipeline = [
-        { $match: { eventId: event._id, deletedAt: { $exists: false } } },
-    ];
-
     const isCustomField = event.formFields?.some(f => f.inputName === fieldName);
+
+    const pipeline = [
+        { $match: { eventId: event._id, deletedAt: { $exists: false } } }
+    ];
 
     let groupId;
     if (isCustomField) {
-        groupId = { $ifNull: [`$customFields.${fieldName}`, null] };
+        // For custom fields
+        pipeline.push({
+            $match: {
+                [`customFields.${fieldName}`]: { $exists: true, $ne: null, $ne: "" }
+            }
+        });
+        groupId = `$customFields.${fieldName}`;
     } else {
+        // For classic fields
+        pipeline.push({
+            $match: {
+                $or: [
+                    { customFields: { $exists: false } },
+                    { customFields: {} }
+                ],
+                [fieldName]: { $exists: true, $ne: null, $ne: "" }
+            }
+        });
         groupId = `$${fieldName}`;
     }
 
@@ -35,11 +51,6 @@ exports.getFieldDistribution = asyncHandler(async (req, res) => {
             $group: {
                 _id: groupId,
                 count: { $sum: 1 }
-            }
-        },
-        {
-            $match: {
-                _id: { $ne: null, $ne: "" }
             }
         },
         { $sort: { count: -1 } }
