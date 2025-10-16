@@ -22,6 +22,7 @@ const EventSchema = new mongoose.Schema({
   venue: { type: String, required: true },
   description: { type: String },
   logoUrl: { type: String },
+  backgroundUrl: { type: String },
   brandingMedia: [
     {
       name: { type: String },
@@ -47,7 +48,7 @@ const EventSchema = new mongoose.Schema({
       inputName: { type: String, required: true },
       inputType: {
         type: String,
-        enum: ["text", "number", "radio", "list"],
+        enum: ["text", "number", "radio", "list", "email"],
         required: true,
       },
       values: [String],

@@ -16,6 +16,7 @@ const upload = require("../../middlewares/uploadMiddleware");
 const eventRegAccess = [protect, checkPermission.eventreg];
 const multiUpload = upload.fields([
   { name: "logo", maxCount: 1 },
+  { name: "background", maxCount: 1 },
   { name: "brandingMedia", maxCount: 20 },
   { name: "agenda", maxCount: 1 },
 ]);

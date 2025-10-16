@@ -142,6 +142,15 @@ exports.createEvent = asyncHandler(async (req, res) => {
     logoUrl = uploadResult.secure_url;
   }
 
+  let backgroundUrl = null;
+  if (req.files?.background) {
+    const uploadResult = await uploadToCloudinary(
+      req.files.background[0].buffer,
+      req.files.background[0].mimetype
+    );
+    backgroundUrl = uploadResult.secure_url;
+  }
+
   // Build branding media array (files and/or direct URLs)
   const brandingMediaFiles = req.files?.brandingMedia || [];
   const brandingMediaMetaRaw = req.body.brandingMediaMeta;
@@ -229,6 +238,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     venue,
     description,
     logoUrl,
+    backgroundUrl,
     ...(brandingMedia.length ? { brandingMedia } : {}),
     agendaUrl,
     capacity,
@@ -305,6 +315,15 @@ exports.updateEvent = asyncHandler(async (req, res) => {
       req.files.logo[0].mimetype
     );
     updates.logoUrl = uploadResult.secure_url;
+  }
+
+  if (req.files?.background) {
+    if (event.backgroundUrl) await deleteImage(event.backgroundUrl);
+    const uploadResult = await uploadToCloudinary(
+      req.files.background[0].buffer,
+      req.files.background[0].mimetype
+    );
+    updates.backgroundUrl = uploadResult.secure_url;
   }
 
   if (req.body.clearAllBrandingLogos === "true") {

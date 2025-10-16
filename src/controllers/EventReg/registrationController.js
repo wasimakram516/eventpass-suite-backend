@@ -210,6 +210,16 @@ exports.createRegistration = asyncHandler(async (req, res) => {
         );
       }
       if (value != null) {
+        if (field.inputType === "email") {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(value)) {
+            return response(
+              res,
+              400,
+              `Invalid email format for ${field.inputName}`
+            );
+          }
+        }
         customFields[field.inputName] = value;
       }
     }
