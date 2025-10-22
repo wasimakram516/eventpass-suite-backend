@@ -1,6 +1,7 @@
 const Game = require("../../models/Game");
 const Business = require("../../models/Business");
 const Player = require("../../models/Player");
+const Team = require("../../models/Team");
 const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
 const { deleteImage } = require("../../config/cloudinary");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
@@ -8,7 +9,8 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const GameSession = require("../../models/GameSession");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
-// Create PvP Game
+
+// CREATE GAME (PvP / Team Mode)
 exports.createGame = asyncHandler(async (req, res) => {
   const {
     businessSlug,
@@ -17,6 +19,10 @@ exports.createGame = asyncHandler(async (req, res) => {
     choicesCount,
     countdownTimer,
     gameSessionTimer,
+    isTeamMode,
+    maxTeams,
+    playersPerTeam,
+    teamNames,
   } = req.body;
 
   if (!businessSlug || !title || !slug || !choicesCount || !gameSessionTimer) {
@@ -27,8 +33,11 @@ exports.createGame = asyncHandler(async (req, res) => {
   if (!business) return response(res, 404, "Business not found");
 
   const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
-
   const businessId = business._id;
+
+  const teamMode = isTeamMode === "true" || isTeamMode === true;
+  const parsedMaxTeams = parseInt(maxTeams, 10) || 2;
+  const parsedPlayersPerTeam = parseInt(playersPerTeam, 10) || 2;
 
   let coverImage = "",
     nameImage = "",
@@ -41,7 +50,6 @@ exports.createGame = asyncHandler(async (req, res) => {
     );
     coverImage = uploaded.secure_url;
   }
-
   if (req.files?.name) {
     const uploaded = await uploadToCloudinary(
       req.files.name[0].buffer,
@@ -49,7 +57,6 @@ exports.createGame = asyncHandler(async (req, res) => {
     );
     nameImage = uploaded.secure_url;
   }
-
   if (req.files?.background) {
     const uploaded = await uploadToCloudinary(
       req.files.background[0].buffer,
@@ -65,27 +72,66 @@ exports.createGame = asyncHandler(async (req, res) => {
     coverImage,
     nameImage,
     backgroundImage,
-    choicesCount,
-    countdownTimer: countdownTimer || 3,
-    gameSessionTimer,
+    choicesCount: Number(choicesCount),
+    countdownTimer: Number(countdownTimer) || 3,
+    gameSessionTimer: Number(gameSessionTimer),
     mode: "pvp",
+    isTeamMode: teamMode,
+    maxTeams: parsedMaxTeams,
+    playersPerTeam: parsedPlayersPerTeam,
+    teams: [],
   });
 
-  // Fire background recompute
+  // Create teams if team mode enabled
+  if (teamMode && Array.isArray(teamNames) && teamNames.length > 0) {
+    const validNames = teamNames.filter((name) => name && name.trim());
+    const newTeams = await Team.insertMany(
+      validNames.map((name) => ({
+        name: name.trim(),
+        gameId: game._id,
+      }))
+    );
+    game.teams = newTeams.map((t) => t._id);
+    await game.save();
+  }
+
   recomputeAndEmit(businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 201, "PvP game created", game);
+  const populatedGame = await Game.findById(game._id)
+    .populate("teams", "name")
+    .populate("businessId", "name");
+
+  return response(
+    res,
+    201,
+    teamMode ? "Team PvP game created" : "PvP game created",
+    populatedGame
+  );
 });
 
-// Update Game
+// UPDATE GAME (PvP / Team Mode)
 exports.updateGame = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id);
+  const game = await Game.findById(req.params.id).populate("teams");
   if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
 
-  const { title, slug, choicesCount, countdownTimer, gameSessionTimer } =
-    req.body;
+  const {
+    title,
+    slug,
+    choicesCount,
+    countdownTimer,
+    gameSessionTimer,
+    isTeamMode,
+    maxTeams,
+    playersPerTeam,
+    teamNames,
+  } = req.body;
+
+  const teamMode = isTeamMode === "true" || isTeamMode === true;
+  const parsedMaxTeams = parseInt(maxTeams, 10) || game.maxTeams;
+  const parsedPlayersPerTeam =
+    parseInt(playersPerTeam, 10) || game.playersPerTeam;
 
   if (slug && slug !== game.slug) {
     const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
@@ -93,11 +139,52 @@ exports.updateGame = asyncHandler(async (req, res) => {
   }
 
   game.title = title || game.title;
-  game.choicesCount = choicesCount || game.choicesCount;
-  game.countdownTimer = countdownTimer || game.countdownTimer;
-  game.gameSessionTimer = gameSessionTimer || game.gameSessionTimer;
+  game.choicesCount = Number(choicesCount) || game.choicesCount;
+  game.countdownTimer = Number(countdownTimer) || game.countdownTimer;
+  game.gameSessionTimer = Number(gameSessionTimer) || game.gameSessionTimer;
+  game.isTeamMode = teamMode;
+  game.maxTeams = parsedMaxTeams;
+  game.playersPerTeam = parsedPlayersPerTeam;
 
-  // Replace images if new ones provided
+  // Team handling
+  if (teamMode && Array.isArray(teamNames)) {
+    const existingTeams = game.teams || [];
+
+    // Update existing team names
+    for (let i = 0; i < Math.min(existingTeams.length, teamNames.length); i++) {
+      if (existingTeams[i].name !== teamNames[i]) {
+        existingTeams[i].name = teamNames[i].trim();
+        await existingTeams[i].save();
+      }
+    }
+
+    // Add new teams if count increased
+    if (teamNames.length > existingTeams.length) {
+      const toAdd = teamNames.slice(existingTeams.length);
+      const newTeams = await Team.insertMany(
+        toAdd.map((name) => ({
+          name: name.trim(),
+          gameId: game._id,
+        }))
+      );
+      game.teams.push(...newTeams.map((t) => t._id));
+    }
+
+    // Remove extra teams if count decreased
+    if (teamNames.length < existingTeams.length) {
+      const toRemove = existingTeams.slice(teamNames.length);
+      await Team.deleteMany({ _id: { $in: toRemove.map((t) => t._id) } });
+      game.teams = existingTeams.slice(0, teamNames.length).map((t) => t._id);
+    }
+  } else {
+    // If team mode disabled → remove all teams
+    if (game.teams?.length) {
+      await Team.deleteMany({ _id: { $in: game.teams } });
+      game.teams = [];
+    }
+  }
+
+  // Image handling unchanged...
   if (req.files?.cover) {
     if (game.coverImage) await deleteImage(game.coverImage);
     const uploaded = await uploadToCloudinary(
@@ -127,12 +214,20 @@ exports.updateGame = asyncHandler(async (req, res) => {
 
   await game.save();
 
-  // Fire background recompute
+  const populatedGame = await Game.findById(game._id)
+    .populate("teams", "name")
+    .populate("businessId", "name");
+
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "PvP Game updated", game);
+  return response(
+    res,
+    200,
+    teamMode ? "Team PvP Game updated" : "PvP Game updated",
+    populatedGame
+  );
 });
 
 // Get PvP games for a business
@@ -145,20 +240,30 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
   const games = await Game.find({
     businessId: business._id,
     mode: "pvp",
-  }).notDeleted();
+  })
+    .populate("teams", "name")
+    .notDeleted();
   return response(res, 200, `PvP Games fetched for ${business.name}`, games);
 });
 
 // Get PvP game by ID or slug
 exports.getGameById = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id).notDeleted();
+  const game = await Game.findById(req.params.id)
+    .populate("teams", "name")
+    .notDeleted();
+
   if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
+
   return response(res, 200, "Game found", game);
 });
 
 exports.getGameBySlug = asyncHandler(async (req, res) => {
-  const game = await Game.findOne({ slug: req.params.slug }).notDeleted();
+  const game = await Game.findOne({ slug: req.params.slug })
+    .populate("teams", "name")
+    .notDeleted();
+
   if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
+
   return response(res, 200, "Game found", game);
 });
 
@@ -167,24 +272,19 @@ exports.deleteGame = asyncHandler(async (req, res) => {
   const game = await Game.findById(req.params.id);
   if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
 
-  const playersExist = await Player.exists({ gameId: game._id });
-  if (playersExist) {
-    return response(
-      res,
-      400,
-      "Cannot delete game with existing sessions/players"
-    );
+  // check for active sessions
+  const sessionsExist = await GameSession.exists({ gameId: game._id });
+  if (sessionsExist) {
+    return response(res, 400, "Cannot delete game with existing sessions");
   }
 
-  const businessId = game.businessId;
   await game.softDelete(req.user.id);
 
-  // Fire background recompute
-  recomputeAndEmit(businessId || null).catch((err) =>
+  recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "PvP game moved to recycle bin");
+  return response(res, 200, "Game moved to recycle bin");
 });
 
 // Restore Game
@@ -192,7 +292,6 @@ exports.restoreGame = asyncHandler(async (req, res) => {
   const game = await Game.findOneDeleted({ _id: req.params.id, mode: "pvp" });
   if (!game) return response(res, 404, "Game not found in trash");
 
-  // check slug conflicts
   const conflict = await Game.findOne({
     _id: { $ne: game._id },
     slug: game.slug,
@@ -203,12 +302,11 @@ exports.restoreGame = asyncHandler(async (req, res) => {
 
   await game.restore();
 
-  // Fire background recompute
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "PvP game restored", game);
+  return response(res, 200, "Game restored", game);
 });
 
 // Permanently delete Game
@@ -216,21 +314,23 @@ exports.permanentDeleteGame = asyncHandler(async (req, res) => {
   const game = await Game.findOneDeleted({ _id: req.params.id, mode: "pvp" });
   if (!game) return response(res, 404, "Game not found in trash");
 
+  // Delete linked images
   if (game.coverImage) await deleteImage(game.coverImage);
   if (game.nameImage) await deleteImage(game.nameImage);
   if (game.backgroundImage) await deleteImage(game.backgroundImage);
 
   const businessId = game.businessId;
 
-  await cascadePermanentDeleteGame(game._id);
+  // Delete sessions, players, and teams
+  await cascadePermanentDeleteGame(game._id, game.isTeamMode ? game.teams : []);
 
   await game.deleteOne();
 
-  // Fire background recompute
   recomputeAndEmit(businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
-  return response(res, 200, "PvP game permanently deleted");
+
+  return response(res, 200, "Game permanently deleted");
 });
 
 // Restore all games
@@ -252,7 +352,7 @@ exports.restoreAllGames = asyncHandler(async (req, res) => {
   return response(res, 200, `Restored ${games.length} games`);
 });
 
-// Permanent delete all games
+// Permanently delete ALL PvP (and Team) games in trash
 exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
   const games = await Game.findDeleted({ mode: "pvp" });
   if (!games.length) {
@@ -260,8 +360,12 @@ exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
   }
 
   for (const game of games) {
-    await cascadePermanentDeleteGame(game._id);
+    await cascadePermanentDeleteGame(
+      game._id,
+      game.isTeamMode ? game.teams : []
+    );
 
+    // Delete related images
     if (game.coverImage) await deleteImage(game.coverImage);
     if (game.nameImage) await deleteImage(game.nameImage);
     if (game.backgroundImage) await deleteImage(game.backgroundImage);
@@ -274,16 +378,21 @@ exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "All eligible games permanently deleted");
+  return response(
+    res,
+    200,
+    "All eligible games permanently deleted (including unused teams)"
+  );
 });
 
 // Cascade permanent delete everything linked to a game
-async function cascadePermanentDeleteGame(gameId) {
+async function cascadePermanentDeleteGame(gameId, teamIds = []) {
   const sessions = await GameSession.find({ gameId });
 
   if (sessions.length > 0) {
-    const playerIds = sessions.flatMap((session) =>
-      session.players.map((p) => p.playerId)
+    // Delete players in individual mode sessions
+    const playerIds = sessions.flatMap((s) =>
+      (s.players || []).map((p) => p.playerId)
     );
 
     if (playerIds.length > 0) {
@@ -291,5 +400,21 @@ async function cascadePermanentDeleteGame(gameId) {
     }
 
     await GameSession.deleteMany({ gameId });
+  }
+
+  if (teamIds.length) {
+    const stillUsed = await Game.find({
+      _id: { $ne: gameId },
+      teams: { $in: teamIds },
+      isDeleted: false,
+    });
+
+    const deletableTeams = teamIds.filter(
+      (id) => !stillUsed.some((g) => g.teams.includes(id))
+    );
+
+    if (deletableTeams.length) {
+      await Team.deleteMany({ _id: { $in: deletableTeams } });
+    }
   }
 }
