@@ -145,7 +145,7 @@ exports.login = asyncHandler(async (req, res) => {
     sameSite: env.server.node_env === "production" ? "None" : "Lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
-
+ 
   const userSafe = {
     id: user._id,
     name: user.name,
