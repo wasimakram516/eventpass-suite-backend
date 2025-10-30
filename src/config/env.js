@@ -50,6 +50,14 @@ const env = {
     apiSecret: validateEnv("CLOUDINARY_API_SECRET"),
     folder: validateEnv("CLOUDINARY_FOLDER"),
   },
+  aws: {
+    region: validateEnv("AWS_REGION"),
+    accessKeyId: validateEnv("AWS_ACCESS_KEY_ID"),
+    secretAccessKey: validateEnv("AWS_SECRET_ACCESS_KEY"),
+    s3Bucket: validateEnv("S3_BUCKET"),
+    cloudfrontUrl: validateEnv("CLOUDFRONT_URL"),
+  },
+
 };
 
 module.exports = env;

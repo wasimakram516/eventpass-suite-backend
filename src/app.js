@@ -12,6 +12,7 @@ const moduleRoutes = require("./routes/moduleRoutes");
 const translateRoutes = require("./routes/translateRoutes");
 const trashRoutes = require("./routes/trashRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
+const fileResourceRoutes = require("./routes/fileResourceRoutes");
 
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
@@ -97,6 +98,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/global-config", globalConfigRoutes);
 app.use("/api/businesses", businessRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/files", fileResourceRoutes);
 
 // Quiznest Routes
 app.use("/api/quiznest/games", gameRoutes);
