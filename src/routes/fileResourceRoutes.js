@@ -35,7 +35,7 @@ router.get("/slug/:slug", getFileBySlug);
 // ==========================================
 router.post("/", singleUpload, protect, createFileResource); 
 
-// ==========================================
+// ========================================== 
 // UPDATE file (Replace existing S3 object)
 // ==========================================
 router.put("/:id", singleUpload, protect, updateFileResource);
