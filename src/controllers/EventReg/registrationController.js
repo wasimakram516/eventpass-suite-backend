@@ -273,9 +273,9 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   //const qrUpload = await uploadToCloudinary(qrBuffer, "image/png");
 
   // 8) Build displayName fallback
-  const displayName = fullName || "Guest";
+  const displayName = fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
-  // 9) Build customFields summary HTML
+  // 9) Build customFields summary HTML (bilingual support)
   let customFieldHtml = "";
   if (formFields.length && Object.keys(customFields).length) {
     const items = formFields
@@ -286,63 +286,165 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       .filter(Boolean)
       .join("");
     if (items) {
+      const detailsLabel = event.defaultLanguage === "ar"
+        ? "إليك التفاصيل المقدمة:"
+        : "Here are your submitted details:";
+      const padding = event.defaultLanguage === "ar" ? "padding-right:20px;" : "padding-left:20px;";
       customFieldHtml = `
-        <p style="font-size:16px;">Here are your submitted details:</p>
-        <ul style="font-size:15px; line-height:1.6; padding-left:20px;">
-          ${items}
-        </ul>
-      `;
+      <p style="font-size:16px;">${detailsLabel}</p>
+      <ul style="font-size:15px; line-height:1.6; ${padding}">
+        ${items}
+      </ul>
+    `;
     }
   }
 
-  // 10) Email HTML (uses displayName & custom summary)
+  // 10) Translate dynamic content if Arabic
+  const isArabic = event.defaultLanguage === "ar";
+  const emailDir = isArabic ? "rtl" : "ltr";
+
+  let translatedEventName = event.name;
+  let translatedVenue = event.venue;
+  let translatedDescription = event.description || "";
+  let translatedDisplayName = displayName;
+
+  const dateRange = event.endDate && event.endDate.getTime() !== event.startDate.getTime()
+    ? `${event.startDate.toDateString()} to ${event.endDate.toDateString()}`
+    : event.startDate.toDateString();
+
+  let translatedDateRange = dateRange;
+  if (isArabic) {
+    const { translate } = require("google-translate-api-x");
+    try {
+      const translationPromises = [
+        translate(event.name, { to: "ar" }),
+        translate(event.venue, { to: "ar" }),
+        event.description ? translate(event.description, { to: "ar" }) : null,
+        displayName !== "Guest" ? translate(displayName, { to: "ar" }) : null,
+      ];
+
+      const [nameResult, venueResult, descResult, displayNameResult] = await Promise.all(translationPromises);
+
+      translatedEventName = nameResult.text;
+      translatedVenue = venueResult.text;
+      if (descResult) translatedDescription = descResult.text;
+      if (displayNameResult) translatedDisplayName = displayNameResult.text;
+      else if (displayName === "Guest") translatedDisplayName = "ضيف";
+
+      // Translate date range to Arabic format
+      const startDate = new Date(event.startDate);
+      const endDate = event.endDate ? new Date(event.endDate) : null;
+
+      const monthsArabic = {
+        January: "يناير", February: "فبراير", March: "مارس", April: "أبريل",
+        May: "مايو", June: "يونيو", July: "يوليو", August: "أغسطس",
+        September: "سبتمبر", October: "أكتوبر", November: "نوفمبر", December: "ديسمبر"
+      };
+
+      const daysArabic = {
+        Sunday: "الأحد", Monday: "الاثنين", Tuesday: "الثلاثاء", Wednesday: "الأربعاء",
+        Thursday: "الخميس", Friday: "الجمعة", Saturday: "السبت"
+      };
+
+      const toArabicDigits = (num) => String(num).replace(/\d/g, d => "٠١٢٣٤٥٦٧٨٩"[d]);
+
+      const formatArabicDate = (date) => {
+        const day = daysArabic[date.toLocaleDateString('en-US', { weekday: 'long' })];
+        const month = monthsArabic[date.toLocaleDateString('en-US', { month: 'long' })];
+        const dateNum = toArabicDigits(date.getDate());
+        const year = toArabicDigits(date.getFullYear());
+        return `${day}، ${dateNum} ${month} ${year}`;
+      };
+
+      if (endDate && endDate.getTime() !== startDate.getTime()) {
+        translatedDateRange = `${formatArabicDate(startDate)} إلى ${formatArabicDate(endDate)}`;
+      } else {
+        translatedDateRange = formatArabicDate(startDate);
+      }
+    } catch (err) {
+      console.error("Translation error:", err);
+    }
+  }
+
+  const emailTexts = isArabic
+    ? {
+      welcome: `أهلاً بك في ${translatedEventName}`,
+      greeting: `مرحباً <strong>${translatedDisplayName}</strong>،`,
+      confirmed: `تم تأكيد تسجيلك في <strong>${translatedEventName}</strong>!`,
+      eventDetails: "تفاصيل الفعالية:",
+      date: "التاريخ:",
+      venue: "المكان:",
+      about: "نبذة:",
+      qrPrompt: "يرجى تقديم رمز الاستجابة السريعة هذا عند تسجيل الدخول:",
+      token: "رمزك:",
+      questions: "لديك أسئلة؟ قم بالرد على هذا البريد الإلكتروني.",
+      seeYou: "نراكم قريباً!",
+      to: "إلى",
+    }
+    : {
+      welcome: `Welcome to ${translatedEventName}`,
+      greeting: `Hi <strong>${displayName}</strong>,`,
+      confirmed: `You're confirmed for <strong>${translatedEventName}</strong>!`,
+      eventDetails: "Event Details:",
+      date: "Date:",
+      venue: "Venue:",
+      about: "About:",
+      qrPrompt: "Please present this QR at check-in:",
+      token: "Your Token:",
+      questions: "Questions? Reply to this email.",
+      seeYou: "See you soon!",
+      to: "to",
+    };
+
+
+  const finalDateRange = isArabic ? translatedDateRange : dateRange;
+
   const emailHtml = `
-<div style="font-family:Arial,sans-serif;padding:20px;background:#f4f4f4;color:#333">
+<div dir="${emailDir}" style="font-family:Arial,sans-serif;padding:20px;background:#f4f4f4;color:#333">
   <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden">
     <div style="background:#007BFF;padding:20px;text-align:center">
-      <h2 style="color:#fff;margin:0">Welcome to ${event.name}</h2>
+      <h2 style="color:#fff;margin:0">${emailTexts.welcome}</h2>
     </div>
     <div style="padding:30px">
-      <p>Hi <strong>${displayName}</strong>,</p>
-      <p>You’re confirmed for <strong>${event.name}</strong>!</p>
-      ${
-        event.logoUrl
-          ? `<div style="text-align:center;margin:20px 0">
+      <p>${emailTexts.greeting}</p>
+      <p>${emailTexts.confirmed}</p>
+      ${event.logoUrl
+      ? `<div style="text-align:center;margin:20px 0">
                <img src="${event.logoUrl}" style="max-width:180px;max-height:100px"/>
              </div>`
-          : ""
-      }
-      <p>Event Details:</p>
-      <ul style="padding-left:20px">
-        <li><strong>Date:</strong> ${event.startDate.toDateString()}${
-    event.endDate && event.endDate.getTime() !== event.startDate.getTime()
-      ? ` to ${event.endDate.toDateString()}`
       : ""
-  }</li>
-        <li><strong>Venue:</strong> ${event.venue}</li>
-        ${
-          event.description
-            ? `<li><strong>About:</strong> ${event.description}</li>`
-            : ""
-        }
+    }
+     <p>${emailTexts.qrPrompt}</p>
+      <div style="text-align:center;margin:25px 0">{{qrImage}}</div>
+      <p>${emailTexts.eventDetails}</p>
+      <ul style="${isArabic ? 'padding-right:20px;' : 'padding-left:20px;'}">
+      <li><strong>${emailTexts.date}</strong> ${finalDateRange}</li>
+        <li><strong>${emailTexts.venue}</strong> ${translatedVenue}</li>
+        ${translatedDescription
+      ? `<li><strong>${emailTexts.about}</strong> ${translatedDescription}</li>`
+      : ""
+    }
       </ul>
       ${customFieldHtml}
-      <p>Please present this QR at check-in:</p>
-      <div style="text-align:center;margin:25px 0">{{qrImage}}</div>
-      <p>Your Token: <strong>${newRegistration.token}</strong></p>
+     
+      <p>${emailTexts.token} <strong>${newRegistration.token}</strong></p>
       <hr/>
-      <p>Questions? Reply to this email.</p>
-      <p>See you soon!</p>
+      <p>${emailTexts.questions}</p>
+      <p>${emailTexts.seeYou}</p>
     </div>
   </div>
 </div>
 `;
 
+  const emailSubject = isArabic
+    ? `تأكيد التسجيل: ${translatedEventName}`
+    : `Registration Confirmed: ${translatedEventName}`;
+
   // 11) Send Email & WhatsApp if we have address/number
   if (email) {
     await sendEmail(
       email,
-      `Registration Confirmed: ${event.name}`,
+      emailSubject,
       emailHtml,
       qrCodeDataUrl,
       event.agendaUrl ? [{ filename: "Agenda.pdf", path: event.agendaUrl }] : []
