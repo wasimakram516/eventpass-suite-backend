@@ -102,6 +102,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     businessSlug,
     showQrAfterRegistration,
     showQrOnBadge,
+    defaultLanguage,
   } = req.body;
 
   let { capacity, formFields } = req.body;
@@ -217,7 +218,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
           inputType: field.inputType,
           values:
             ["radio", "list"].includes(field.inputType) &&
-            Array.isArray(field.values)
+              Array.isArray(field.values)
               ? field.values
               : [],
           required: field.required === true,
@@ -246,6 +247,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     formFields: parsedFormFields,
     showQrAfterRegistration,
     showQrOnBadge,
+    defaultLanguage: defaultLanguage || "en",
   });
 
   recomputeAndEmit(businessId || null).catch((err) =>
@@ -269,6 +271,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     formFields,
     showQrAfterRegistration,
     showQrOnBadge,
+    defaultLanguage,
   } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -332,7 +335,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         if (m?.logoUrl) {
           try {
             await deleteImage(m.logoUrl);
-          } catch {}
+          } catch { }
         }
       }
     }
@@ -365,7 +368,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         if (removeIds.includes(media._id?.toString()) && media.logoUrl) {
           try {
             await deleteImage(media.logoUrl);
-          } catch {}
+          } catch { }
         }
       }
     }
@@ -420,7 +423,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
           inputType: field.inputType,
           values:
             ["radio", "list"].includes(field.inputType) &&
-            Array.isArray(field.values)
+              Array.isArray(field.values)
               ? field.values
               : [],
           required: field.required === true,
@@ -449,6 +452,10 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     showQrOnBadge === "false"
   ) {
     updates.showQrOnBadge = showQrOnBadge === "true" || showQrOnBadge === true;
+  }
+
+  if (defaultLanguage && ["en", "ar"].includes(defaultLanguage)) {
+    updates.defaultLanguage = defaultLanguage;
   }
 
   const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
@@ -539,7 +546,7 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
       if (m?.logoUrl) {
         try {
           await deleteImage(m.logoUrl);
-        } catch {}
+        } catch { }
       }
     }
   }
