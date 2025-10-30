@@ -273,7 +273,8 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   //const qrUpload = await uploadToCloudinary(qrBuffer, "image/png");
 
   // 8) Build displayName fallback
-  const displayName = fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
+  const displayName =
+    fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
   // 9) Build customFields summary HTML (bilingual support)
   let customFieldHtml = "";
@@ -286,10 +287,14 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       .filter(Boolean)
       .join("");
     if (items) {
-      const detailsLabel = event.defaultLanguage === "ar"
-        ? "إليك التفاصيل المقدمة:"
-        : "Here are your submitted details:";
-      const padding = event.defaultLanguage === "ar" ? "padding-right:20px;" : "padding-left:20px;";
+      const detailsLabel =
+        event.defaultLanguage === "ar"
+          ? "إليك التفاصيل المقدمة:"
+          : "Here are your submitted details:";
+      const padding =
+        event.defaultLanguage === "ar"
+          ? "padding-right:20px;"
+          : "padding-left:20px;";
       customFieldHtml = `
       <p style="font-size:16px;">${detailsLabel}</p>
       <ul style="font-size:15px; line-height:1.6; ${padding}">
@@ -308,9 +313,10 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   let translatedDescription = event.description || "";
   let translatedDisplayName = displayName;
 
-  const dateRange = event.endDate && event.endDate.getTime() !== event.startDate.getTime()
-    ? `${event.startDate.toDateString()} to ${event.endDate.toDateString()}`
-    : event.startDate.toDateString();
+  const dateRange =
+    event.endDate && event.endDate.getTime() !== event.startDate.getTime()
+      ? `${event.startDate.toDateString()} to ${event.endDate.toDateString()}`
+      : event.startDate.toDateString();
 
   let translatedDateRange = dateRange;
   if (isArabic) {
@@ -323,7 +329,8 @@ exports.createRegistration = asyncHandler(async (req, res) => {
         displayName !== "Guest" ? translate(displayName, { to: "ar" }) : null,
       ];
 
-      const [nameResult, venueResult, descResult, displayNameResult] = await Promise.all(translationPromises);
+      const [nameResult, venueResult, descResult, displayNameResult] =
+        await Promise.all(translationPromises);
 
       translatedEventName = nameResult.text;
       translatedVenue = venueResult.text;
@@ -336,28 +343,47 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       const endDate = event.endDate ? new Date(event.endDate) : null;
 
       const monthsArabic = {
-        January: "يناير", February: "فبراير", March: "مارس", April: "أبريل",
-        May: "مايو", June: "يونيو", July: "يوليو", August: "أغسطس",
-        September: "سبتمبر", October: "أكتوبر", November: "نوفمبر", December: "ديسمبر"
+        January: "يناير",
+        February: "فبراير",
+        March: "مارس",
+        April: "أبريل",
+        May: "مايو",
+        June: "يونيو",
+        July: "يوليو",
+        August: "أغسطس",
+        September: "سبتمبر",
+        October: "أكتوبر",
+        November: "نوفمبر",
+        December: "ديسمبر",
       };
 
       const daysArabic = {
-        Sunday: "الأحد", Monday: "الاثنين", Tuesday: "الثلاثاء", Wednesday: "الأربعاء",
-        Thursday: "الخميس", Friday: "الجمعة", Saturday: "السبت"
+        Sunday: "الأحد",
+        Monday: "الاثنين",
+        Tuesday: "الثلاثاء",
+        Wednesday: "الأربعاء",
+        Thursday: "الخميس",
+        Friday: "الجمعة",
+        Saturday: "السبت",
       };
 
-      const toArabicDigits = (num) => String(num).replace(/\d/g, d => "٠١٢٣٤٥٦٧٨٩"[d]);
+      const toArabicDigits = (num) =>
+        String(num).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[d]);
 
       const formatArabicDate = (date) => {
-        const day = daysArabic[date.toLocaleDateString('en-US', { weekday: 'long' })];
-        const month = monthsArabic[date.toLocaleDateString('en-US', { month: 'long' })];
+        const day =
+          daysArabic[date.toLocaleDateString("en-US", { weekday: "long" })];
+        const month =
+          monthsArabic[date.toLocaleDateString("en-US", { month: "long" })];
         const dateNum = toArabicDigits(date.getDate());
         const year = toArabicDigits(date.getFullYear());
         return `${day}، ${dateNum} ${month} ${year}`;
       };
 
       if (endDate && endDate.getTime() !== startDate.getTime()) {
-        translatedDateRange = `${formatArabicDate(startDate)} إلى ${formatArabicDate(endDate)}`;
+        translatedDateRange = `${formatArabicDate(
+          startDate
+        )} إلى ${formatArabicDate(endDate)}`;
       } else {
         translatedDateRange = formatArabicDate(startDate);
       }
@@ -368,34 +394,33 @@ exports.createRegistration = asyncHandler(async (req, res) => {
 
   const emailTexts = isArabic
     ? {
-      welcome: `أهلاً بك في ${translatedEventName}`,
-      greeting: `مرحباً <strong>${translatedDisplayName}</strong>،`,
-      confirmed: `تم تأكيد تسجيلك في <strong>${translatedEventName}</strong>!`,
-      eventDetails: "تفاصيل الفعالية:",
-      date: "التاريخ:",
-      venue: "المكان:",
-      about: "نبذة:",
-      qrPrompt: "يرجى تقديم رمز الاستجابة السريعة هذا عند تسجيل الدخول:",
-      token: "رمزك:",
-      questions: "لديك أسئلة؟ قم بالرد على هذا البريد الإلكتروني.",
-      seeYou: "نراكم قريباً!",
-      to: "إلى",
-    }
+        welcome: `أهلاً بك في ${translatedEventName}`,
+        greeting: `مرحباً <strong>${translatedDisplayName}</strong>،`,
+        confirmed: `تم تأكيد تسجيلك في <strong>${translatedEventName}</strong>!`,
+        eventDetails: "تفاصيل الفعالية:",
+        date: "التاريخ:",
+        venue: "المكان:",
+        about: "نبذة:",
+        qrPrompt: "يرجى تقديم رمز الاستجابة السريعة هذا عند تسجيل الدخول:",
+        token: "رمزك:",
+        questions: "لديك أسئلة؟ قم بالرد على هذا البريد الإلكتروني.",
+        seeYou: "نراكم قريباً!",
+        to: "إلى",
+      }
     : {
-      welcome: `Welcome to ${translatedEventName}`,
-      greeting: `Hi <strong>${displayName}</strong>,`,
-      confirmed: `You're confirmed for <strong>${translatedEventName}</strong>!`,
-      eventDetails: "Event Details:",
-      date: "Date:",
-      venue: "Venue:",
-      about: "About:",
-      qrPrompt: "Please present this QR at check-in:",
-      token: "Your Token:",
-      questions: "Questions? Reply to this email.",
-      seeYou: "See you soon!",
-      to: "to",
-    };
-
+        welcome: `Welcome to ${translatedEventName}`,
+        greeting: `Hi <strong>${displayName}</strong>,`,
+        confirmed: `You're confirmed for <strong>${translatedEventName}</strong>!`,
+        eventDetails: "Event Details:",
+        date: "Date:",
+        venue: "Venue:",
+        about: "About:",
+        qrPrompt: "Please present this QR at check-in:",
+        token: "Your Token:",
+        questions: "Questions? Reply to this email.",
+        seeYou: "See you soon!",
+        to: "to",
+      };
 
   const finalDateRange = isArabic ? translatedDateRange : dateRange;
 
@@ -408,23 +433,25 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     <div style="padding:30px">
       <p>${emailTexts.greeting}</p>
       <p>${emailTexts.confirmed}</p>
-      ${event.logoUrl
-      ? `<div style="text-align:center;margin:20px 0">
+      ${
+        event.logoUrl
+          ? `<div style="text-align:center;margin:20px 0">
                <img src="${event.logoUrl}" style="max-width:180px;max-height:100px"/>
              </div>`
-      : ""
-    }
+          : ""
+      }
 <p>${emailTexts.qrPrompt}</p>
 <div style="text-align:center;margin:20px auto;display:block;width:100%;">{{qrImage}}</div>
 <p>${emailTexts.token} <strong>${newRegistration.token}</strong></p>
       <p>${emailTexts.eventDetails}</p>
-      <ul style="${isArabic ? 'padding-right:20px;' : 'padding-left:20px;'}">
+      <ul style="${isArabic ? "padding-right:20px;" : "padding-left:20px;"}">
       <li><strong>${emailTexts.date}</strong> ${finalDateRange}</li>
         <li><strong>${emailTexts.venue}</strong> ${translatedVenue}</li>
-        ${translatedDescription
-      ? `<li><strong>${emailTexts.about}</strong> ${translatedDescription}</li>`
-      : ""
-    }
+        ${
+          translatedDescription
+            ? `<li><strong>${emailTexts.about}</strong> ${translatedDescription}</li>`
+            : ""
+        }
       </ul>
      ${customFieldHtml}
      

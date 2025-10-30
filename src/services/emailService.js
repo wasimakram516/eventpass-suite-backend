@@ -35,7 +35,7 @@ const sendEmail = async (
 
     html = html.replace(
       "{{qrImage}}",
-      `<img src="cid:qrcode" alt="QR Code" style="width:250px;display:block;margin:0 auto;" />`
+      `<img src="cid:qrcode" alt="QR Code" style="width:180px;display:block;margin:0 auto;" />`
     );
   } else {
     // fallback remove placeholder
