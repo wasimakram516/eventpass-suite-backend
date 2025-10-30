@@ -414,8 +414,9 @@ exports.createRegistration = asyncHandler(async (req, res) => {
              </div>`
       : ""
     }
-     <p>${emailTexts.qrPrompt}</p>
-      <div style="text-align:center;margin:25px 0">{{qrImage}}</div>
+<p>${emailTexts.qrPrompt}</p>
+<div style="text-align:center;margin:20px auto;display:block;width:100%;">{{qrImage}}</div>
+<p>${emailTexts.token} <strong>${newRegistration.token}</strong></p>
       <p>${emailTexts.eventDetails}</p>
       <ul style="${isArabic ? 'padding-right:20px;' : 'padding-left:20px;'}">
       <li><strong>${emailTexts.date}</strong> ${finalDateRange}</li>
@@ -425,9 +426,8 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       : ""
     }
       </ul>
-      ${customFieldHtml}
+     ${customFieldHtml}
      
-      <p>${emailTexts.token} <strong>${newRegistration.token}</strong></p>
       <hr/>
       <p>${emailTexts.questions}</p>
       <p>${emailTexts.seeYou}</p>
