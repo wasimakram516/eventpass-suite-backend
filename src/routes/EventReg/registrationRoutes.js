@@ -11,6 +11,8 @@ const {
   getAllPublicRegistrationsByEvent,
   downloadSampleExcel,
   uploadRegistrations,
+  sendBulkEmails,
+  unsentCount
 } = require("../../controllers/EventReg/registrationController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
@@ -18,6 +20,12 @@ const eventRegAccess = [protect, checkPermission.eventreg];
 
 // Create a new public registration (no auth required)
 router.post("/", createRegistration);
+
+// GET count of unemailed registrations for an event (protected)
+router.get("/event/:slug/unsent-count", eventRegAccess, unsentCount);
+
+// SEND bulk emails to all unemailed registrations for an event (protected)
+router.post("/event/:slug/bulk-email", eventRegAccess, sendBulkEmails);
 
 // Verify registration via QR token (protected)
 router.get("/verify", eventRegAccess, verifyRegistrationByToken);

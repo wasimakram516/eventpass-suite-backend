@@ -25,6 +25,7 @@ const RegistrationSchema = new mongoose.Schema(
       default: {},
     },
 
+    emailSent: { type: Boolean, default: false },
     token: { type: String, required: true }, // For QR
   },
   { timestamps: true }

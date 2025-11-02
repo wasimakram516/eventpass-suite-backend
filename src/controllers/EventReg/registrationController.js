@@ -21,8 +21,11 @@ const { buildBadgeZpl } = require("../../utils/zebraZpl");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const {
   emitUploadProgress,
+  emitEmailProgress,
 } = require("../../socket/modules/eventreg/eventRegSocket");
 const e = require("express");
+
+const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder");
 
 // DOWNLOAD sample Excel template
 exports.downloadSampleExcel = asyncHandler(async (req, res) => {
@@ -189,7 +192,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   const formFields = event.formFields || [];
   const customFields = {};
 
-  // 1) Process dynamic customFields (unchanged)…
+  // --- Process dynamic custom fields ---
   if (formFields.length > 0) {
     for (const field of formFields) {
       const value = req.body[field.inputName];
@@ -225,35 +228,29 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     }
   }
 
-  // 2) Extract core props from either classic or custom:
-  let fullName = req.body.fullName || pickFullName(customFields);
-  let email = req.body.email || pickEmail(customFields);
-  let phone = req.body.phone || pickPhone(customFields);
-  let company = req.body.company || pickCompany(customFields);
+  // --- Extract basic info ---
+  const fullName = req.body.fullName || pickFullName(customFields);
+  const email = req.body.email || pickEmail(customFields);
+  const phone = req.body.phone || pickPhone(customFields);
+  const company = req.body.company || pickCompany(customFields);
 
-  // 3) If no formFields, enforce classic fields:
-  if (!formFields.length) {
-    if (!fullName || !email || !phone) {
-      return response(res, 400, "Full name, email, and phone are required");
-    }
+  if (!formFields.length && (!fullName || !email || !phone)) {
+    return response(res, 400, "Full name, email, and phone are required");
   }
 
-  // 4) Prevent duplicates (only include clauses for fields you actually have)
+  // --- Prevent duplicates ---
   const orClauses = [];
   if (email) orClauses.push({ email });
   if (phone) orClauses.push({ phone });
 
   if (orClauses.length) {
-    const dup = await Registration.findOne({
-      eventId,
-      $or: orClauses,
-    });
+    const dup = await Registration.findOne({ eventId, $or: orClauses });
     if (dup) {
       return response(res, 409, "Already registered with this email or phone");
     }
   }
 
-  // 5) Create registration…
+  // --- Create registration ---
   const newRegistration = await Registration.create({
     eventId,
     fullName,
@@ -263,223 +260,31 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     customFields,
   });
 
-  // 6) Increment counter
+  // --- Increment event counter ---
   event.registrations += 1;
   await event.save();
 
-  // 7) Generate QR
-  const qrCodeDataUrl = await QRCode.toDataURL(newRegistration.token);
-  const qrBuffer = await QRCode.toBuffer(newRegistration.token);
-  //const qrUpload = await uploadToCloudinary(qrBuffer, "image/png");
-
-  // 8) Build displayName fallback
+  // --- Generate and send email using util ---
   const displayName =
     fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
-  // 9) Build customFields summary HTML (bilingual support)
-  let customFieldHtml = "";
-  if (formFields.length && Object.keys(customFields).length) {
-    const items = formFields
-      .map((f) => {
-        const v = customFields[f.inputName];
-        return v ? `<li><strong>${f.inputName}:</strong> ${v}</li>` : "";
-      })
-      .filter(Boolean)
-      .join("");
-    if (items) {
-      const detailsLabel =
-        event.defaultLanguage === "ar"
-          ? "إليك التفاصيل المقدمة:"
-          : "Here are your submitted details:";
-      const padding =
-        event.defaultLanguage === "ar"
-          ? "padding-right:20px;"
-          : "padding-left:20px;";
-      customFieldHtml = `
-      <p style="font-size:16px;">${detailsLabel}</p>
-      <ul style="font-size:15px; line-height:1.6; ${padding}">
-        ${items}
-      </ul>
-    `;
-    }
-  }
+  const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
+    event,
+    registration: newRegistration,
+    displayName,
+    customFields,
+  });
 
-  // 10) Translate dynamic content if Arabic
-  const isArabic = event.defaultLanguage === "ar";
-  const emailDir = isArabic ? "rtl" : "ltr";
-
-  let translatedEventName = event.name;
-  let translatedVenue = event.venue;
-  let translatedDescription = event.description || "";
-  let translatedDisplayName = displayName;
-
-  const dateRange =
-    event.endDate && event.endDate.getTime() !== event.startDate.getTime()
-      ? `${event.startDate.toDateString()} to ${event.endDate.toDateString()}`
-      : event.startDate.toDateString();
-
-  let translatedDateRange = dateRange;
-  if (isArabic) {
-    const { translate } = require("google-translate-api-x");
-    try {
-      const translationPromises = [
-        translate(event.name, { to: "ar" }),
-        translate(event.venue, { to: "ar" }),
-        event.description ? translate(event.description, { to: "ar" }) : null,
-        displayName !== "Guest" ? translate(displayName, { to: "ar" }) : null,
-      ];
-
-      const [nameResult, venueResult, descResult, displayNameResult] =
-        await Promise.all(translationPromises);
-
-      translatedEventName = nameResult.text;
-      translatedVenue = venueResult.text;
-      if (descResult) translatedDescription = descResult.text;
-      if (displayNameResult) translatedDisplayName = displayNameResult.text;
-      else if (displayName === "Guest") translatedDisplayName = "ضيف";
-
-      // Translate date range to Arabic format
-      const startDate = new Date(event.startDate);
-      const endDate = event.endDate ? new Date(event.endDate) : null;
-
-      const monthsArabic = {
-        January: "يناير",
-        February: "فبراير",
-        March: "مارس",
-        April: "أبريل",
-        May: "مايو",
-        June: "يونيو",
-        July: "يوليو",
-        August: "أغسطس",
-        September: "سبتمبر",
-        October: "أكتوبر",
-        November: "نوفمبر",
-        December: "ديسمبر",
-      };
-
-      const daysArabic = {
-        Sunday: "الأحد",
-        Monday: "الاثنين",
-        Tuesday: "الثلاثاء",
-        Wednesday: "الأربعاء",
-        Thursday: "الخميس",
-        Friday: "الجمعة",
-        Saturday: "السبت",
-      };
-
-      const toArabicDigits = (num) =>
-        String(num).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[d]);
-
-      const formatArabicDate = (date) => {
-        const day =
-          daysArabic[date.toLocaleDateString("en-US", { weekday: "long" })];
-        const month =
-          monthsArabic[date.toLocaleDateString("en-US", { month: "long" })];
-        const dateNum = toArabicDigits(date.getDate());
-        const year = toArabicDigits(date.getFullYear());
-        return `${day}، ${dateNum} ${month} ${year}`;
-      };
-
-      if (endDate && endDate.getTime() !== startDate.getTime()) {
-        translatedDateRange = `${formatArabicDate(
-          startDate
-        )} إلى ${formatArabicDate(endDate)}`;
-      } else {
-        translatedDateRange = formatArabicDate(startDate);
-      }
-    } catch (err) {
-      console.error("Translation error:", err);
-    }
-  }
-
-  const emailTexts = isArabic
-    ? {
-        welcome: `أهلاً بك في ${translatedEventName}`,
-        greeting: `مرحباً <strong>${translatedDisplayName}</strong>،`,
-        confirmed: `تم تأكيد تسجيلك في <strong>${translatedEventName}</strong>!`,
-        eventDetails: "تفاصيل الفعالية:",
-        date: "التاريخ:",
-        venue: "المكان:",
-        about: "نبذة:",
-        qrPrompt: "يرجى تقديم رمز الاستجابة السريعة هذا عند تسجيل الدخول:",
-        token: "رمزك:",
-        questions: "لديك أسئلة؟ قم بالرد على هذا البريد الإلكتروني.",
-        seeYou: "نراكم قريباً!",
-        to: "إلى",
-      }
-    : {
-        welcome: `Welcome to ${translatedEventName}`,
-        greeting: `Hi <strong>${displayName}</strong>,`,
-        confirmed: `You're confirmed for <strong>${translatedEventName}</strong>!`,
-        eventDetails: "Event Details:",
-        date: "Date:",
-        venue: "Venue:",
-        about: "About:",
-        qrPrompt: "Please present this QR at check-in:",
-        token: "Your Token:",
-        questions: "Questions? Reply to this email.",
-        seeYou: "See you soon!",
-        to: "to",
-      };
-
-  const finalDateRange = isArabic ? translatedDateRange : dateRange;
-
-  const emailHtml = `
-<div dir="${emailDir}" style="font-family:Arial,sans-serif;padding:20px;background:#f4f4f4;color:#333">
-  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden">
-    <div style="background:#007BFF;padding:20px;text-align:center">
-      <h2 style="color:#fff;margin:0">${emailTexts.welcome}</h2>
-    </div>
-    <div style="padding:30px">
-      <p>${emailTexts.greeting}</p>
-      <p>${emailTexts.confirmed}</p>
-      ${
-        event.logoUrl
-          ? `<div style="text-align:center;margin:20px 0">
-               <img src="${event.logoUrl}" style="max-width:180px;max-height:100px"/>
-             </div>`
-          : ""
-      }
-<p>${emailTexts.qrPrompt}</p>
-<div style="text-align:center;margin:20px auto;display:block;width:100%;">{{qrImage}}</div>
-<p>${emailTexts.token} <strong>${newRegistration.token}</strong></p>
-      <p>${emailTexts.eventDetails}</p>
-      <ul style="${isArabic ? "padding-right:20px;" : "padding-left:20px;"}">
-      <li><strong>${emailTexts.date}</strong> ${finalDateRange}</li>
-        <li><strong>${emailTexts.venue}</strong> ${translatedVenue}</li>
-        ${
-          translatedDescription
-            ? `<li><strong>${emailTexts.about}</strong> ${translatedDescription}</li>`
-            : ""
-        }
-      </ul>
-     ${customFieldHtml}
-     
-      <hr/>
-      <p>${emailTexts.questions}</p>
-      <p>${emailTexts.seeYou}</p>
-    </div>
-  </div>
-</div>
-`;
-
-  const emailSubject = isArabic
-    ? `تأكيد التسجيل: ${translatedEventName}`
-    : `Registration Confirmed: ${translatedEventName}`;
-
-  // 11) Send Email & WhatsApp if we have address/number
   if (email) {
     await sendEmail(
       email,
-      emailSubject,
-      emailHtml,
+      subject,
+      html,
       qrCodeDataUrl,
       event.agendaUrl ? [{ filename: "Agenda.pdf", path: event.agendaUrl }] : []
     );
-  }
-  if (phone) {
-    const whatsappText = `Hi ${displayName}, you’re registered for "${event.name}". Show this QR at check-in:`;
-    // await sendWhatsappMessage(phone, whatsappText, qrUpload.secure_url);
+    newRegistration.emailSent = true;
+    await newRegistration.save();
   }
 
   // Fire background recompute
@@ -488,6 +293,84 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   );
 
   return response(res, 201, "Registration successful", newRegistration);
+});
+
+exports.unsentCount = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+  const event = await Event.findOne({ slug }).notDeleted();
+  if (!event) return response(res, 404, "Event not found");
+
+  const unsentCount = await Registration.countDocuments({
+    eventId: event._id,
+    isDeleted: { $ne: true },
+    $or: [{ emailSent: false }, { emailSent: { $exists: false } }],
+  });
+
+  return response(res, 200, "Unsent count retrieved", { unsentCount });
+});
+
+exports.sendBulkEmails = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+  const event = await Event.findOne({ slug }).notDeleted();
+  if (!event) return response(res, 404, "Event not found");
+
+  // Fetch unsent registrations
+  const pendingRegs = await Registration.find({
+    eventId: event._id,
+    isDeleted: { $ne: true },
+    $or: [{ emailSent: false }, { emailSent: { $exists: false } }],
+  });
+
+  if (!pendingRegs.length)
+    return response(res, 200, "All registration emails already sent.");
+
+  const total = pendingRegs.length;
+  let processed = 0;
+  let sentCount = 0;
+
+  for (const reg of pendingRegs) {
+    processed++;
+
+    try {
+      const cf = reg.customFields ? Object.fromEntries(reg.customFields) : {};
+      const fullName = reg.fullName || pickFullName(cf);
+      const email = reg.email || pickEmail(cf);
+
+      if (!email) {
+        emitEmailProgress(event._id.toString(), processed, total);
+        continue;
+      }
+
+      const displayName =
+        fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
+
+      const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
+        event,
+        registration: reg,
+        displayName,
+        customFields: cf,
+      });
+
+      await sendEmail(email, subject, html, qrCodeDataUrl);
+
+      reg.emailSent = true;
+      await reg.save();
+
+      sentCount++;
+    } catch (err) {
+      console.error("Email send error:", err.message);
+    }
+
+    emitEmailProgress(event._id.toString(), processed, total);
+  }
+
+  emitEmailProgress(event._id.toString(), total, total);
+
+  return response(
+    res,
+    200,
+    `Bulk emails sent to ${sentCount}/${total} registrations.`
+  );
 });
 
 // GET paginated registrations by event using slug (includes walk-ins + customFields)
@@ -522,6 +405,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
       return {
         _id: reg._id,
         token: reg.token,
+        emailSent: reg.emailSent,
         createdAt: reg.createdAt,
 
         // classic top‐level values (may be null if you used custom fields)
@@ -574,6 +458,7 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
       return {
         _id: reg._id,
         token: reg.token,
+        emailSent: reg.emailSent,
         createdAt: reg.createdAt,
 
         // classic fields

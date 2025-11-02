@@ -1,11 +1,6 @@
 const { emitUpdate } = require("../../../utils/socketUtils");
 
-/**
- * Emit registration upload progress
- * @param {string} eventId - ID of the event
- * @param {number} uploaded - how many processed so far
- * @param {number} total - total rows to upload
- */
+// Emit upload progress for registrations
 function emitUploadProgress(eventId, uploaded, total) {
   emitUpdate("registrationUploadProgress", {
     eventId,
@@ -14,5 +9,9 @@ function emitUploadProgress(eventId, uploaded, total) {
   });
 }
 
+// Emit email sending progress for registrations
+function emitEmailProgress(eventId, sent, total) {
+  emitUpdate("registrationEmailProgress", { eventId, sent, total });
+}
 
-module.exports = { emitUploadProgress };
+module.exports = { emitUploadProgress, emitEmailProgress };
