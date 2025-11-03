@@ -275,15 +275,22 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   });
 
   if (email) {
-    await sendEmail(
+    const result = await sendEmail(
       email,
       subject,
       html,
       qrCodeDataUrl,
       event.agendaUrl ? [{ filename: "Agenda.pdf", path: event.agendaUrl }] : []
     );
-    newRegistration.emailSent = true;
-    await newRegistration.save();
+    if (result.success) {
+      newRegistration.emailSent = true;
+      await newRegistration.save();
+    } else {
+      console.error(
+        `Email failed for ${email}:`,
+        result.response || result.error
+      );
+    }
   }
 
   // Fire background recompute
@@ -297,20 +304,20 @@ exports.createRegistration = asyncHandler(async (req, res) => {
 // UPDATE registration (Admin/Staff editable)
 exports.updateRegistration = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { fields } = req.body; 
+  const { fields } = req.body;
 
   const reg = await Registration.findById(id);
   if (!reg) return response(res, 404, "Registration not found");
 
   // Merge into existing customFields map
-  const newCustomFields = { ...Object.fromEntries(reg.customFields), ...fields };
+  const newCustomFields = {
+    ...Object.fromEntries(reg.customFields),
+    ...fields,
+  };
 
   // Determine updated top-level fields
   const fullName =
-    fields["Full Name"] ||
-    fields["fullName"] ||
-    fields["Name"] ||
-    reg.fullName;
+    fields["Full Name"] || fields["fullName"] || fields["Name"] || reg.fullName;
   const email = fields["Email"] || fields["email"] || reg.email;
   const phone = fields["Phone"] || fields["phone"] || reg.phone;
   const company =
@@ -387,10 +394,17 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
         customFields: cf,
       });
 
-      await sendEmail(email, subject, html, qrCodeDataUrl);
-
-      reg.emailSent = true;
-      await reg.save();
+      const result = await sendEmail(email, subject, html, qrCodeDataUrl);
+      if (result.success) {
+        reg.emailSent = true;
+        await reg.save();
+        sentCount++;
+      } else {
+        console.warn(
+          `Failed to send to ${email}:`,
+          result.response || result.error
+        );
+      }
 
       sentCount++;
     } catch (err) {

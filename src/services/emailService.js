@@ -2,8 +2,8 @@ const nodemailer = require("nodemailer");
 env = require("../config/env");
 
 const transporter = nodemailer.createTransport({
-  host: env.notifications.email.host,   // smtp.sendgrid.net
-  port: env.notifications.email.port,   // 587
+  host: env.notifications.email.host, // smtp.sendgrid.net
+  port: env.notifications.email.port, // 587
   auth: {
     user: env.notifications.email.user, // always "apikey"
     pass: env.notifications.email.pass, // SendGrid API key
@@ -53,11 +53,31 @@ const sendEmail = async (
   };
 
   try {
-    await transporter.sendMail(mailOptions);
-    return true;
+    const info = await transporter.sendMail(mailOptions);
+
+    const smtpResponse = info?.response || "";
+    const smtpCode = parseInt(smtpResponse.split(" ")[0]) || 0;
+    const accepted = info?.accepted?.length > 0;
+
+    // Success only if 250-level SMTP code or at least one accepted
+    const success = accepted || (smtpCode >= 200 && smtpCode < 300);
+
+    if (success) {
+      console.log(`✅ Delivered to ${to} (${smtpResponse})`);
+      return { success: true, response: smtpResponse };
+    } else {
+      console.warn(
+        `⚠️ SendGrid did not accept email for ${to}: ${smtpResponse}`
+      );
+      return { success: false, response: smtpResponse, code: smtpCode };
+    }
   } catch (err) {
-    console.error("Email error:", err);
-    return false;
+    console.error("❌ Email error:", err);
+    return {
+      success: false,
+      error: err.message,
+      code: err.responseCode || 500,
+    };
   }
 };
 
