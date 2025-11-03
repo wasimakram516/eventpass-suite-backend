@@ -36,7 +36,16 @@ const pickEmail = (f) => pick(f, "email", ["e-mail", "email address"]);
 const pickPhone = (f) =>
   pick(f, "phone", ["phone number", "mobile", "contact", "whatsapp"]);
 const pickCompany = (f) =>
-  pick(f, "company", ["organization", "organisation", "business"]);
+  pick(f, "company", [
+    "organization",
+    "organisation",
+    "institution",
+    "institute",
+    "business",
+    "enterprise",
+    "office",
+  ]);
+
 const pickTitle = (f) =>
   pick(f, "title", ["designation", "job title", "position", "role"]);
 
