@@ -15,6 +15,7 @@ const {
   pickCompany,
   pickTitle,
   pickBadgeIdentifier,
+  pickWing,
 } = require("../../utils/customFieldUtils");
 const { buildBadgeZpl } = require("../../utils/zebraZpl");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
