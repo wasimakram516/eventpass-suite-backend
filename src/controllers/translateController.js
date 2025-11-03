@@ -13,7 +13,7 @@ exports.translateText = async (req, res) => {
       text || ""
     );
   }
-
+ 
   try {
     const result = await translate(text, { to: targetLang });
     return response(res, 200, "Translation successful", result.text);
