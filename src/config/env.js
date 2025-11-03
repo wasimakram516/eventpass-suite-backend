@@ -35,14 +35,12 @@ const env = {
   },
   notifications:{
     email:{
-      emailUser: validateEnv("EMAIL_USER"),
-      emailPass: validateEnv("EMAIL_PASS"),
+      host: validateEnv("EMAIL_HOST"),
+      port: validateEnv("EMAIL_PORT"),
+      user: validateEnv("EMAIL_USER"),
+      pass: validateEnv("EMAIL_PASS"),
+      from: validateEnv("EMAIL_FROM"),
     },
-    whatsapp:{
-      accountSid: validateEnv("TWILIO_ACCOUNT_SID"),
-      authToken: validateEnv("TWILIO_AUTH_TOKEN"),
-      whatsappFrom: validateEnv("TWILIO_WHATSAPP_FROM"), // e.g., 'whatsapp:+14155238886'
-    }
   },
   cloudinary: {
     cloudName: validateEnv("CLOUDINARY_CLOUD_NAME"),

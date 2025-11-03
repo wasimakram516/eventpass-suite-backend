@@ -8,7 +8,6 @@ const Event = require("../../models/Event");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const sendEmail = require("../../services/emailService");
-const sendWhatsappMessage = require("../../services/whatsappService");
 const {
   pickFullName,
   pickEmail,

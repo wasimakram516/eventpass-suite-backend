@@ -1,10 +1,12 @@
 const nodemailer = require("nodemailer");
+env = require("../config/env");
 
 const transporter = nodemailer.createTransport({
-  service: "Gmail",
+  host: env.notifications.email.host,   // smtp.sendgrid.net
+  port: env.notifications.email.port,   // 587
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: env.notifications.email.user, // always "apikey"
+    pass: env.notifications.email.pass, // SendGrid API key
   },
 });
 
@@ -43,7 +45,7 @@ const sendEmail = async (
   }
 
   const mailOptions = {
-    from: `"EventPass" <${process.env.EMAIL_USER}>`,
+    from: env.notifications.email.from,
     to,
     subject,
     html,
