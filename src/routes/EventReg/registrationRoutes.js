@@ -12,7 +12,8 @@ const {
   downloadSampleExcel,
   uploadRegistrations,
   sendBulkEmails,
-  unsentCount
+  unsentCount,
+  updateRegistration,
 } = require("../../controllers/EventReg/registrationController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
@@ -20,6 +21,8 @@ const eventRegAccess = [protect, checkPermission.eventreg];
 
 // Create a new public registration (no auth required)
 router.post("/", createRegistration);
+
+router.put("/:id", eventRegAccess, updateRegistration);
 
 // GET count of unemailed registrations for an event (protected)
 router.get("/event/:slug/unsent-count", eventRegAccess, unsentCount);

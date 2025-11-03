@@ -295,6 +295,43 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   return response(res, 201, "Registration successful", newRegistration);
 });
 
+// UPDATE registration (Admin/Staff editable)
+exports.updateRegistration = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { fields } = req.body; 
+
+  const reg = await Registration.findById(id);
+  if (!reg) return response(res, 404, "Registration not found");
+
+  // Merge into existing customFields map
+  const newCustomFields = { ...Object.fromEntries(reg.customFields), ...fields };
+
+  // Determine updated top-level fields
+  const fullName =
+    fields["Full Name"] ||
+    fields["fullName"] ||
+    fields["Name"] ||
+    reg.fullName;
+  const email = fields["Email"] || fields["email"] || reg.email;
+  const phone = fields["Phone"] || fields["phone"] || reg.phone;
+  const company =
+    fields["Company"] ||
+    fields["Institution"] ||
+    fields["Organization"] ||
+    fields["company"] ||
+    reg.company;
+
+  reg.customFields = newCustomFields;
+  reg.fullName = fullName;
+  reg.email = email;
+  reg.phone = phone;
+  reg.company = company;
+
+  await reg.save();
+
+  return response(res, 200, "Registration updated successfully", reg);
+});
+
 exports.unsentCount = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const event = await Event.findOne({ slug }).notDeleted();
