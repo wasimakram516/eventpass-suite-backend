@@ -51,7 +51,7 @@ const pickTitle = (f) =>
 
 const pickBadgeIdentifier = (f) =>
   pick(f, "badge", ["badge id", "badge identifier", "badge number"]);
-
+const pickWing = (f) => pick(f, "wing", ["wing name", "wing"]);
 module.exports = {
   pickFullName,
   pickEmail,
@@ -59,4 +59,5 @@ module.exports = {
   pickCompany,
   pickTitle,
   pickBadgeIdentifier,
+  pickWing
 };

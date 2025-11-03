@@ -563,6 +563,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     company: pickCompany(cf) || registration.company || null,
     title: pickTitle(cf) || null,
     badgeIdentifier: pickBadgeIdentifier(cf) || null,
+    wing: pickWing(cf) || null,
   };
 
   const zpl = buildBadgeZpl({
