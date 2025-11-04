@@ -3,6 +3,8 @@ const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const XLSX = require("xlsx");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
+const { deleteImage } = require("../../config/cloudinary");
+const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
 
 // Download sample Excel template
 exports.downloadSampleTemplate = asyncHandler(async (req, res) => {
@@ -150,24 +152,47 @@ exports.addQuestion = asyncHandler(async (req, res) => {
   const game = await Game.findById(req.params.gameId).notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
-  if (answers.length !== game.choicesCount) {
-    return response(
-      res,
-      400,
-      `This quiz requires exactly ${game.choicesCount} options`
+  const parsedAnswers = typeof answers === 'string' ? JSON.parse(answers) : answers;
+
+  if (parsedAnswers.length !== game.choicesCount) {
+    return response(res, 400, `This quiz requires exactly ${game.choicesCount} options`);
+  }
+
+  // Upload images
+  let questionImage = null;
+  const answerImages = [];
+
+  if (req.files?.questionImage?.[0]) {
+    const upload = await uploadToCloudinary(
+      req.files.questionImage[0].buffer,
+      req.files.questionImage[0].mimetype,
+      'quiznest/questions'
     );
+    questionImage = upload.secure_url;
+  }
+
+  if (req.files?.answerImages) {
+    for (const file of req.files.answerImages) {
+      const upload = await uploadToCloudinary(
+        file.buffer,
+        file.mimetype,
+        'quiznest/answers'
+      );
+      answerImages.push(upload.secure_url);
+    }
   }
 
   game.questions.push({
     question,
-    answers,
-    correctAnswerIndex,
-    hint: hint || "", // optional
+    questionImage,
+    answers: parsedAnswers,
+    answerImages,
+    correctAnswerIndex: parseInt(correctAnswerIndex),
+    hint: hint || "",
   });
 
   await game.save();
 
-  // Fire background recompute
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
@@ -177,7 +202,7 @@ exports.addQuestion = asyncHandler(async (req, res) => {
 
 // Update a question
 exports.updateQuestion = asyncHandler(async (req, res) => {
-  const { question, answers, correctAnswerIndex, hint } = req.body;
+  const { question, answers, correctAnswerIndex, hint, removeQuestionImage, removeAnswerImages } = req.body;
 
   const game = await Game.findById(req.params.gameId).notDeleted();
   if (!game) return response(res, 404, "Game not found");
@@ -185,27 +210,80 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
   const q = game.questions.id(req.params.questionId);
   if (!q) return response(res, 404, "Question not found");
 
-  if (answers && answers.length !== game.choicesCount) {
-    return response(
-      res,
-      400,
-      `This quiz requires exactly ${game.choicesCount} options`
+  const parsedAnswers = answers ? (typeof answers === 'string' ? JSON.parse(answers) : answers) : null;
+
+  if (parsedAnswers && parsedAnswers.length !== game.choicesCount) {
+    return response(res, 400, `This quiz requires exactly ${game.choicesCount} options`);
+  }
+
+  // Handle question image removal
+  if (removeQuestionImage === 'true' && q.questionImage) {
+    await deleteImage(q.questionImage);
+    q.questionImage = null;
+  }
+
+  if (removeAnswerImages) {
+    const indicesToRemove = JSON.parse(removeAnswerImages);
+    for (const index of indicesToRemove) {
+      if (q.answerImages[index]) {
+        await deleteImage(q.answerImages[index]);
+        q.answerImages[index] = null;
+      }
+    }
+  }
+
+  if (req.files?.questionImage?.[0]) {
+    if (q.questionImage) await deleteImage(q.questionImage);
+    const upload = await uploadToCloudinary(
+      req.files.questionImage[0].buffer,
+      req.files.questionImage[0].mimetype,
+      'quiznest/questions'
     );
+    q.questionImage = upload.secure_url;
+  }
+  
+  if (req.files?.answerImages && req.body.answerImageIndices) {
+    const indices = Array.isArray(req.body.answerImageIndices)
+      ? req.body.answerImageIndices.map(Number)
+      : [Number(req.body.answerImageIndices)];
+
+    const newAnswerImages = [...(q.answerImages || Array(game.choicesCount).fill(null))];
+
+    for (let i = 0; i < req.files.answerImages.length; i++) {
+      const file = req.files.answerImages[i];
+      const targetIndex = indices[i];
+
+      const upload = await uploadToCloudinary(
+        file.buffer,
+        file.mimetype,
+        'quiznest/answers'
+      );
+
+      if (newAnswerImages[targetIndex]) {
+        await deleteImage(newAnswerImages[targetIndex]).catch(console.error);
+      }
+
+      newAnswerImages[targetIndex] = upload.secure_url;
+    }
+
+    q.answerImages = newAnswerImages;
   }
 
   q.question = question || q.question;
-  q.answers = answers || q.answers;
-  q.correctAnswerIndex = correctAnswerIndex ?? q.correctAnswerIndex;
-  q.hint = hint ?? q.hint; // update hint if provided
+  q.answers = parsedAnswers || q.answers;
+  q.correctAnswerIndex = correctAnswerIndex !== undefined ? parseInt(correctAnswerIndex) : q.correctAnswerIndex;
+  q.hint = hint !== undefined ? hint : q.hint;
 
   await game.save();
-  // Fire background recompute
+
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
+
   return response(res, 200, "Question updated", q);
 });
 
+// Delete a question (soft delete)
 exports.deleteQuestion = asyncHandler(async (req, res) => {
   const game = await Game.findById(req.params.gameId);
   if (!game) return response(res, 404, "Game not found");
@@ -213,10 +291,15 @@ exports.deleteQuestion = asyncHandler(async (req, res) => {
   const q = game.questions.id(req.params.questionId);
   if (!q) return response(res, 404, "Question not found");
 
+  if (q.questionImage) await deleteImage(q.questionImage).catch(console.error);
+
+  for (const img of q.answerImages.filter(Boolean)) {
+    await deleteImage(img).catch(console.error);
+  }
+
   await q.softDelete(req.user.id);
   await game.save();
 
-  // Fire background recompute
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
@@ -224,6 +307,7 @@ exports.deleteQuestion = asyncHandler(async (req, res) => {
   return response(res, 200, "Question moved to recycle bin");
 });
 
+// Restore a question
 exports.restoreQuestion = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const game = await Game.findOne({
@@ -249,6 +333,7 @@ exports.restoreQuestion = asyncHandler(async (req, res) => {
   return response(res, 200, "Question restored", q);
 });
 
+// Permanently delete a question
 exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const game = await Game.findOne({
@@ -264,10 +349,17 @@ exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
   );
   if (questionIndex === -1) return response(res, 404, "Question not found");
 
+  const q = game.questions[questionIndex];
+
+  if (q.questionImage) await deleteImage(q.questionImage).catch(console.error);
+
+  for (const img of q.answerImages.filter(Boolean)) {
+    await deleteImage(img).catch(console.error);
+  }
+
   game.questions.splice(questionIndex, 1);
   await game.save();
 
-  // Fire background recompute
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
