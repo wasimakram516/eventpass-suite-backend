@@ -13,7 +13,9 @@
   "author": "WhiteWall Digital Solutions",
   "license": "ISC",
   "dependencies": {
+    "@google-cloud/translate": "^9.2.1",
     "aws-sdk": "^2.1692.0",
+    "axios": "^1.13.1",
     "bcryptjs": "^3.0.2",
     "body-parser": "^2.2.0",
     "cloudinary": "^1.41.3",
