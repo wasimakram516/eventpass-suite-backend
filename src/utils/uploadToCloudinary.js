@@ -8,10 +8,10 @@ const streamifier = require("streamifier");
  * @param {Buffer} fileBuffer - The file buffer
  * @param {string} mimetype - The MIME type of the file
  */
-const uploadToCloudinary = async (fileBuffer, mimetype) => {
+const uploadToCloudinary = async (fileBuffer, mimetype, customFolder = null) => {
   return new Promise((resolve, reject) => {
     let resourceType = "image";
-    let folderName = "images";
+    let folderName = customFolder || "images";
     const options = {
       folder: `${env.cloudinary.folder}/${folderName}`,
       resource_type: "image",
@@ -19,12 +19,13 @@ const uploadToCloudinary = async (fileBuffer, mimetype) => {
 
     if (mimetype.startsWith("video")) {
       resourceType = "video";
-      folderName = "videos";
-      options.folder = `${env.cloudinary.folder}/videos`;
+      folderName = customFolder || "videos";
+      options.folder = `${env.cloudinary.folder}/${folderName}`;
       options.resource_type = "video";
     } else if (mimetype.includes("pdf")) {
       resourceType = "auto";
-      folderName = "pdfs";
+      folderName = customFolder || "pdfs";
+      options.folder = `${env.cloudinary.folder}/${folderName}`;
     }
 
     console.log(
