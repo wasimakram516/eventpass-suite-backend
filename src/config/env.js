@@ -24,7 +24,7 @@ const env = {
     port: validateEnv("PORT"),
     node_env: validateEnv("NODE_ENV"),
   },
-  client:{
+  client: {
     url: validateEnv("FRONTEND_BASE_URL"),
     surveyGuru: validateEnv("SURVEYGURU_PUBLIC_PATH"),
   },
@@ -33,8 +33,8 @@ const env = {
     adminPassword: validateEnv("ADMIN_PASSWORD"),
     masterKey: validateEnv("MASTER_KEY"),
   },
-  notifications:{
-    email:{
+  notifications: {
+    email: {
       host: validateEnv("EMAIL_HOST"),
       port: validateEnv("EMAIL_PORT"),
       user: validateEnv("EMAIL_USER"),
@@ -55,7 +55,10 @@ const env = {
     s3Bucket: validateEnv("S3_BUCKET"),
     cloudfrontUrl: validateEnv("CLOUDFRONT_URL"),
   },
-
+  googleTranslate: {
+    apiUrl: validateEnv("GOOGLE_API_URL"),
+    apiKey: validateEnv("GOOGLE_TRANSLATE_API_KEY"),
+  },
 };
 
 module.exports = env;
