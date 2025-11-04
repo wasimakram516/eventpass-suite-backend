@@ -371,6 +371,7 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
   const total = pendingRegs.length;
   let processed = 0;
   let sentCount = 0;
+  let failedCount = 0;
 
   for (const reg of pendingRegs) {
     processed++;
@@ -381,6 +382,8 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
       const email = reg.email || pickEmail(cf);
 
       if (!email) {
+        console.warn(`⛔ Skipping registration with no email (${reg._id})`);
+        failedCount++;
         emitEmailProgress(event._id.toString(), processed, total);
         continue;
       }
@@ -396,20 +399,21 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
       });
 
       const result = await sendEmail(email, subject, html, qrCodeDataUrl);
+
       if (result.success) {
         reg.emailSent = true;
         await reg.save();
         sentCount++;
+        console.log(`✅ Email sent successfully to ${email}`);
       } else {
         console.warn(
-          `Failed to send to ${email}:`,
-          result.response || result.error
+          `⚠️ Failed to send to ${email}: ${result.response || result.error}`
         );
+        failedCount++;
       }
-
-      sentCount++;
     } catch (err) {
-      console.error("Email send error:", err.message);
+      console.error("❌ Email send error:", err.message);
+      failedCount++;
     }
 
     emitEmailProgress(event._id.toString(), processed, total);
@@ -417,10 +421,12 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
 
   emitEmailProgress(event._id.toString(), total, total);
 
+  // Respond with accurate counts
   return response(
     res,
     200,
-    `Bulk emails sent to ${sentCount}/${total} registrations.`
+    `Bulk email summary: ${sentCount} sent, ${failedCount} failed, out of ${total} total.`,
+    { sent: sentCount, failed: failedCount, total }
   );
 });
 
