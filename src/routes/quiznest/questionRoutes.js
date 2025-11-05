@@ -14,8 +14,15 @@ router.post("/upload/:gameId", quiznestAccess, upload.single("file"), questionCo
 
 // Manual CRUD
 router.get("/:gameId", quiznestAccess, questionController.getQuestions);
-router.post("/:gameId", quiznestAccess, questionController.addQuestion);
-router.put("/:gameId/:questionId", quiznestAccess, questionController.updateQuestion);
+router.post("/:gameId", quiznestAccess, upload.fields([
+    { name: 'questionImage', maxCount: 1 },
+    { name: 'answerImages' }
+]), questionController.addQuestion);
+
+router.put("/:gameId/:questionId", quiznestAccess, upload.fields([
+    { name: 'questionImage', maxCount: 1 },
+    { name: 'answerImages' }
+]), questionController.updateQuestion);
 router.delete("/:gameId/:questionId", quiznestAccess, questionController.deleteQuestion);
 
 module.exports = router;

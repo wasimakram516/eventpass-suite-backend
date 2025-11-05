@@ -3,7 +3,15 @@ const mongoose = require("mongoose");
 const questionSchema = new mongoose.Schema(
   {
     question: { type: String, required: true },
+    questionImage: {
+      type: String,
+      default: null
+    },
     answers: [{ type: String, required: true }],
+    answerImages: [{
+      type: String,
+      default: null
+    }],
     correctAnswerIndex: { type: Number, required: true },
     hint: { type: String },
   },
@@ -28,9 +36,9 @@ const gameSchema = new mongoose.Schema(
     mode: { type: String, enum: ["solo", "pvp"], required: true },
     questions: [questionSchema],
 
-    isTeamMode: { type: Boolean, default: false }, 
-    maxTeams: { type: Number, default: 2 }, 
-    playersPerTeam: { type: Number, default: 2 }, 
+    isTeamMode: { type: Boolean, default: false },
+    maxTeams: { type: Number, default: 2 },
+    playersPerTeam: { type: Number, default: 2 },
     teams: [
       {
         type: mongoose.Schema.Types.ObjectId,
