@@ -493,9 +493,10 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 });
 
-// GET all registrations by event using slug (for export)
+// GET all registrations by event using slug with progressive loading
 exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
+  const { initialLoad } = req.query;
 
   const event = await Event.findOne({ slug }).notDeleted();
   if (!event) return response(res, 404, "Event not found");
@@ -504,27 +505,72 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   }
 
   const eventId = event._id;
+  const totalCount = await Registration.countDocuments({ eventId, deletedAt: { $exists: false } });
 
-  const registrations = await Registration.find({ eventId }).notDeleted();
+  // Initial load: return first 50 records immediately
+  if (initialLoad === "true") {
+    const registrations = await Registration.find({ eventId })
+      .notDeleted()
+      .limit(50)
+      .lean();
+
+    const enhanced = await Promise.all(
+      registrations.map(async (reg) => {
+        const walkIns = await WalkIn.find({ registrationId: reg._id })
+          .populate("scannedBy", "name email staffType")
+          .sort({ scannedAt: -1 })
+          .lean();
+
+        return {
+          _id: reg._id,
+          token: reg.token,
+          emailSent: reg.emailSent,
+          createdAt: reg.createdAt,
+          fullName: reg.fullName,
+          email: reg.email,
+          phone: reg.phone,
+          company: reg.company,
+          customFields: reg.customFields || {},
+          walkIns: walkIns.map((w) => ({
+            scannedAt: w.scannedAt,
+            scannedBy: w.scannedBy,
+          })),
+        };
+      })
+    );
+
+    // Start background loading if more records exist
+    if (totalCount > 50) {
+      setImmediate(() => {
+        loadRemainingRecords(eventId, slug, 50, totalCount);
+      });
+    }
+
+    return response(res, 200, "Initial registrations loaded", {
+      data: enhanced,
+      total: totalCount,
+      loaded: enhanced.length,
+    });
+  }
+
+  // Full load: return all records (for export)
+  const registrations = await Registration.find({ eventId }).notDeleted().lean();
   const enhanced = await Promise.all(
     registrations.map(async (reg) => {
       const walkIns = await WalkIn.find({ registrationId: reg._id })
         .populate("scannedBy", "name email staffType")
-        .sort({ scannedAt: -1 });
+        .sort({ scannedAt: -1 })
+        .lean();
 
       return {
         _id: reg._id,
         token: reg.token,
         emailSent: reg.emailSent,
         createdAt: reg.createdAt,
-
-        // classic fields
         fullName: reg.fullName,
         email: reg.email,
         phone: reg.phone,
         company: reg.company,
-
-        // customFields and walk-ins
         customFields: reg.customFields || {},
         walkIns: walkIns.map((w) => ({
           scannedAt: w.scannedAt,
@@ -536,6 +582,36 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
 
   return response(res, 200, "All public registrations fetched", enhanced);
 });
+
+// Background function to load remaining records progressively
+async function loadRemainingRecords(eventId, slug, skip, total) {
+  const { emitLoadingProgress } = require("../../socket/modules/eventreg/eventRegSocket");
+  const BATCH_SIZE = 50;
+
+  try {
+    let loaded = skip;
+
+    while (loaded < total) {
+      const batch = await Registration.find({ eventId })
+        .notDeleted()
+        .skip(loaded)
+        .limit(BATCH_SIZE)
+        .lean();
+
+      if (batch.length === 0) break;
+
+      loaded += batch.length;
+      emitLoadingProgress(eventId.toString(), loaded, total);
+
+      // Small delay to prevent overwhelming the database
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    emitLoadingProgress(eventId.toString(), total, total);
+  } catch (err) {
+    console.error("Background loading failed:", err.message);
+  }
+}
 
 // VERIFY registration by QR token and create a WalkIn
 exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
