@@ -23,7 +23,6 @@ const {
   emitUploadProgress,
   emitEmailProgress,
 } = require("../../socket/modules/eventreg/eventRegSocket");
-const e = require("express");
 
 const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder");
 
@@ -430,6 +429,53 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
   );
 });
 
+// Get batch of registrations for progressive loading
+exports.getRegistrationBatch = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+  const skip = Number(req.query.skip) || 0;
+  const limit = Number(req.query.limit) || 10;
+
+  const event = await Event.findOne({ slug }).notDeleted();
+  if (!event) return response(res, 404, "Event not found");
+  if (event.eventType !== "public") {
+    return response(res, 400, "This event is not public");
+  }
+
+  const registrations = await Registration.find({ eventId: event._id })
+    .where('isDeleted').ne(true)
+    .sort({ createdAt: 1, _id: 1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  const enhanced = await Promise.all(
+    registrations.map(async (reg) => {
+      const walkIns = await WalkIn.find({ registrationId: reg._id })
+        .populate("scannedBy", "name email staffType")
+        .sort({ scannedAt: -1 })
+        .lean();
+
+      return {
+        _id: reg._id,
+        token: reg.token,
+        emailSent: reg.emailSent,
+        createdAt: reg.createdAt,
+        fullName: reg.fullName,
+        email: reg.email,
+        phone: reg.phone,
+        company: reg.company,
+        customFields: reg.customFields || {},
+        walkIns: walkIns.map((w) => ({
+          scannedAt: w.scannedAt,
+          scannedBy: w.scannedBy,
+        })),
+      };
+    })
+  );
+
+  return response(res, 200, "Batch loaded", { data: enhanced });
+});
+
 // GET paginated registrations by event using slug (includes walk-ins + customFields)
 exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
@@ -493,10 +539,9 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 });
 
-// GET all registrations by event using slug with progressive loading
+// GET all registrations by event using slug - initial load only
 exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const { initialLoad } = req.query;
 
   const event = await Event.findOne({ slug }).notDeleted();
   if (!event) return response(res, 404, "Event not found");
@@ -505,56 +550,18 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   }
 
   const eventId = event._id;
-  const totalCount = await Registration.countDocuments({ eventId, deletedAt: { $exists: false } });
+  const totalCount = await Registration.countDocuments({
+    eventId,
+    isDeleted: { $ne: true }
+  });
 
-  // Initial load: return first 50 records immediately
-  if (initialLoad === "true") {
-    const registrations = await Registration.find({ eventId })
-      .notDeleted()
-      .limit(50)
-      .lean();
+  // Return first 50 records immediately
+  const registrations = await Registration.find({ eventId })
+    .where('isDeleted').ne(true)
+    .sort({ createdAt: 1 })
+    .limit(50)
+    .lean();
 
-    const enhanced = await Promise.all(
-      registrations.map(async (reg) => {
-        const walkIns = await WalkIn.find({ registrationId: reg._id })
-          .populate("scannedBy", "name email staffType")
-          .sort({ scannedAt: -1 })
-          .lean();
-
-        return {
-          _id: reg._id,
-          token: reg.token,
-          emailSent: reg.emailSent,
-          createdAt: reg.createdAt,
-          fullName: reg.fullName,
-          email: reg.email,
-          phone: reg.phone,
-          company: reg.company,
-          customFields: reg.customFields || {},
-          walkIns: walkIns.map((w) => ({
-            scannedAt: w.scannedAt,
-            scannedBy: w.scannedBy,
-          })),
-        };
-      })
-    );
-
-    // Start background loading if more records exist
-    if (totalCount > 50) {
-      setImmediate(() => {
-        loadRemainingRecords(eventId, slug, 50, totalCount);
-      });
-    }
-
-    return response(res, 200, "Initial registrations loaded", {
-      data: enhanced,
-      total: totalCount,
-      loaded: enhanced.length,
-    });
-  }
-
-  // Full load: return all records (for export)
-  const registrations = await Registration.find({ eventId }).notDeleted().lean();
   const enhanced = await Promise.all(
     registrations.map(async (reg) => {
       const walkIns = await WalkIn.find({ registrationId: reg._id })
@@ -580,36 +587,38 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
     })
   );
 
-  return response(res, 200, "All public registrations fetched", enhanced);
+  // Start background loading if more records exist
+  if (totalCount > 50) {
+    setImmediate(() => {
+      loadRemainingRecords(eventId, totalCount);
+    });
+  }
+
+  return response(res, 200, "Initial registrations loaded", {
+    data: enhanced,
+    total: totalCount,
+    loaded: enhanced.length,
+  });
 });
 
-// Background function to load remaining records progressively
-async function loadRemainingRecords(eventId, slug, skip, total) {
+// Emit progress for remaining records
+async function loadRemainingRecords(eventId, total) {
   const { emitLoadingProgress } = require("../../socket/modules/eventreg/eventRegSocket");
-  const BATCH_SIZE = 50;
 
   try {
-    let loaded = skip;
-
-    while (loaded < total) {
-      const batch = await Registration.find({ eventId })
-        .notDeleted()
-        .skip(loaded)
-        .limit(BATCH_SIZE)
-        .lean();
-
-      if (batch.length === 0) break;
-
-      loaded += batch.length;
-      emitLoadingProgress(eventId.toString(), loaded, total);
-
-      // Small delay to prevent overwhelming the database
-      await new Promise(resolve => setTimeout(resolve, 100));
+    // Emit progress in increments of 10
+    for (let loaded = 60; loaded <= total; loaded += 10) {
+      const actualLoaded = Math.min(loaded, total);
+      emitLoadingProgress(eventId.toString(), actualLoaded, total);
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
-    emitLoadingProgress(eventId.toString(), total, total);
+    // Ensure final emission shows complete
+    if (total % 10 !== 0) {
+      emitLoadingProgress(eventId.toString(), total, total);
+    }
   } catch (err) {
-    console.error("Background loading failed:", err.message);
+    console.error("Background loading progress failed:", err.message);
   }
 }
 
