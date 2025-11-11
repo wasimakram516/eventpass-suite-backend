@@ -22,8 +22,8 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const {
   emitUploadProgress,
   emitEmailProgress,
+  emitLoadingProgress
 } = require("../../socket/modules/eventreg/eventRegSocket");
-const e = require("express");
 
 const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder");
 
@@ -493,7 +493,61 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 });
 
-// GET all registrations by event using slug (for export)
+async function loadRemainingRecords(eventId, total) {
+  try {
+    const BATCH_SIZE = 50;
+    const startFrom = 50;
+
+    for (let skip = startFrom; skip < total; skip += BATCH_SIZE) {
+      const limit = Math.min(BATCH_SIZE, total - skip);
+
+      const registrations = await Registration.find({ eventId })
+        .where('isDeleted').ne(true)
+        .sort({ createdAt: 1, _id: 1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      if (!registrations.length) break;
+
+      const enhanced = await Promise.all(
+        registrations.map(async (reg) => {
+          const walkIns = await WalkIn.find({ registrationId: reg._id })
+            .populate("scannedBy", "name email staffType")
+            .sort({ scannedAt: -1 })
+            .lean();
+
+          return {
+            _id: reg._id,
+            token: reg.token,
+            emailSent: reg.emailSent,
+            createdAt: reg.createdAt,
+            fullName: reg.fullName,
+            email: reg.email,
+            phone: reg.phone,
+            company: reg.company,
+            customFields: reg.customFields || {},
+            walkIns: walkIns.map((w) => ({
+              scannedAt: w.scannedAt,
+              scannedBy: w.scannedBy,
+            })),
+          };
+        })
+      );
+
+      const currentLoaded = skip + enhanced.length;
+      emitLoadingProgress(eventId.toString(), currentLoaded, total, enhanced);
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    emitLoadingProgress(eventId.toString(), total, total);
+  } catch (err) {
+    console.error("Background loading failed:", err.message);
+  }
+}
+
+// GET all registrations by event using slug - initial load only
 exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
@@ -504,27 +558,34 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   }
 
   const eventId = event._id;
+  const totalCount = await Registration.countDocuments({
+    eventId,
+    isDeleted: { $ne: true }
+  });
 
-  const registrations = await Registration.find({ eventId }).notDeleted();
+  // Return first 50 records immediately
+  const registrations = await Registration.find({ eventId })
+    .where('isDeleted').ne(true)
+    .sort({ createdAt: 1 })
+    .limit(50)
+    .lean();
+
   const enhanced = await Promise.all(
     registrations.map(async (reg) => {
       const walkIns = await WalkIn.find({ registrationId: reg._id })
         .populate("scannedBy", "name email staffType")
-        .sort({ scannedAt: -1 });
+        .sort({ scannedAt: -1 })
+        .lean();
 
       return {
         _id: reg._id,
         token: reg.token,
         emailSent: reg.emailSent,
         createdAt: reg.createdAt,
-
-        // classic fields
         fullName: reg.fullName,
         email: reg.email,
         phone: reg.phone,
         company: reg.company,
-
-        // customFields and walk-ins
         customFields: reg.customFields || {},
         walkIns: walkIns.map((w) => ({
           scannedAt: w.scannedAt,
@@ -534,7 +595,18 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
     })
   );
 
-  return response(res, 200, "All public registrations fetched", enhanced);
+  // Start background loading if more records exist
+  if (totalCount > 50) {
+    setImmediate(() => {
+      loadRemainingRecords(eventId, totalCount);
+    });
+  }
+
+  return response(res, 200, "Initial registrations loaded", {
+    data: enhanced,
+    total: totalCount,
+    loaded: enhanced.length,
+  });
 });
 
 // VERIFY registration by QR token and create a WalkIn
