@@ -14,12 +14,13 @@ function emitEmailProgress(eventId, sent, total) {
   emitUpdate("registrationEmailProgress", { eventId, sent, total });
 }
 
-// Emit progressive loading progress for registrations
-function emitLoadingProgress(eventId, loaded, total) {
+// Emit progressive loading progress with optional batch data
+function emitLoadingProgress(eventId, loaded, total, data = null) {
   emitUpdate("registrationLoadingProgress", {
     eventId,
     loaded,
     total,
+    ...(data && { data }),
   });
 }
 
