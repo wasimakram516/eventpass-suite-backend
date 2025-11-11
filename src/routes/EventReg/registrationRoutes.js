@@ -40,8 +40,6 @@ router.get("/event/:slug", eventRegAccess, getRegistrationsByEvent);
 // GET initial registrations (first 50) - triggers background loading
 router.get("/event/:slug/all", eventRegAccess, getAllPublicRegistrationsByEvent);
 
-// GET batch of registrations for progressive loading
-router.get("/event/:slug/batch", eventRegAccess, getRegistrationBatch);
 
 // Delete a registration by ID (protected)
 router.delete("/:id", eventRegAccess, deleteRegistration);
