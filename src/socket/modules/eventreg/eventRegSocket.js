@@ -14,4 +14,14 @@ function emitEmailProgress(eventId, sent, total) {
   emitUpdate("registrationEmailProgress", { eventId, sent, total });
 }
 
-module.exports = { emitUploadProgress, emitEmailProgress };
+// Emit progressive loading progress with optional batch data
+function emitLoadingProgress(eventId, loaded, total, data = null) {
+  emitUpdate("registrationLoadingProgress", {
+    eventId,
+    loaded,
+    total,
+    ...(data && { data }),
+  });
+}
+
+module.exports = { emitUploadProgress, emitEmailProgress, emitLoadingProgress };

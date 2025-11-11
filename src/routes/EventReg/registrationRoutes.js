@@ -36,8 +36,9 @@ router.get("/verify", eventRegAccess, verifyRegistrationByToken);
 // Get paginated registrations for a specific event (protected)
 router.get("/event/:slug", eventRegAccess, getRegistrationsByEvent);
 
-// GET all registrations by event slug (no pagination) — for export
+// GET initial registrations (first 50) - triggers background loading
 router.get("/event/:slug/all", eventRegAccess, getAllPublicRegistrationsByEvent);
+
 
 // Delete a registration by ID (protected)
 router.delete("/:id", eventRegAccess, deleteRegistration);
