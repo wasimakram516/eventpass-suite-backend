@@ -601,27 +601,61 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 });
 
-// Emit progress for remaining records
 async function loadRemainingRecords(eventId, total) {
   const { emitLoadingProgress } = require("../../socket/modules/eventreg/eventRegSocket");
 
   try {
-    // Emit progress in increments of 10
-    for (let loaded = 60; loaded <= total; loaded += 10) {
-      const actualLoaded = Math.min(loaded, total);
-      emitLoadingProgress(eventId.toString(), actualLoaded, total);
-      await new Promise(resolve => setTimeout(resolve, 50));
+    const BATCH_SIZE = 50;
+    const startFrom = 50;
+
+    for (let skip = startFrom; skip < total; skip += BATCH_SIZE) {
+      const limit = Math.min(BATCH_SIZE, total - skip);
+
+      const registrations = await Registration.find({ eventId })
+        .where('isDeleted').ne(true)
+        .sort({ createdAt: 1, _id: 1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      if (!registrations.length) break;
+
+      const enhanced = await Promise.all(
+        registrations.map(async (reg) => {
+          const walkIns = await WalkIn.find({ registrationId: reg._id })
+            .populate("scannedBy", "name email staffType")
+            .sort({ scannedAt: -1 })
+            .lean();
+
+          return {
+            _id: reg._id,
+            token: reg.token,
+            emailSent: reg.emailSent,
+            createdAt: reg.createdAt,
+            fullName: reg.fullName,
+            email: reg.email,
+            phone: reg.phone,
+            company: reg.company,
+            customFields: reg.customFields || {},
+            walkIns: walkIns.map((w) => ({
+              scannedAt: w.scannedAt,
+              scannedBy: w.scannedBy,
+            })),
+          };
+        })
+      );
+
+      const currentLoaded = skip + enhanced.length;
+      emitLoadingProgress(eventId.toString(), currentLoaded, total, enhanced);
+
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Ensure final emission shows complete
-    if (total % 10 !== 0) {
-      emitLoadingProgress(eventId.toString(), total, total);
-    }
+    emitLoadingProgress(eventId.toString(), total, total);
   } catch (err) {
-    console.error("Background loading progress failed:", err.message);
+    console.error("Background loading failed:", err.message);
   }
 }
-
 // VERIFY registration by QR token and create a WalkIn
 exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   const { token } = req.query;
