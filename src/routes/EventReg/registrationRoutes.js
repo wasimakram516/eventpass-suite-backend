@@ -14,6 +14,7 @@ const {
   sendBulkEmails,
   unsentCount,
   updateRegistration,
+  getRegistrationBatch,
 } = require("../../controllers/EventReg/registrationController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
@@ -36,8 +37,11 @@ router.get("/verify", eventRegAccess, verifyRegistrationByToken);
 // Get paginated registrations for a specific event (protected)
 router.get("/event/:slug", eventRegAccess, getRegistrationsByEvent);
 
-// GET all registrations by event slug (no pagination) — for export
+// GET initial registrations (first 50) - triggers background loading
 router.get("/event/:slug/all", eventRegAccess, getAllPublicRegistrationsByEvent);
+
+// GET batch of registrations for progressive loading
+router.get("/event/:slug/batch", eventRegAccess, getRegistrationBatch);
 
 // Delete a registration by ID (protected)
 router.delete("/:id", eventRegAccess, deleteRegistration);
