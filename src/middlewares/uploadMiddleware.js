@@ -1,6 +1,6 @@
 const multer = require("multer");
 
-// All image types
+// Image formats
 const allowedImageTypes = [
   "image/jpeg",
   "image/jpg",
@@ -14,7 +14,7 @@ const allowedImageTypes = [
   "image/bmp",
 ];
 
-// All video types
+// Video formats
 const allowedVideoTypes = [
   "video/mp4",
   "video/mpeg",
@@ -29,7 +29,7 @@ const allowedVideoTypes = [
   "video/x-m4v",
 ];
 
-// Document types
+// Documents
 const allowedPdfTypes = ["application/pdf"];
 const allowedExcelTypes = [
   "text/csv",
@@ -37,6 +37,7 @@ const allowedExcelTypes = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ];
 
+// Merge all
 const allowedTypes = [
   ...allowedImageTypes,
   ...allowedVideoTypes,
@@ -45,7 +46,7 @@ const allowedTypes = [
 ];
 
 // -------------------------------------
-// Multer storage + filter
+// Multer storage + file filter
 // -------------------------------------
 const storage = multer.memoryStorage();
 
@@ -64,7 +65,6 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({
   storage,
-  limits: { fileSize: 100 * 1024 * 1024 }, // Allow up to 100 MB per file
   fileFilter,
 });
 
