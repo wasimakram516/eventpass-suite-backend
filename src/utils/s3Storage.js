@@ -10,32 +10,29 @@ AWS.config.update({
 
 const s3 = new AWS.S3();
 
-/**
- * Decide folder structure based on business name + file type
- * e.g. "Takaful Oman/pdfs/agenda.pdf"
- */
 const getFolderPath = (businessName, mimetype, originalname) => {
   let folder = "others";
   if (mimetype.startsWith("image/")) folder = "images";
   else if (mimetype.startsWith("video/")) folder = "videos";
   else if (mimetype === "application/pdf") folder = "pdfs";
-  else folder = "others";
-
-  return `${businessName}/${folder}/${Date.now()}_${path.basename(originalname)}`;
+  return `${businessName}/${folder}/${Date.now()}_${path.basename(
+    originalname
+  )}`;
 };
 
-/**
- * Upload file to S3 under structured path
- */
-exports.uploadToS3 = async (file, businessName) => {
+// Upload
+exports.uploadToS3 = async (file, businessName, options = {}) => {
   const key = getFolderPath(businessName, file.mimetype, file.originalname);
+
+  // Default to "attachment", but allow override
+  const dispositionType = options.inline ? "inline" : "attachment";
 
   const params = {
     Bucket: env.aws.s3Bucket,
     Key: key,
     Body: file.buffer,
     ContentType: file.mimetype,
-    ContentDisposition: `attachment; filename="${file.originalname}"`,
+    ContentDisposition: `${dispositionType}; filename="${file.originalname}"`,
   };
 
   await s3.upload(params).promise();
@@ -44,19 +41,28 @@ exports.uploadToS3 = async (file, businessName) => {
   return { key, fileUrl };
 };
 
-/**
- * Delete a file from S3 using its key
- */
-exports.deleteFromS3 = async (fileKey) => {
-  if (!fileKey) return;
+// Delete (accepts URL or key)
+exports.deleteFromS3 = async (fileKeyOrUrl) => {
+  if (!fileKeyOrUrl) return;
 
-  const params = {
-    Bucket: process.env.S3_BUCKET,
-    Key: fileKey,
-  };
+  // Extract the actual key if URL provided
+  let key = fileKeyOrUrl;
+  if (fileKeyOrUrl.startsWith("http")) {
+    try {
+      const base = env.aws.cloudfrontUrl.endsWith("/")
+        ? env.aws.cloudfrontUrl
+        : env.aws.cloudfrontUrl + "/";
+      key = decodeURIComponent(fileKeyOrUrl.replace(base, ""));
+    } catch (err) {
+      console.warn("Failed to extract S3 key from URL:", fileKeyOrUrl);
+    }
+  }
+
+  const params = { Bucket: env.aws.s3Bucket, Key: key };
 
   try {
     await s3.deleteObject(params).promise();
+    console.log("Deleted from S3:", key);
   } catch (err) {
     console.error("S3 delete error:", err.message);
   }

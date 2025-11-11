@@ -4,6 +4,7 @@ const playerSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     company: { type: String },
+    phone: { type: String, trim: true },
     sessionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "GameSession",

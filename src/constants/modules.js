@@ -30,6 +30,21 @@ const BASE = [
     routes: { admin: "/cms/modules/eventduel", staff: null },
   },
   {
+    key: "tapmatch",
+    labels: { en: "TapMatch", ar: "TapMatch" },
+    descriptions: {
+      en: "Create and manage interactive memory matching games.",
+      ar: "أنشئ وأدرِ ألعاب مطابقة البطاقات التفاعلية.",
+    },
+    buttonsByRole: {
+      admin: { en: "Manage TapMatch", ar: "إدارة اللعبة" },
+      staff: { en: "View Matches", ar: "عرض الألعاب" },
+    },
+    icon: "grid",
+    color: "#00897b",
+    routes: { admin: "/cms/modules/tapmatch", staff: null },
+  },
+  {
     key: "eventreg",
     labels: { en: "Event Reg", ar: "Event Reg" },
     descriptions: {

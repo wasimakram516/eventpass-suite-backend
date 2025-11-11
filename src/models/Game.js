@@ -3,15 +3,9 @@ const mongoose = require("mongoose");
 const questionSchema = new mongoose.Schema(
   {
     question: { type: String, required: true },
-    questionImage: {
-      type: String,
-      default: null
-    },
+    questionImage: { type: String, default: null },
     answers: [{ type: String, required: true }],
-    answerImages: [{
-      type: String,
-      default: null
-    }],
+    answerImages: [{ type: String, default: null }],
     correctAnswerIndex: { type: Number, required: true },
     hint: { type: String },
   },
@@ -30,21 +24,36 @@ const gameSchema = new mongoose.Schema(
     coverImage: { type: String, required: true },
     nameImage: { type: String, required: true },
     backgroundImage: { type: String, required: true },
-    choicesCount: { type: Number, enum: [2, 3, 4, 5], required: true },
+    choicesCount: {
+      type: Number,
+      enum: [2, 3, 4, 5],
+      required: function () {
+        return this.type === "quiz";
+      },
+    },
     countdownTimer: { type: Number, default: 3 },
     gameSessionTimer: { type: Number, required: true },
     mode: { type: String, enum: ["solo", "pvp"], required: true },
     questions: [questionSchema],
 
+    type: {
+      type: String,
+      enum: ["quiz", "memory"],
+      default: "quiz",
+    },
+
+    memoryImages: [
+      {
+        key: { type: String, required: true },
+        url: { type: String, required: true },
+        label: { type: String },
+      },
+    ],
+
     isTeamMode: { type: Boolean, default: false },
     maxTeams: { type: Number, default: 2 },
     playersPerTeam: { type: Number, default: 2 },
-    teams: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Team",
-      },
-    ],
+    teams: [{ type: mongoose.Schema.Types.ObjectId, ref: "Team" }],
   },
   { timestamps: true }
 );

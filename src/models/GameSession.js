@@ -76,6 +76,13 @@ const GameSessionSchema = new mongoose.Schema(
 
     startTime: { type: Date },
     endTime: { type: Date },
+    memoryStats: {
+      moves: { type: Number, default: 0 },
+      matches: { type: Number, default: 0 },
+      misses: { type: Number, default: 0 },
+      totalTime: { type: Number, default: 0 },
+      accuracy: { type: Number, default: 0 },
+    },
   },
   { timestamps: true }
 );
