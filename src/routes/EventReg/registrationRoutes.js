@@ -14,7 +14,6 @@ const {
   sendBulkEmails,
   unsentCount,
   updateRegistration,
-  getRegistrationBatch,
 } = require("../../controllers/EventReg/registrationController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");

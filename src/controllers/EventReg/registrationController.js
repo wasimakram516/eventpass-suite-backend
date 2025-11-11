@@ -22,6 +22,7 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const {
   emitUploadProgress,
   emitEmailProgress,
+  emitLoadingProgress
 } = require("../../socket/modules/eventreg/eventRegSocket");
 
 const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder");
@@ -429,53 +430,6 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
   );
 });
 
-// Get batch of registrations for progressive loading
-exports.getRegistrationBatch = asyncHandler(async (req, res) => {
-  const { slug } = req.params;
-  const skip = Number(req.query.skip) || 0;
-  const limit = Number(req.query.limit) || 10;
-
-  const event = await Event.findOne({ slug }).notDeleted();
-  if (!event) return response(res, 404, "Event not found");
-  if (event.eventType !== "public") {
-    return response(res, 400, "This event is not public");
-  }
-
-  const registrations = await Registration.find({ eventId: event._id })
-    .where('isDeleted').ne(true)
-    .sort({ createdAt: 1, _id: 1 })
-    .skip(skip)
-    .limit(limit)
-    .lean();
-
-  const enhanced = await Promise.all(
-    registrations.map(async (reg) => {
-      const walkIns = await WalkIn.find({ registrationId: reg._id })
-        .populate("scannedBy", "name email staffType")
-        .sort({ scannedAt: -1 })
-        .lean();
-
-      return {
-        _id: reg._id,
-        token: reg.token,
-        emailSent: reg.emailSent,
-        createdAt: reg.createdAt,
-        fullName: reg.fullName,
-        email: reg.email,
-        phone: reg.phone,
-        company: reg.company,
-        customFields: reg.customFields || {},
-        walkIns: walkIns.map((w) => ({
-          scannedAt: w.scannedAt,
-          scannedBy: w.scannedBy,
-        })),
-      };
-    })
-  );
-
-  return response(res, 200, "Batch loaded", { data: enhanced });
-});
-
 // GET paginated registrations by event using slug (includes walk-ins + customFields)
 exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
@@ -539,6 +493,60 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 });
 
+async function loadRemainingRecords(eventId, total) {
+  try {
+    const BATCH_SIZE = 50;
+    const startFrom = 50;
+
+    for (let skip = startFrom; skip < total; skip += BATCH_SIZE) {
+      const limit = Math.min(BATCH_SIZE, total - skip);
+
+      const registrations = await Registration.find({ eventId })
+        .where('isDeleted').ne(true)
+        .sort({ createdAt: 1, _id: 1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      if (!registrations.length) break;
+
+      const enhanced = await Promise.all(
+        registrations.map(async (reg) => {
+          const walkIns = await WalkIn.find({ registrationId: reg._id })
+            .populate("scannedBy", "name email staffType")
+            .sort({ scannedAt: -1 })
+            .lean();
+
+          return {
+            _id: reg._id,
+            token: reg.token,
+            emailSent: reg.emailSent,
+            createdAt: reg.createdAt,
+            fullName: reg.fullName,
+            email: reg.email,
+            phone: reg.phone,
+            company: reg.company,
+            customFields: reg.customFields || {},
+            walkIns: walkIns.map((w) => ({
+              scannedAt: w.scannedAt,
+              scannedBy: w.scannedBy,
+            })),
+          };
+        })
+      );
+
+      const currentLoaded = skip + enhanced.length;
+      emitLoadingProgress(eventId.toString(), currentLoaded, total, enhanced);
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    emitLoadingProgress(eventId.toString(), total, total);
+  } catch (err) {
+    console.error("Background loading failed:", err.message);
+  }
+}
+
 // GET all registrations by event using slug - initial load only
 exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
@@ -601,61 +609,6 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 });
 
-async function loadRemainingRecords(eventId, total) {
-  const { emitLoadingProgress } = require("../../socket/modules/eventreg/eventRegSocket");
-
-  try {
-    const BATCH_SIZE = 50;
-    const startFrom = 50;
-
-    for (let skip = startFrom; skip < total; skip += BATCH_SIZE) {
-      const limit = Math.min(BATCH_SIZE, total - skip);
-
-      const registrations = await Registration.find({ eventId })
-        .where('isDeleted').ne(true)
-        .sort({ createdAt: 1, _id: 1 })
-        .skip(skip)
-        .limit(limit)
-        .lean();
-
-      if (!registrations.length) break;
-
-      const enhanced = await Promise.all(
-        registrations.map(async (reg) => {
-          const walkIns = await WalkIn.find({ registrationId: reg._id })
-            .populate("scannedBy", "name email staffType")
-            .sort({ scannedAt: -1 })
-            .lean();
-
-          return {
-            _id: reg._id,
-            token: reg.token,
-            emailSent: reg.emailSent,
-            createdAt: reg.createdAt,
-            fullName: reg.fullName,
-            email: reg.email,
-            phone: reg.phone,
-            company: reg.company,
-            customFields: reg.customFields || {},
-            walkIns: walkIns.map((w) => ({
-              scannedAt: w.scannedAt,
-              scannedBy: w.scannedBy,
-            })),
-          };
-        })
-      );
-
-      const currentLoaded = skip + enhanced.length;
-      emitLoadingProgress(eventId.toString(), currentLoaded, total, enhanced);
-
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    emitLoadingProgress(eventId.toString(), total, total);
-  } catch (err) {
-    console.error("Background loading failed:", err.message);
-  }
-}
 // VERIFY registration by QR token and create a WalkIn
 exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   const { token } = req.query;
