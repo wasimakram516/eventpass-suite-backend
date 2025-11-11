@@ -1,31 +1,60 @@
 const multer = require("multer");
 
-// Allowed file types
+// All image types
+const allowedImageTypes = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "image/heic",
+  "image/heif",
+  "image/tiff",
+  "image/bmp",
+];
+
+// All video types
+const allowedVideoTypes = [
+  "video/mp4",
+  "video/mpeg",
+  "video/quicktime", // MOV
+  "video/x-msvideo", // AVI
+  "video/x-ms-wmv", // WMV
+  "video/x-flv", // FLV
+  "video/x-matroska", // MKV
+  "video/webm",
+  "video/3gpp",
+  "video/3gpp2",
+  "video/x-m4v",
+];
+
+// Document types
+const allowedPdfTypes = ["application/pdf"];
 const allowedExcelTypes = [
   "text/csv",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ];
-const allowedImageTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
-const allowedVideoTypes = ["video/mp4", "video/mpeg", "video/quicktime"];
-const allowedPdfTypes = ["application/pdf"];
 
 const allowedTypes = [
   ...allowedImageTypes,
   ...allowedVideoTypes,
-  ...allowedExcelTypes,
   ...allowedPdfTypes,
+  ...allowedExcelTypes,
 ];
 
-// Multer storage (stores file in memory)
+// -------------------------------------
+// Multer storage + filter
+// -------------------------------------
 const storage = multer.memoryStorage();
 
-// File filter for allowed types
 const fileFilter = (req, file, cb) => {
   if (!allowedTypes.includes(file.mimetype)) {
+    console.warn(`❌ Rejected file: ${file.originalname} (${file.mimetype})`);
     return cb(
       new Error(
-        "Invalid file type. Allowed: JPG, PNG, GIF, MP4, MPEG, MOV, CSV, XLS, XLSX, PDF"
+        "Invalid file type. Only images, videos, PDFs, and Excel/CSV files are allowed."
       ),
       false
     );
@@ -33,10 +62,9 @@ const fileFilter = (req, file, cb) => {
   cb(null, true);
 };
 
-// Allow multiple files
 const upload = multer({
   storage,
-  limits: { fileSize: 25 * 1024 * 1024 }, // Max 25MB per file
+  limits: { fileSize: 100 * 1024 * 1024 }, // Allow up to 100 MB per file
   fileFilter,
 });
 
