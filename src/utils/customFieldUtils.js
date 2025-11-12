@@ -15,6 +15,18 @@ function pick(customFields, matchKey, extraKeys = []) {
   return null;
 }
 
+function pickCustomFieldPairs(fields) {
+  if (!fields || typeof fields !== "object") return [];
+
+  const pairs = [];
+  for (const [key, value] of Object.entries(fields)) {
+    if (value != null && String(value).trim() !== "") {
+      pairs.push({ label: key, value: String(value).trim() });
+    }
+  }
+  return pairs;
+}
+
 function pickFullName(fields) {
   if (!fields) return null;
 
@@ -51,13 +63,16 @@ const pickTitle = (f) =>
 
 const pickBadgeIdentifier = (f) =>
   pick(f, "badge", ["badge id", "badge identifier", "badge number"]);
+
 const pickWing = (f) => pick(f, "wing", ["wing name", "wing"]);
+
 module.exports = {
+  pickCustomFieldPairs,
   pickFullName,
   pickEmail,
   pickPhone,
   pickCompany,
   pickTitle,
   pickBadgeIdentifier,
-  pickWing
+  pickWing,
 };

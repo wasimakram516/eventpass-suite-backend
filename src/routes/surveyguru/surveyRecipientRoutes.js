@@ -11,6 +11,9 @@ router.get("/recipients", access, rc.listRecipients);
 // Sync recipients from event registrations
 router.post("/forms/:formId/recipients/sync", access, rc.syncFromEventRegistrations);
 
+// Email to Participats
+router.post("/forms/:formId/recipients/bulk-email", access, rc.sendBulkSurveyEmails);
+
 // Delete single recipient
 router.delete("/recipients/:id", access, rc.deleteRecipient);
 
