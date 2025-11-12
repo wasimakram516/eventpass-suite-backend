@@ -1,6 +1,6 @@
 const env = require("../config/env");
 const { translateText } = require("../services/translationService");
-const { pickPhone, pickCustomFieldPairs } = require("../utils/customFieldUtils");
+const { pickPhone } = require("../utils/customFieldUtils");
 
 async function buildSurveyInvitationEmail({ event, form, recipient, registration = {} }) {
   const targetLang = event.defaultLanguage || "en";
@@ -34,21 +34,27 @@ async function buildSurveyInvitationEmail({ event, form, recipient, registration
   )}`;
 
   // ---------------------------------------
-  // Participant fields (prefer custom)
+  // Participant fields — mimic registration email behavior
   // ---------------------------------------
-  const hasCustomFields =
-    registration.customFields &&
-    typeof registration.customFields === "object" &&
-    Object.keys(registration.customFields).length > 0;
-
   let participantFields = [];
+  const customFields =
+    registration.customFields && typeof registration.customFields === "object"
+      ? registration.customFields
+      : {};
 
-  if (hasCustomFields) {
-    const pairs = pickCustomFieldPairs(registration.customFields);
-    for (const { label, value } of pairs) {
-      if (label && value) participantFields.push({ label, value });
+  // If event.formFields exist and match customFields
+  if (Array.isArray(event.formFields) && Object.keys(customFields).length > 0) {
+    for (const f of event.formFields) {
+      const val = customFields[f.inputName];
+      if (val) {
+        participantFields.push({
+          label: f.inputName,
+          value: val,
+        });
+      }
     }
   } else {
+    // fallback to classic fields
     if (recipient.fullName)
       participantFields.push({ label: "Full Name", value: recipient.fullName });
     if (recipient.email)
@@ -61,7 +67,7 @@ async function buildSurveyInvitationEmail({ event, form, recipient, registration
   }
 
   // ---------------------------------------
-  // Texts for translation (include all labels)
+  // Texts for translation (include all field labels)
   // ---------------------------------------
   const texts = [
     "We value your feedback!",

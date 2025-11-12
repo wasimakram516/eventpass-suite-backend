@@ -173,12 +173,14 @@ exports.sendBulkSurveyEmails = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid formId");
   }
 
+  // Fetch form + linked event
   const form = await SurveyForm.findById(formId).populate("eventId").lean();
   if (!form) return response(res, 404, "Form not found");
 
   const event = await Event.findById(form.eventId).lean();
   if (!event) return response(res, 404, "Event not found");
 
+  // Find queued recipients
   const pendingRecipients = await SurveyRecipient.find({
     formId,
     status: "queued",
@@ -188,20 +190,51 @@ exports.sendBulkSurveyEmails = asyncHandler(async (req, res) => {
     return response(res, 200, "All survey emails already sent.");
 
   const total = pendingRecipients.length;
+  let processed = 0;
   let sentCount = 0;
   let failedCount = 0;
-  let processed = 0;
 
   for (const recipient of pendingRecipients) {
     processed++;
 
     try {
+      // Try to find matching registration (for custom fields)
+      const reg = await Registration.findOne({
+        eventId: form.eventId,
+        email: recipient.email,
+      })
+        .select("customFields fullName email phone company")
+        .lean();
+
+      // normalize custom fields
+      let cf = {};
+      if (reg?.customFields) {
+        if (Array.isArray(reg.customFields)) {
+          cf = Object.fromEntries(reg.customFields);
+        } else if (typeof reg.customFields === "object") {
+          cf = reg.customFields;
+        }
+      }
+
+      // Build display name
+      const displayName =
+        recipient.fullName ||
+        reg?.fullName ||
+        (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
+
+      // Generate email content
       const { subject, html } = await buildSurveyInvitationEmail({
         event,
         form,
         recipient,
+        registration: {
+          ...reg,
+          customFields: cf,
+        },
+        displayName,
       });
 
+      // Send email
       const result = await sendEmail(recipient.email, subject, html);
 
       if (result.success) {
@@ -210,7 +243,13 @@ exports.sendBulkSurveyEmails = asyncHandler(async (req, res) => {
           { $set: { status: "responded" } }
         );
         sentCount++;
+        console.log(`Survey email sent to ${recipient.email}`);
       } else {
+        console.warn(
+          `Failed to send survey email to ${recipient.email}: ${
+            result.response || result.error
+          }`
+        );
         failedCount++;
       }
     } catch (err) {
@@ -221,6 +260,7 @@ exports.sendBulkSurveyEmails = asyncHandler(async (req, res) => {
     emitSurveyEmailProgress(form._id.toString(), processed, total);
   }
 
+  // Final emission
   emitSurveyEmailProgress(form._id.toString(), total, total);
 
   return response(
