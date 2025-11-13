@@ -313,7 +313,7 @@ exports.exportRecipients = asyncHandler(async (req, res) => {
   const form = await SurveyForm.findById(formId)
     .populate("businessId", "name")
     .populate("eventId", "name")
-    .select("_id slug title businessId eventId")
+    .select("_id slug title businessId eventId isAnonymous")
     .lean();
   if (!form) return response(res, 404, "Form not found");
 
@@ -350,41 +350,50 @@ exports.exportRecipients = asyncHandler(async (req, res) => {
     return `${datePart} at ${timePart}`;
   };
 
-  // Prepare rows for Excel
-  const allRecipientData = recipients.map((r) => ({
-    "Full Name": r.fullName || "",
-    Email: r.email || "",
-    Company: r.company || "",
-    Status: r.status || "",
-    Token: r.token || "",
-    "Responded At": r.respondedAt ? formatLocalLong(r.respondedAt) : "",
-    "Survey Link": `${base}${publicPath}/${
-      form.slug
-    }?token=${encodeURIComponent(r.token)}`,
-    "Created At": r.createdAt ? formatLocalLong(r.createdAt) : "",
-  }));
+  // ----- Build rows for Excel -----
+  const allRecipientData = recipients.map((r) => {
+    const isAnon = form.isAnonymous;
 
-  // Summary sheet content
+    const surveyLink = isAnon
+      ? `${base}${publicPath}/${form.slug}`
+      : `${base}${publicPath}/${form.slug}?token=${encodeURIComponent(r.token)}`;
+
+    return {
+      "Full Name": isAnon ? "Anonymous" : r.fullName || "",
+      Email: isAnon ? "" : r.email || "",
+      Company: isAnon ? "" : r.company || "",
+      Status: r.status || "",
+      Token: isAnon ? "" : r.token || "",
+      "Responded At": r.respondedAt ? formatLocalLong(r.respondedAt) : "",
+      "Survey Link": surveyLink,
+      "Created At": r.createdAt ? formatLocalLong(r.createdAt) : "",
+    };
+  });
+
+  // ----- Summary sheet -----
   const summary = [
     ["Business Name", form.businessId?.name || "-"],
     ["Event Name", form.eventId?.name || "-"],
     ["Form Title", form.title || "-"],
     ["Form Slug", form.slug],
     ["Total Recipients", recipients.length],
+    ["Anonymous Form", form.isAnonymous ? "Yes" : "No"],
+    form.isAnonymous
+      ? ["Note", "This is an anonymous survey. Personal details are not collected."]
+      : [],
     ["Exported At", formatLocalLong(new Date())],
     [], // blank row before table
   ];
 
-  // Build workbook
   const summarySheet = XLSX.utils.aoa_to_sheet(summary);
   XLSX.utils.sheet_add_json(summarySheet, allRecipientData, { origin: -1 });
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, summarySheet, "Recipients");
 
-  // Sanitize filename
   const sanitizeFilename = (name) =>
     name ? name.replace(/[^\w\u0600-\u06FF-]/g, "_") : "file";
+
   const safeCompany = sanitizeFilename(form.businessId?.name || "company");
   const safeForm = sanitizeFilename(form.title || form.slug);
   const filename = `${safeCompany}-${safeForm}-recipients.xlsx`;

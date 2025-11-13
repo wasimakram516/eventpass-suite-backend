@@ -97,6 +97,7 @@ exports.createForm = asyncHandler(async (req, res) => {
     title: req.body.title,
     description: req.body.description || "",
     isActive: String(req.body.isActive ?? "true") === "true",
+    isAnonymous: String(req.body.isAnonymous ?? "false") === "true",
     questions: parseJson(req.body.questions) || [],
   };
 
@@ -217,6 +218,10 @@ exports.updateForm = asyncHandler(async (req, res) => {
       typeof req.body.isActive === "undefined"
         ? prev.isActive
         : String(req.body.isActive) === "true",
+    isAnonymous:
+    typeof req.body.isAnonymous === "undefined"
+      ? prev.isAnonymous
+      : String(req.body.isAnonymous) === "true",
     questions: parseJson(req.body.questions) ?? prev.questions,
   };
 

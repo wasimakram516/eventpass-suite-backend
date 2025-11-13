@@ -23,6 +23,7 @@ const SurveyFormSchema = new mongoose.Schema({
   description: { type: String, default: "" },
   questions: { type: [QuestionSchema], default: [] },
   isActive: { type: Boolean, default: true },
+  isAnonymous: { type: Boolean, default: false },
 }, { timestamps: true });
 
 // Unique per business (safer than global uniqueness)

@@ -2,7 +2,12 @@ const env = require("../config/env");
 const { translateText } = require("../services/translationService");
 const { pickPhone } = require("../utils/customFieldUtils");
 
-async function buildSurveyInvitationEmail({ event, form, recipient, registration = {} }) {
+async function buildSurveyInvitationEmail({
+  event,
+  form,
+  recipient,
+  registration = {},
+}) {
   const targetLang = event.defaultLanguage || "en";
   const emailDir = targetLang === "ar" ? "rtl" : "ltr";
 
@@ -28,46 +33,54 @@ async function buildSurveyInvitationEmail({ event, form, recipient, registration
     });
   };
 
-  // Personalized survey link with token
-  const surveyLink = `${env.client.url}${env.client.surveyGuru}/${form.slug}?token=${encodeURIComponent(
-    recipient.token
-  )}`;
+  // ---------------------------------------
+  // Survey link (no token for anonymous)
+  // ---------------------------------------
+  const surveyLink = form.isAnonymous
+    ? `${env.client.url}${env.client.surveyGuru}/${form.slug}`
+    : `${env.client.url}${env.client.surveyGuru}/${form.slug}?token=${encodeURIComponent(
+        recipient.token
+      )}`;
 
   // ---------------------------------------
-  // Participant fields — mimic registration email behavior
+  // Participant Fields (ONLY if NOT anonymous)
   // ---------------------------------------
   let participantFields = [];
-  const customFields =
-    registration.customFields && typeof registration.customFields === "object"
-      ? registration.customFields
-      : {};
 
-  // If event.formFields exist and match customFields
-  if (Array.isArray(event.formFields) && Object.keys(customFields).length > 0) {
-    for (const f of event.formFields) {
-      const val = customFields[f.inputName];
-      if (val) {
-        participantFields.push({
-          label: f.inputName,
-          value: val,
-        });
+  if (!form.isAnonymous) {
+    const customFields =
+      registration.customFields && typeof registration.customFields === "object"
+        ? registration.customFields
+        : {};
+
+    // Event custom fields
+    if (
+      Array.isArray(event.formFields) &&
+      Object.keys(customFields).length > 0
+    ) {
+      for (const f of event.formFields) {
+        const val = customFields[f.inputName];
+        if (val) {
+          participantFields.push({ label: f.inputName, value: val });
+        }
       }
+    } else {
+      // fallback
+      if (recipient.fullName)
+        participantFields.push({ label: "Full Name", value: recipient.fullName });
+      if (recipient.email)
+        participantFields.push({ label: "Email", value: recipient.email });
+      if (recipient.company)
+        participantFields.push({ label: "Company", value: recipient.company });
+
+      const phone =
+        registration.phone || pickPhone?.(registration.customFields) || null;
+      if (phone) participantFields.push({ label: "Phone", value: phone });
     }
-  } else {
-    // fallback to classic fields
-    if (recipient.fullName)
-      participantFields.push({ label: "Full Name", value: recipient.fullName });
-    if (recipient.email)
-      participantFields.push({ label: "Email", value: recipient.email });
-    if (recipient.company)
-      participantFields.push({ label: "Company", value: recipient.company });
-    const phone =
-      registration.phone || pickPhone?.(registration.customFields) || null;
-    if (phone) participantFields.push({ label: "Phone", value: phone });
   }
 
   // ---------------------------------------
-  // Texts for translation (include all field labels)
+  // TRANSLATION LIST (everything goes here)
   // ---------------------------------------
   const texts = [
     "We value your feedback!",
@@ -81,9 +94,16 @@ async function buildSurveyInvitationEmail({ event, form, recipient, registration
     "About",
     "Open Survey",
     "Thank you for attending!",
+    "Guest",
+    "This survey is 100% anonymous.",
+    "Your name, email and personal details are NOT recorded.",
+
+    // dynamic event content
     event.name,
     event.venue,
     event.description || "",
+
+    // participant label translations
     ...participantFields.map((f) => f.label),
   ].filter(Boolean);
 
@@ -93,17 +113,16 @@ async function buildSurveyInvitationEmail({ event, form, recipient, registration
   const tr = (t) => map[t] || t;
 
   // ---------------------------------------
-  // Build email HTML
+  // HTML TEMPLATE
   // ---------------------------------------
   const html = `
   <div dir="${emailDir}" style="font-family:'Segoe UI',Arial,sans-serif;background:#f6f8fa;padding:20px;">
     <div style="max-width:640px;margin:auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);">
       
-      <!-- Header -->
       <div style="background:#004aad;padding:24px;text-align:center;">
         ${
           event.logoUrl
-            ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;"/>`
+            ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;" />`
             : ""
         }
         <h2 style="color:#fff;font-size:22px;margin:0;">${tr(
@@ -111,74 +130,78 @@ async function buildSurveyInvitationEmail({ event, form, recipient, registration
         )}</h2>
       </div>
 
-      <!-- Body -->
       <div style="padding:32px 28px 24px;">
         <p style="font-size:15px;color:#333;">
-          ${tr("Hello")} <strong>${recipient.fullName || "Guest"}</strong>,
+          ${tr("Hello")} <strong>${
+    form.isAnonymous ? tr("Guest") : recipient.fullName || tr("Guest")
+  }</strong>,
         </p>
 
         <p style="font-size:15px;color:#333;line-height:1.6;">
-          ${tr("We appreciate your participation in")} <strong>${tr(
-    event.name
-  )}</strong>. 
+          ${tr("We appreciate your participation in")}
+          <strong>${tr(event.name)}</strong>.
           ${tr(
             "Please take a moment to share your experience and help us improve."
           )}
         </p>
 
+        <!-- Anonymous Notice -->
+        ${
+          form.isAnonymous
+            ? `
+        <div style="margin-top:24px;padding:12px;background:#fff7d1;border-left:4px solid #f0c200;
+                    font-size:14px;color:#7a5e00;">
+          <strong>${tr("This survey is 100% anonymous.")}</strong><br/>
+          ${tr("Your name, email and personal details are NOT recorded.")}
+        </div>`
+            : ""
+        }
+
         <!-- Event Details -->
         <h3 style="margin-top:24px;font-size:17px;color:#004aad;">${tr(
           "Event Details"
         )}</h3>
-        <table style="width:100%;border-collapse:collapse;font-size:14px;color:#333;">
+        <table style="width:100%;font-size:14px;color:#333;">
           <tr>
-            <td style="padding:6px 0;"><strong>${tr("Date")}:</strong></td>
+            <td><strong>${tr("Date")}:</strong></td>
             <td>${formatDate(event.startDate)}</td>
           </tr>
           <tr>
-            <td style="padding:6px 0;"><strong>${tr("Venue")}:</strong></td>
+            <td><strong>${tr("Venue")}:</strong></td>
             <td>${tr(event.venue || "-")}</td>
           </tr>
           ${
             event.description
-              ? `<tr>
-                  <td style="padding:6px 0;vertical-align:top;"><strong>${tr(
-                    "About"
-                  )}:</strong></td>
-                  <td>${tr(event.description)}</td>
-                </tr>`
+              ? `<tr><td><strong>${tr("About")}:</strong></td><td>${tr(
+                  event.description
+                )}</td></tr>`
               : ""
           }
         </table>
 
         <!-- Participant Details -->
         ${
-          participantFields.length
+          !form.isAnonymous && participantFields.length
             ? `
-          <h3 style="margin-top:24px;font-size:17px;color:#004aad;">${tr(
-            "Participant Details"
-          )}</h3>
-          <table style="width:100%;border-collapse:collapse;font-size:14px;color:#333;">
-            ${participantFields
-              .map(
-                (f) => `
-              <tr>
-                <td style="padding:6px 0;width:40%;"><strong>${tr(
-                  f.label
-                )}:</strong></td>
-                <td style="padding:6px 0;">${f.value}</td>
-              </tr>`
-              )
-              .join("")}
-          </table>`
+        <h3 style="margin-top:24px;font-size:17px;color:#004aad;">${tr(
+          "Participant Details"
+        )}</h3>
+        <table style="width:100%;font-size:14px;color:#333;">
+          ${participantFields
+            .map(
+              (f) =>
+                `<tr><td><strong>${tr(f.label)}:</strong></td><td>${f.value}</td></tr>`
+            )
+            .join("")}
+        </table>`
             : ""
         }
 
         <!-- Button -->
         <div style="text-align:center;margin:36px 0 20px;">
-          <a href="${surveyLink}" target="_blank" 
-             style="background:#004aad;color:#fff;text-decoration:none;padding:14px 26px;
-             border-radius:6px;font-weight:600;font-size:15px;display:inline-block;">
+          <a href="${surveyLink}"
+             style="background:#004aad;color:#fff;padding:14px 26px;border-radius:6px;
+                    font-weight:600;font-size:15px;text-decoration:none;">
              ${tr("Open Survey")}
           </a>
         </div>

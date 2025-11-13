@@ -12,13 +12,21 @@ const AnswerSchema = new mongoose.Schema(
 
 const SurveyResponseSchema = new mongoose.Schema(
   {
-    formId: { type: mongoose.Schema.Types.ObjectId, ref: "SurveyForm", required: true, index: true },
-    recipientId: { type: mongoose.Schema.Types.ObjectId, ref: "SurveyRecipient", default: null, index: true },
-
+    formId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SurveyForm",
+      required: true,
+      index: true,
+    },
+    recipientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SurveyRecipient",
+      default: null,
+    },
     attendee: {
-      name: { type: String, required: true },
-      email: { type: String, required: true, lowercase: true, trim: true},
-      company: { type: String, default: "" },
+      name: { type: String, default: null },
+      email: { type: String, default: null, lowercase: true, trim: true },
+      company: { type: String, default: null },
     },
 
     answers: { type: [AnswerSchema], default: [] },

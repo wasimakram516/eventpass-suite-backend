@@ -18,19 +18,35 @@ exports.submitResponseBySlug = asyncHandler(async (req, res) => {
   if (!form) return response(res, 404, "Form unavailable");
 
   let recipient = null;
-  if (token) {
-    recipient = await SurveyRecipient.findOne({ formId: form._id, token });
+
+  // Only attempt to match recipient when NOT anonymous
+  if (!form.isAnonymous && token) {
+    recipient = await SurveyRecipient.findOne({
+      formId: form._id,
+      token,
+    });
   }
 
+  // Prepare attendee data
+  const attendeeData = form.isAnonymous
+    ? { name: null, email: null, company: null }
+    : {
+        name: payload.attendee?.name || null,
+        email: payload.attendee?.email || null,
+        company: payload.attendee?.company || null,
+      };
+
+  // Create survey response
   const saved = await SurveyResponse.create({
     formId: form._id,
-    recipientId: recipient?._id || null,
-    attendee: payload.attendee,
+    recipientId: form.isAnonymous ? null : (recipient?._id || null),
+    attendee: attendeeData,
     answers: payload.answers,
     submittedAt: new Date(),
   });
 
-  if (recipient && recipient.status !== "responded") {
+  // Update recipient status only for non-anonymous surveys
+  if (!form.isAnonymous && recipient && recipient.status !== "responded") {
     recipient.status = "responded";
     recipient.respondedAt = new Date();
     await recipient.save();
@@ -75,6 +91,19 @@ exports.exportResponsesCsv = asyncHandler(async (req, res) => {
     .lean();
   if (!form) return response(res, 404, "Form not found");
 
+  // Local datetime formatter
+  const formatLocal = (d) => {
+    if (!d) return "";
+    return new Date(d).toLocaleString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
+
   const optLabel = new Map();
   (form.questions || []).forEach((q) => {
     (q.options || []).forEach((o) => {
@@ -82,7 +111,7 @@ exports.exportResponsesCsv = asyncHandler(async (req, res) => {
     });
   });
 
-  // Fetch responses with recipient info populated
+  // Fetch responses
   const rowsRaw = await SurveyResponse.find({ formId })
     .populate(
       "recipientId",
@@ -95,58 +124,58 @@ exports.exportResponsesCsv = asyncHandler(async (req, res) => {
     return response(res, 404, "No responses found for this form");
   }
 
-  // Prepare rows for Excel
   const allResponseData = rowsRaw.map((r) => {
-    const row = {
-      // Actual submitted attendee info
-      "Attendee Name": r.attendee?.name || "",
-      "Attendee Email": r.attendee?.email || "",
-      "Attendee Company": r.attendee?.company || "",
-      "Submitted At": r.submittedAt
-        ? new Date(r.submittedAt).toISOString()
-        : "",
-    };
+    const row = {};
 
-    // Original recipient info (if available)
-    if (r.recipientId) {
-      row["Original Full Name"] = r.recipientId.fullName || "";
-      row["Original Email"] = r.recipientId.email || "";
-      row["Original Company"] = r.recipientId.company || "";
-      row["Recipient Status"] = r.recipientId.status || "";
-      row["Recipient Token"] = r.recipientId.token || "";
-      row["Recipient Created At"] = r.recipientId.createdAt
-        ? new Date(r.recipientId.createdAt).toISOString()
-        : "";
-      row["Recipient Responded At"] = r.recipientId.respondedAt
-        ? new Date(r.recipientId.respondedAt).toISOString()
-        : "";
-    } else {
-      row["Original Full Name"] = "";
-      row["Original Email"] = "";
-      row["Original Company"] = "";
-      row["Recipient Status"] = "";
-      row["Recipient Token"] = "";
-      row["Recipient Created At"] = "";
-      row["Recipient Responded At"] = "";
+    // --- Anonymous Mode ---
+    if (!form.isAnonymous) {
+      row["Attendee Name"] = r.attendee?.name || "";
+      row["Attendee Email"] = r.attendee?.email || "";
+      row["Attendee Company"] = r.attendee?.company || "";
+
+      if (r.recipientId) {
+        row["Original Full Name"] = r.recipientId.fullName || "";
+        row["Original Email"] = r.recipientId.email || "";
+        row["Original Company"] = r.recipientId.company || "";
+        row["Recipient Status"] = r.recipientId.status || "";
+        row["Recipient Token"] = r.recipientId.token || "";
+        row["Recipient Created At"] = formatLocal(r.recipientId.createdAt);
+        row["Recipient Responded At"] = formatLocal(
+          r.recipientId.respondedAt
+        );
+      } else {
+        row["Original Full Name"] = "";
+        row["Original Email"] = "";
+        row["Original Company"] = "";
+        row["Recipient Status"] = "";
+        row["Recipient Token"] = "";
+        row["Recipient Created At"] = "";
+        row["Recipient Responded At"] = "";
+      }
     }
 
-    // Fill in answers for each question
+    // Submitted time
+    row["Submitted At"] = formatLocal(r.submittedAt);
+
+    // Answers
     (form.questions || []).forEach((q, idx) => {
       const ans = (r.answers || []).find(
         (a) => String(a.questionId) === String(q._id)
       );
+
       let val = "";
       if (ans) {
         if (Array.isArray(ans.optionIds) && ans.optionIds.length) {
           val = ans.optionIds
             .map((id) => optLabel.get(String(id)) || "")
             .join(" | ");
-        } else if (typeof ans.text === "string" && ans.text.length) {
+        } else if (typeof ans.text === "string") {
           val = ans.text;
         } else if (typeof ans.number === "number") {
           val = String(ans.number);
         }
       }
+
       const headerLabel = (q.label || `Q${idx + 1}`)
         .replace(/\s+/g, " ")
         .trim();
@@ -156,25 +185,24 @@ exports.exportResponsesCsv = asyncHandler(async (req, res) => {
     return row;
   });
 
-  // Summary sheet content
+  // Build summary
   const summary = [
     ["Business Name", form.businessId?.name || "-"],
     ["Event Name", form.eventId?.name || "-"],
     ["Form Title", form.title || "-"],
     ["Form Slug", form.slug],
+    ["Mode", form.isAnonymous ? "Anonymous" : "Identified"],
     ["Total Responses", rowsRaw.length],
-    ["Exported At", new Date().toISOString()],
-    [], // blank row before table
+    ["Exported At", formatLocal(new Date())],
+    [],
   ];
 
-  // Build workbook
   const summarySheet = XLSX.utils.aoa_to_sheet(summary);
   XLSX.utils.sheet_add_json(summarySheet, allResponseData, { origin: -1 });
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, summarySheet, "Responses");
 
-  // Sanitize filename
   const sanitizeFilename = (name) =>
     name ? name.replace(/[^\w\u0600-\u06FF-]/g, "_") : "file";
   const safeCompany = sanitizeFilename(form.businessId?.name || "company");
