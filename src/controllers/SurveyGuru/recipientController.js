@@ -1,27 +1,113 @@
 const mongoose = require("mongoose");
+const env = require("../../config/env");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
-const XLSX = require("xlsx");
+
+const Event = require("../../models/Event");
+const Registration = require("../../models/Registration");
+const SurveyForm = require("../../models/SurveyForm");
+const SurveyRecipient = require("../../models/SurveyRecipient");
 const {
   pickEmail,
   pickFullName,
   pickCompany,
 } = require("../../utils/customFieldUtils");
 
-const Event = require("../../models/Event");
-const Registration = require("../../models/Registration");
-const SurveyForm = require("../../models/SurveyForm");
-const SurveyRecipient = require("../../models/SurveyRecipient");
-const env = require("../../config/env");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
+
 const {
-  emitSurveyEmailProgress,
   emitSurveySyncProgress,
+  emitSurveyEmailProgress,
 } = require("../../socket/modules/surveyguru/surveyGuruSocket");
-const {
-  buildSurveyInvitationEmail,
-} = require("../../utils/surveyEmailTemplateBuilder");
-const sendEmail = require("../../services/emailService");
+
+// Utility to sync recipients in chunks
+async function loadRemainingRecipients(formId, regs, CHUNK_SIZE = 100) {
+  const total = regs.length;
+  let processed = 0;
+
+  const form = await SurveyForm.findById(formId).lean();
+  if (!form) return console.error("Sync stopped — form not found", formId);
+
+  for (let i = 0; i < regs.length; i += CHUNK_SIZE) {
+    const chunk = regs.slice(i, i + CHUNK_SIZE);
+    const bulkOps = [];
+
+    for (const reg of chunk) {
+      processed++;
+
+      const email = (pickEmail(reg.customFields) || reg.email || "")
+        .trim()
+        .toLowerCase();
+
+      if (!email) continue;
+
+      const fullName = pickFullName(reg.customFields) || reg.fullName || "";
+
+      const company = pickCompany(reg.customFields) || reg.company || "";
+
+      const token = reg.token || "";
+
+      bulkOps.push({
+        updateOne: {
+          filter: { formId, email },
+          update: {
+            $setOnInsert: {
+              formId,
+              businessId: form.businessId,
+              eventId: form.eventId,
+              email,
+              status: "queued",
+            },
+            $set: { fullName, company, token },
+          },
+          upsert: true,
+          collation: { locale: "en", strength: 2 },
+        },
+      });
+    }
+
+    if (bulkOps.length) {
+      await SurveyRecipient.bulkWrite(bulkOps, { ordered: false });
+    }
+
+    // Emit only progress — lightweight
+    emitSurveySyncProgress(formId, processed, total);
+
+    // avoid event loop blocking
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+
+  // Final 100%
+  emitSurveySyncProgress(formId, total, total);
+}
+// Sync recipients from event registrations
+exports.syncFromEventRegistrations = asyncHandler(async (req, res) => {
+  const { formId } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(formId)) {
+    return response(res, 400, "Invalid formId");
+  }
+
+  const form = await SurveyForm.findById(formId)
+    .select("_id eventId businessId")
+    .lean();
+
+  if (!form) return response(res, 404, "Form not found");
+
+  const regs = await Registration.find({ eventId: form.eventId })
+    .select("email fullName company token customFields eventId")
+    .lean();
+
+  // Immediate response — prevent timeouts
+  response(res, 200, "Sync started");
+
+  // Background processing
+  setImmediate(() => {
+    loadRemainingRecipients(formId, regs).catch((err) =>
+      console.error("Survey sync failed:", err)
+    );
+  });
+});
 
 // Get paginated list of recipients for a survey form
 exports.listRecipients = asyncHandler(async (req, res) => {
@@ -68,119 +154,6 @@ exports.listRecipients = asyncHandler(async (req, res) => {
       totalPages: Math.ceil(total / _limit),
     },
   });
-});
-
-// Pull all registrations for a form's eventId and save/update recipients
-exports.syncFromEventRegistrations = asyncHandler(async (req, res) => {
-  const { formId } = req.params;
-
-  if (!mongoose.Types.ObjectId.isValid(formId)) {
-    return response(res, 400, "Invalid formId");
-  }
-
-  // Ensure form exists
-  const form = await SurveyForm.findById(formId)
-    .select("_id businessId eventId")
-    .lean();
-  if (!form) return response(res, 404, "Form not found");
-  if (!form.eventId) return response(res, 400, "Form is missing eventId");
-
-  // Ensure event exists
-  const event = await Event.findById(form.eventId).select("_id name").lean();
-  if (!event) return response(res, 404, "Event not found");
-
-  // Pull all event registrations
-  const regs = await Registration.find({ eventId: form.eventId })
-    .select("token email fullName firstName lastName company customFields")
-    .lean();
-
-  const totalRegs = regs.length;
-  let processed = 0;
-  let added = 0;
-  let updated = 0;
-  const seen = new Set();
-
-  for (const reg of regs) {
-    processed++;
-
-    // Prefer custom fields over classic registration fields
-    const email = (pickEmail(reg.customFields) || reg.email || "")
-      .trim()
-      .toLowerCase();
-
-    if (!email || seen.has(email)) {
-      emitSurveySyncProgress(form._id.toString(), processed, totalRegs);
-      continue;
-    }
-    seen.add(email);
-
-    const fullName =
-      pickFullName(reg.customFields) ||
-      reg.fullName ||
-      [reg.firstName, reg.lastName].filter(Boolean).join(" ") ||
-      "";
-
-    const company = pickCompany(reg.customFields) || reg.company || "";
-    const token = reg.token || "";
-
-    // Build upsert document safely (avoid conflicting operators)
-    const updateDoc = {
-      $setOnInsert: {
-        formId: form._id,
-        businessId: form.businessId,
-        eventId: form.eventId,
-        email,
-        status: "queued",
-      },
-      $set: {},
-    };
-
-    if (fullName) updateDoc.$set.fullName = fullName;
-    if (company) updateDoc.$set.company = company;
-    if (token) updateDoc.$set.token = token;
-
-    try {
-      const result = await SurveyRecipient.findOneAndUpdate(
-        { formId: form._id, email },
-        updateDoc,
-        {
-          upsert: true,
-          new: false,
-          collation: { locale: "en", strength: 2 },
-        }
-      );
-
-      if (!result) added++;
-      else updated++;
-    } catch (err) {
-      console.error(`Sync error for ${email}:`, err.message);
-    }
-
-    // Emit real-time sync progress
-    emitSurveySyncProgress(form._id.toString(), processed, totalRegs);
-  }
-
-  // Emit final 100% progress
-  emitSurveySyncProgress(form._id.toString(), totalRegs, totalRegs);
-
-  // Trigger dashboard recompute (non-blocking)
-  recomputeAndEmit(form.businessId || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
-  );
-
-  // Final response
-  return response(
-    res,
-    200,
-    `Recipient sync completed — ${added} added, ${updated} updated, out of ${totalRegs} total (${seen.size} unique emails).`,
-    {
-      eventName: event.name,
-      added,
-      updated,
-      scanned: totalRegs,
-      uniqueEmails: seen.size,
-    }
-  );
 });
 
 // Send Bulk Emails to survey recipients
