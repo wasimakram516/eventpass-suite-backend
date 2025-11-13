@@ -23,21 +23,25 @@ const {
 } = require("../../utils/surveyEmailTemplateBuilder");
 const sendEmail = require("../../services/emailService");
 
-// recipientController.js
+// Get paginated list of recipients for a survey form
 exports.listRecipients = asyncHandler(async (req, res) => {
-  const { formId, q = "", status = "" } = req.query;
+  const { formId, q = "", status = "", page = 1, limit = 20 } = req.query;
 
   if (!formId || !mongoose.Types.ObjectId.isValid(formId)) {
     return response(res, 400, "Valid formId is required");
   }
 
+  const _page = Math.max(1, Number(page));
+  const _limit = Math.min(200, Number(limit));
+
   const match = { formId };
 
-  // optional status filter
-  if (typeof status === "string" && status.trim()) {
-    match.status = status.trim().toLowerCase(); // e.g., "queued" | "responded"
+  // Optional status filter
+  if (status?.trim()) {
+    match.status = status.trim().toLowerCase(); // queued | responded
   }
 
+  // Optional search filter
   const qTrim = String(q || "").trim();
   if (qTrim) {
     const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -45,11 +49,25 @@ exports.listRecipients = asyncHandler(async (req, res) => {
     match.$or = [{ fullName: rx }, { email: rx }, { company: rx }];
   }
 
+  // Count total documents (fast because indexed)
+  const total = await SurveyRecipient.countDocuments(match);
+
+  // Fetch paginated recipients
   const recipients = await SurveyRecipient.find(match)
     .sort({ createdAt: -1 })
+    .skip((_page - 1) * _limit)
+    .limit(_limit)
     .lean();
 
-  return response(res, 200, "Recipients fetched", recipients);
+  return response(res, 200, "Recipients fetched", {
+    recipients,
+    pagination: {
+      page: _page,
+      limit: _limit,
+      total,
+      totalPages: Math.ceil(total / _limit),
+    },
+  });
 });
 
 // Pull all registrations for a form's eventId and save/update recipients
@@ -356,7 +374,9 @@ exports.exportRecipients = asyncHandler(async (req, res) => {
 
     const surveyLink = isAnon
       ? `${base}${publicPath}/${form.slug}`
-      : `${base}${publicPath}/${form.slug}?token=${encodeURIComponent(r.token)}`;
+      : `${base}${publicPath}/${form.slug}?token=${encodeURIComponent(
+          r.token
+        )}`;
 
     return {
       "Full Name": isAnon ? "Anonymous" : r.fullName || "",
@@ -379,7 +399,10 @@ exports.exportRecipients = asyncHandler(async (req, res) => {
     ["Total Recipients", recipients.length],
     ["Anonymous Form", form.isAnonymous ? "Yes" : "No"],
     form.isAnonymous
-      ? ["Note", "This is an anonymous survey. Personal details are not collected."]
+      ? [
+          "Note",
+          "This is an anonymous survey. Personal details are not collected.",
+        ]
       : [],
     ["Exported At", formatLocalLong(new Date())],
     [], // blank row before table
