@@ -265,8 +265,17 @@ exports.sendBulkSurveyEmails = asyncHandler(async (req, res) => {
     status: "queued",
   }).lean();
 
-  if (!pendingRecipients.length)
+  if (!pendingRecipients.length) {
+    // Emit a 100% completion event so frontend resets state
+    emitSurveyEmailProgress(formId, {
+      sent: 0,
+      failed: 0,
+      processed: 0,
+      total: 0,
+    });
+
     return response(res, 200, "All survey emails already sent.");
+  }
 
   response(res, 200, "Bulk email job started");
 
