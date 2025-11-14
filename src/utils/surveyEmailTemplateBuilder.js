@@ -138,7 +138,7 @@ async function buildSurveyInvitationEmail({
   <a href="${surveyLink}"
      style="
        background:#004aad;
-       color:#fff;
+       color:#ffffff;
        display:inline-flex;
        align-items:center;
        justify-content:center;
@@ -148,9 +148,14 @@ async function buildSurveyInvitationEmail({
        font-weight:700;
        font-size:17px;
        text-decoration:none;
-     ">
-     
-     <!-- PNG Icon from CloudFront -->
+       border:1px solid #003b87;
+       box-shadow:0 4px 10px rgba(0,0,0,0.18);
+       transition:all 0.2s ease-in-out;
+
+       /* Simulated hover/active (works as visual state even without events) */
+       mso-padding-alt:0;
+     "
+  >
      <img 
         src="${env.aws.cloudfrontUrl}/Assets/verified-user.png"
         width="22"
@@ -164,6 +169,7 @@ async function buildSurveyInvitationEmail({
      </span>
   </a>
 </div>
+
 
 
       <!-- CONTENT BODY -->
