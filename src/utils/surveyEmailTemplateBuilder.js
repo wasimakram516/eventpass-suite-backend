@@ -38,9 +38,9 @@ async function buildSurveyInvitationEmail({
   // ---------------------------------------
   const surveyLink = form.isAnonymous
     ? `${env.client.url}${env.client.surveyGuru}/${form.slug}`
-    : `${env.client.url}${env.client.surveyGuru}/${form.slug}?token=${encodeURIComponent(
-        recipient.token
-      )}`;
+    : `${env.client.url}${env.client.surveyGuru}/${
+        form.slug
+      }?token=${encodeURIComponent(recipient.token)}`;
 
   // ---------------------------------------
   // Participant Fields (ONLY if NOT anonymous)
@@ -67,7 +67,10 @@ async function buildSurveyInvitationEmail({
     } else {
       // fallback
       if (recipient.fullName)
-        participantFields.push({ label: "Full Name", value: recipient.fullName });
+        participantFields.push({
+          label: "Full Name",
+          value: recipient.fullName,
+        });
       if (recipient.email)
         participantFields.push({ label: "Email", value: recipient.email });
       if (recipient.company)
@@ -92,7 +95,6 @@ async function buildSurveyInvitationEmail({
     "Date",
     "Venue",
     "About",
-    "Open Survey",
     "Thank you for attending!",
     "Guest",
     "This survey is 100% anonymous.",
@@ -119,6 +121,7 @@ async function buildSurveyInvitationEmail({
   <div dir="${emailDir}" style="font-family:'Segoe UI',Arial,sans-serif;background:#f6f8fa;padding:20px;">
     <div style="max-width:640px;margin:auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);">
       
+      <!-- HEADER -->
       <div style="background:#004aad;padding:24px;text-align:center;">
         ${
           event.logoUrl
@@ -130,15 +133,50 @@ async function buildSurveyInvitationEmail({
         )}</h2>
       </div>
 
-      <div style="padding:32px 28px 24px;">
-        <p style="font-size:15px;color:#333;">
+    <!-- TOP BUTTON -->
+<div style="padding:28px 28px 0;text-align:center;">
+  <a href="${surveyLink}"
+     style="
+       background:#004aad;
+       color:#fff;
+       display:inline-flex;
+       align-items:center;
+       justify-content:center;
+       gap:10px;
+       padding:16px 32px;
+       border-radius:10px;
+       font-weight:700;
+       font-size:17px;
+       text-decoration:none;
+     ">
+     
+     <!-- PNG Icon from CloudFront -->
+     <img 
+        src="${env.cloudfrontUrl}/Assets/verified-user.png"
+        width="22"
+        height="22"
+        style="display:inline-block;vertical-align:middle;"
+        alt="icon"
+     />
+
+     <span style="vertical-align:middle;">
+        ${targetLang === "ar" ? "افتح الاستبيان" : "Open Survey"}
+     </span>
+  </a>
+</div>
+
+
+      <!-- CONTENT BODY -->
+      <div style="padding:24px 28px 28px;">
+        
+        <p style="font-size:15px;color:#333;margin-top:28px;">
           ${tr("Hello")} <strong>${
     form.isAnonymous ? tr("Guest") : recipient.fullName || tr("Guest")
   }</strong>,
         </p>
 
         <p style="font-size:15px;color:#333;line-height:1.6;">
-          ${tr("We appreciate your participation in")}
+          ${tr("We appreciate your participation in")} 
           <strong>${tr(event.name)}</strong>.
           ${tr(
             "Please take a moment to share your experience and help us improve."
@@ -190,23 +228,17 @@ async function buildSurveyInvitationEmail({
           ${participantFields
             .map(
               (f) =>
-                `<tr><td><strong>${tr(f.label)}:</strong></td><td>${f.value}</td></tr>`
+                `<tr><td><strong>${tr(f.label)}:</strong></td><td>${
+                  f.value
+                }</td></tr>`
             )
             .join("")}
         </table>`
             : ""
         }
 
-        <!-- Button -->
-        <div style="text-align:center;margin:36px 0 20px;">
-          <a href="${surveyLink}"
-             style="background:#004aad;color:#fff;padding:14px 26px;border-radius:6px;
-                    font-weight:600;font-size:15px;text-decoration:none;">
-             ${tr("Open Survey")}
-          </a>
-        </div>
-
-        <p style="text-align:center;font-size:14px;color:#777;margin-top:16px;">
+        <!-- FOOTER -->
+        <p style="text-align:center;font-size:14px;color:#777;margin-top:24px;">
           ${tr("Thank you for attending!")}
         </p>
       </div>
