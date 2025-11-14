@@ -8,7 +8,7 @@ async function buildSurveyInvitationEmail({
   recipient,
   registration = {},
 }) {
-  const targetLang = event.defaultLanguage || "en";
+  const targetLang = form.defaultLanguage || "en";
   const emailDir = targetLang === "ar" ? "rtl" : "ltr";
 
   // ---------------------------------------
@@ -36,11 +36,11 @@ async function buildSurveyInvitationEmail({
   // ---------------------------------------
   // Survey link (no token for anonymous)
   // ---------------------------------------
+  const baseUrl = `${env.client.url}${env.client.surveyGuru}/${targetLang}/${form.slug}`;
+
   const surveyLink = form.isAnonymous
-    ? `${env.client.url}${env.client.surveyGuru}/${form.slug}`
-    : `${env.client.url}${env.client.surveyGuru}/${
-        form.slug
-      }?token=${encodeURIComponent(recipient.token)}`;
+    ? baseUrl
+    : `${baseUrl}?token=${encodeURIComponent(recipient.token)}`;
 
   // ---------------------------------------
   // Participant Fields (ONLY if NOT anonymous)

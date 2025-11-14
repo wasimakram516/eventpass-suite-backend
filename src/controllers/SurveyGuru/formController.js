@@ -99,6 +99,7 @@ exports.createForm = asyncHandler(async (req, res) => {
     isActive: String(req.body.isActive ?? "true") === "true",
     isAnonymous: String(req.body.isAnonymous ?? "false") === "true",
     questions: parseJson(req.body.questions) || [],
+    defaultLanguage: req.body.defaultLanguage || "en",
   };
 
   if (!body.businessId) return response(res, 400, "businessId is required");
@@ -127,7 +128,11 @@ exports.createForm = asyncHandler(async (req, res) => {
   body.slug = baseSlug;
 
   // Attach option images from uploaded files
-  body.questions = await attachOptionImages(body.questions, req.files || [], null);
+  body.questions = await attachOptionImages(
+    body.questions,
+    req.files || [],
+    null
+  );
 
   const form = await SurveyForm.create(body);
 
@@ -219,10 +224,14 @@ exports.updateForm = asyncHandler(async (req, res) => {
         ? prev.isActive
         : String(req.body.isActive) === "true",
     isAnonymous:
-    typeof req.body.isAnonymous === "undefined"
-      ? prev.isAnonymous
-      : String(req.body.isAnonymous) === "true",
+      typeof req.body.isAnonymous === "undefined"
+        ? prev.isAnonymous
+        : String(req.body.isAnonymous) === "true",
     questions: parseJson(req.body.questions) ?? prev.questions,
+    defaultLanguage:
+      typeof req.body.defaultLanguage === "undefined"
+        ? prev.defaultLanguage
+        : req.body.defaultLanguage,
   };
 
   // attach/replace/remove option images based on uploaded files + flags

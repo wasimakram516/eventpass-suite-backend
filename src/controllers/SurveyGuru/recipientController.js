@@ -15,7 +15,9 @@ const {
 } = require("../../utils/customFieldUtils");
 
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
-const { buildSurveyInvitationEmail } = require("../../utils/surveyEmailTemplateBuilder");
+const {
+  buildSurveyInvitationEmail,
+} = require("../../utils/surveyEmailTemplateBuilder");
 const sendEmail = require("../../services/emailService");
 
 const {
@@ -307,7 +309,7 @@ exports.exportRecipients = asyncHandler(async (req, res) => {
   const form = await SurveyForm.findById(formId)
     .populate("businessId", "name")
     .populate("eventId", "name")
-    .select("_id slug title businessId eventId isAnonymous")
+    .select("_id slug title businessId eventId isAnonymous defaultLanguage")
     .lean();
   if (!form) return response(res, 404, "Form not found");
 
@@ -348,11 +350,13 @@ exports.exportRecipients = asyncHandler(async (req, res) => {
   const allRecipientData = recipients.map((r) => {
     const isAnon = form.isAnonymous;
 
+    const targetLang = form.defaultLanguage || "en";
+
     const surveyLink = isAnon
-      ? `${base}${publicPath}/${form.slug}`
-      : `${base}${publicPath}/${form.slug}?token=${encodeURIComponent(
-          r.token
-        )}`;
+      ? `${base}${publicPath}/${targetLang}/${form.slug}`
+      : `${base}${publicPath}/${targetLang}/${
+          form.slug
+        }?token=${encodeURIComponent(r.token)}`;
 
     return {
       "Full Name": isAnon ? "Anonymous" : r.fullName || "",
