@@ -1,3 +1,4 @@
+const XLSX = require("xlsx");
 const mongoose = require("mongoose");
 const env = require("../../config/env");
 const asyncHandler = require("../../middlewares/asyncHandler");
@@ -14,6 +15,8 @@ const {
 } = require("../../utils/customFieldUtils");
 
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
+const { buildSurveyInvitationEmail } = require("../../utils/surveyEmailTemplateBuilder");
+const sendEmail = require("../../services/emailService");
 
 const {
   emitSurveySyncProgress,
