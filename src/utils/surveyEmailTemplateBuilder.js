@@ -152,7 +152,7 @@ async function buildSurveyInvitationEmail({
      
      <!-- PNG Icon from CloudFront -->
      <img 
-        src="${env.cloudfrontUrl}/Assets/verified-user.png"
+        src="${env.aws.cloudfrontUrl}/Assets/verified-user.png"
         width="22"
         height="22"
         style="display:inline-block;vertical-align:middle;"
