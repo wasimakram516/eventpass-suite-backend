@@ -5,13 +5,16 @@ function emitSurveySyncProgress(formId, synced, total) {
   emitUpdate("surveySyncProgress", {
     formId,
     synced,
-    total, 
+    total,
   });
 }
 
 // Emit bulk email progress
-function emitSurveyEmailProgress(formId, sent, total) {
-  emitUpdate("surveyEmailProgress", { formId, sent, total });
+function emitSurveyEmailProgress(formId, data) {
+  emitUpdate("surveyEmailProgress", {
+    formId,
+    ...data,
+  });
 }
 
 module.exports = {
