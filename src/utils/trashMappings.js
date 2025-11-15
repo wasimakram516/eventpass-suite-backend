@@ -34,7 +34,7 @@ const formController = require("../controllers/SurveyGuru/formController");
 const pvpGameController = require("../controllers/eventduel/pvpGameController");
 const pvpGameSessionController = require("../controllers/eventduel/pvpGameSessionController");
 const pvpQuestionController = require("../controllers/eventduel/pvpQuestionController");
-const tmGameController = require("../controllers/tapmatch/tmGameController");
+const tmGameController = require("../controllers/tapmatch/TMGameController");
 
 // -------------------
 // SINGLE SOURCE OF TRUTH
