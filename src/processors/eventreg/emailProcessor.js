@@ -2,7 +2,12 @@ const Registration = require("../../models/Registration");
 const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder");
 const sendEmail = require("../../services/emailService");
 
-const { pickEmail, pickFullName, pickCompany } = require("../../utils/customFieldUtils");
+const {
+  pickEmail,
+  pickFullName,
+  pickCompany,
+} = require("../../utils/customFieldUtils");
+
 const { emitEmailProgress } = require("../../socket/modules/eventreg/eventRegSocket");
 
 module.exports = async function emailProcessor(event, recipients) {
@@ -18,24 +23,59 @@ module.exports = async function emailProcessor(event, recipients) {
       processed++;
 
       try {
-        const cf = r.customFields ? Object.fromEntries(r.customFields) : {};
+        const reg = await Registration.findById(r._id)
+          .select("customFields fullName email phone company token _id eventId")
+          .lean();
 
-        const fullName = r.fullName || pickFullName(cf);
-        const email = r.email || pickEmail(cf);
+        let cf = {};
+        if (reg?.customFields) {
+          if (Array.isArray(reg.customFields)) {
+            cf = Object.fromEntries(reg.customFields);
+          } else if (typeof reg.customFields === "object") {
+            cf = reg.customFields;
+          }
+        }
+
+        const email =
+          r.email ||
+          reg?.email ||
+          pickEmail(cf) ||
+          null;
+
+        const fullName =
+          r.fullName ||
+          reg?.fullName ||
+          pickFullName(cf) ||
+          null;
+
+        const company =
+          r.company ||
+          reg?.company ||
+          pickCompany(cf) ||
+          "";
 
         if (!email) {
           failed++;
           continue;
         }
 
-        const displayName = fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
+        const displayName =
+          fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
-        const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
-          event,
-          registration: r,
-          customFields: cf,
-          displayName,
-        });
+
+        const { subject, html, qrCodeDataUrl } =
+          await buildRegistrationEmail({
+            event,
+            registration: {
+              ...reg,
+              customFields: cf,
+              fullName,
+              email,
+              company,
+            },
+            customFields: cf,
+            displayName,
+          });
 
         const result = await sendEmail(email, subject, html, qrCodeDataUrl);
 
@@ -46,6 +86,7 @@ module.exports = async function emailProcessor(event, recipients) {
           failed++;
         }
       } catch (err) {
+        console.error("Email send error:", err);
         failed++;
       }
 
@@ -56,7 +97,7 @@ module.exports = async function emailProcessor(event, recipients) {
         total,
       });
 
-      await new Promise(r => setTimeout(r, 20));
+      await new Promise((r) => setTimeout(r, 20));
     }
 
     emitEmailProgress(eventId, {
@@ -69,7 +110,6 @@ module.exports = async function emailProcessor(event, recipients) {
     console.log(
       `Bulk email finished: ${sent} sent, ${failed} failed, total ${total}`
     );
-
   } catch (err) {
     console.error("EMAIL PROCESSOR ERROR:", err);
   }
