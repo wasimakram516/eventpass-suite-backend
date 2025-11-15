@@ -3,11 +3,12 @@ const Business = require("../models/Business");
 const asyncHandler = require("../middlewares/asyncHandler");
 const response = require("../utils/response");
 const { uploadToS3, deleteFromS3 } = require("../utils/s3Storage");
+const { generateUniqueSlug, slugify } = require("../utils/slugGenerator");
 
+// Create new file resource
 exports.createFileResource = asyncHandler(async (req, res) => {
   const body = req.body || {};
   const { title, slug } = body;
-  console.log("body:", body); 
   const businessSlug = body.businessSlug || req.query.businessSlug;
 
   if (!businessSlug || !req.file || !slug)
@@ -16,11 +17,14 @@ exports.createFileResource = asyncHandler(async (req, res) => {
   const business = await Business.findOne({ slug: businessSlug }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
+  // Slugify the user-provided slug ONLY
+  const cleanSlug = await generateUniqueSlug(FileResource, "slug", slugify(slug));
+
   const { key, fileUrl } = await uploadToS3(req.file, business.name);
 
   const fileResource = await FileResource.create({
     title,
-    slug,
+    slug: cleanSlug,
     fileKey: key,
     fileUrl,
     contentType: req.file.mimetype,
@@ -30,30 +34,34 @@ exports.createFileResource = asyncHandler(async (req, res) => {
   return response(res, 201, "File uploaded successfully", fileResource);
 });
 
-
 // Update existing file resource (replace old file)
 exports.updateFileResource = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { title, slug } = req.body;
+
   const fileResource = await FileResource.findById(id);
   if (!fileResource) return response(res, 404, "File not found");
 
   const business = await Business.findById(fileResource.businessId).notDeleted();
   if (!business) return response(res, 404, "Linked business not found");
 
+  // Replace file if uploaded
   if (req.file) {
-    // Delete old file
     await deleteFromS3(fileResource.fileKey);
-
-    // Upload new one
     const { key, fileUrl } = await uploadToS3(req.file, business.name);
     fileResource.fileKey = key;
     fileResource.fileUrl = fileUrl;
     fileResource.contentType = req.file.mimetype;
   }
 
-  fileResource.title = title || fileResource.title;
-  fileResource.slug = slug || fileResource.slug;
+  if (title) fileResource.title = title;
+
+  // If slug provided → slugify & ensure uniqueness
+  if (slug) {
+    const cleanSlug = await generateUniqueSlug(FileResource, "slug", slugify(slug));
+    fileResource.slug = cleanSlug;
+  }
+
   await fileResource.save();
 
   return response(res, 200, "File updated successfully", fileResource);
