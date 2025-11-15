@@ -27,6 +27,10 @@ const {
 
 const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder");
 
+// PROCESSORS
+const uploadProcessor = require("../../processors/eventreg/uploadProcessor");
+const emailProcessor = require("../../processors/eventreg/emailProcessor");
+
 // DOWNLOAD sample Excel template
 exports.downloadSampleExcel = asyncHandler(async (req, res) => {
   const { slug } = req.params;
@@ -58,10 +62,12 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
   res.send(buffer);
 });
 
-// BULK UPLOAD registrations
+// -------------------------------------------
+// BULK UPLOAD (Early Response + Background Job)
+// -------------------------------------------
 exports.uploadRegistrations = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  if (!slug) return response(res, 400, "Event Slug is required");
+if (!slug) return response(res, 400, "Event Slug is required");
 
   const event = await Event.findOne({ slug }).notDeleted();
   if (!event) return response(res, 404, "Event not found");
@@ -70,97 +76,21 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
 
   const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
   const sheetName = workbook.SheetNames[0];
-  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
-    defval: "", // keep empty cells as empty string
-  });
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
 
   if (!rows.length) {
     return response(res, 400, "Uploaded file is empty");
   }
 
-  // Validate headers
-  const headerRow = Object.keys(rows[0]);
-  const expectedHeaders = [
-    ...event.formFields.map((f) => f.inputName),
-    "Token",
-  ];
+  // Early response immediately
+  response(res, 200, "Upload started", {
+    total: rows.length,
+  });
 
-  const missingHeaders = expectedHeaders.filter((h) => !headerRow.includes(h));
-
-  if (missingHeaders.length > 0) {
-    return response(
-      res,
-      400,
-      `Invalid Excel format. Missing or misspelled columns: ${missingHeaders.join(
-        ", "
-      )}`
-    );
-  }
-
-  const results = [];
-  const warnings = [];
-
-  for (const [index, row] of rows.entries()) {
-    try {
-      const customFields = {};
-      let missingField = null;
-
-      for (const field of event.formFields) {
-        const value = row[field.inputName];
-        if (field.required && (!value || value === "")) {
-          missingField = field.inputName;
-          break;
-        }
-        if (value) {
-          customFields[field.inputName] = value;
-        }
-      }
-
-      if (missingField) {
-        warnings.push(
-          `Row ${index + 2} skipped: Missing required field "${missingField}"`
-        );
-        continue;
-      }
-
-      const reg = new Registration({
-        eventId: event._id,
-        customFields,
-        token: row["Token"], // schema hook handles null/duplicate
-      });
-
-      await reg.save();
-      results.push(reg);
-
-      // Emit progress after each record
-      emitUploadProgress(event._id.toString(), results.length, rows.length);
-    } catch (err) {
-      warnings.push(`Row ${index + 2} skipped: ${err.message}`);
-    }
-  }
-
-  // Recount registrations for this event
-  const totalRegs = await Registration.countDocuments({
-    eventId: event._id,
-  }).notDeleted();
-
-  // Update event.registrations
-  event.registrations = totalRegs;
-  await event.save();
-
-  // Emit final 100% progress
-  emitUploadProgress(event._id.toString(), rows.length, rows.length);
-
-  // Trigger recompute for dashboards
-  recomputeAndEmit(event.businessId || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
-  );
-
-  return response(res, 200, "Upload completed", {
-    imported: results.length,
-    skipped: warnings.length,
-    totalRegistrations: totalRegs,
-    warnings,
+  // Background processor
+  setImmediate(() => {
+    uploadProcessor(event, rows)
+      .catch(err => console.error("UPLOAD PROCESSOR FAILED:", err));
   });
 });
 
@@ -353,81 +283,45 @@ exports.unsentCount = asyncHandler(async (req, res) => {
   return response(res, 200, "Unsent count retrieved", { unsentCount });
 });
 
+// -------------------------------------------
+// BULK EMAIL SEND (Early Response + Background Job)
+// -------------------------------------------
 exports.sendBulkEmails = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const event = await Event.findOne({ slug }).notDeleted();
+
+  const event = await Event.findOne({ slug }).lean();
   if (!event) return response(res, 404, "Event not found");
 
-  // Fetch unsent registrations
-  const pendingRegs = await Registration.find({
+  const pending = await Registration.find({
     eventId: event._id,
     isDeleted: { $ne: true },
     $or: [{ emailSent: false }, { emailSent: { $exists: false } }],
-  });
+  })
+    .select("fullName email company customFields token")
+    .lean();
 
-  if (!pendingRegs.length)
-    return response(res, 200, "All registration emails already sent.");
+  if (!pending.length) {
+    // Send completion signal
+    emitEmailProgress(event._id.toString(), {
+      sent: 0,
+      failed: 0,
+      processed: 0,
+      total: 0,
+    });
 
-  const total = pendingRegs.length;
-  let processed = 0;
-  let sentCount = 0;
-  let failedCount = 0;
-
-  for (const reg of pendingRegs) {
-    processed++;
-
-    try {
-      const cf = reg.customFields ? Object.fromEntries(reg.customFields) : {};
-      const fullName = reg.fullName || pickFullName(cf);
-      const email = reg.email || pickEmail(cf);
-
-      if (!email) {
-        console.warn(`⛔ Skipping registration with no email (${reg._id})`);
-        failedCount++;
-        emitEmailProgress(event._id.toString(), processed, total);
-        continue;
-      }
-
-      const displayName =
-        fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
-
-      const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
-        event,
-        registration: reg,
-        displayName,
-        customFields: cf,
-      });
-
-      const result = await sendEmail(email, subject, html, qrCodeDataUrl);
-
-      if (result.success) {
-        reg.emailSent = true;
-        await reg.save();
-        sentCount++;
-        console.log(`✅ Email sent successfully to ${email}`);
-      } else {
-        console.warn(
-          `⚠️ Failed to send to ${email}: ${result.response || result.error}`
-        );
-        failedCount++;
-      }
-    } catch (err) {
-      console.error("❌ Email send error:", err.message);
-      failedCount++;
-    }
-
-    emitEmailProgress(event._id.toString(), processed, total);
+    return response(res, 200, "All emails already sent.");
   }
 
-  emitEmailProgress(event._id.toString(), total, total);
+  // Early response immediately
+  response(res, 200, "Bulk email job started", {
+    total: pending.length,
+  });
 
-  // Respond with accurate counts
-  return response(
-    res,
-    200,
-    `Bulk email summary: ${sentCount} sent, ${failedCount} failed, out of ${total} total.`,
-    { sent: sentCount, failed: failedCount, total }
-  );
+  // Background processor
+  setImmediate(() => {
+    emailProcessor(event, pending)
+      .catch(err => console.error("EMAIL PROCESSOR FAILED:", err));
+  });
 });
 
 // GET paginated registrations by event using slug (includes walk-ins + customFields)

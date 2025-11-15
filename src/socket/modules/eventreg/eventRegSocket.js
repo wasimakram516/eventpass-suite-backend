@@ -10,8 +10,11 @@ function emitUploadProgress(eventId, uploaded, total) {
 }
 
 // Emit email sending progress for registrations
-function emitEmailProgress(eventId, sent, total) {
-  emitUpdate("registrationEmailProgress", { eventId, sent, total });
+function emitEmailProgress(eventId, payload) {
+  emitUpdate("registrationEmailProgress", {
+    eventId,
+    ...payload,
+  });
 }
 
 // Emit progressive loading progress with optional batch data

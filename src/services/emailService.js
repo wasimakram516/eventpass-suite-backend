@@ -1,22 +1,29 @@
 const nodemailer = require("nodemailer");
-env = require("../config/env");
+const env = require("../config/env");
 
+// Create a single reusable transporter instance
 const transporter = nodemailer.createTransport({
   host: env.notifications.email.host, // smtp.sendgrid.net
   port: env.notifications.email.port, // 587
+  secure: false, // SendGrid requires STARTTLS, not SSL
   auth: {
-    user: env.notifications.email.user, // always "apikey"
-    pass: env.notifications.email.pass, // SendGrid API key
+    user: env.notifications.email.user, // usually "apikey"
+    pass: env.notifications.email.pass, // actual API key
   },
+  pool: true, // enable connection pooling
+  maxConnections: 5, // keep low for small EC2
+  maxMessages: 1000, // rotate after this many messages
 });
 
 /**
- * Sends email with optional QR code (inline) and attachments (e.g., PDFs)
- * @param {string} to - Recipient email
- * @param {string} subject - Subject line
- * @param {string} html - Email HTML (use {{qrImage}} placeholder for QR inline)
- * @param {string|null} qrCodeBase64 - QR code as dataURL (optional)
- * @param {Array} extraAttachments - Array of { filename, path|content, ... }
+ * Sends an email using SendGrid SMTP.
+ * Supports inline QR code using {{qrImage}} placeholder and additional attachments.
+ *
+ * @param {string} to
+ * @param {string} subject
+ * @param {string} html
+ * @param {string|null} qrCodeBase64
+ * @param {Array} extraAttachments
  */
 const sendEmail = async (
   to,
@@ -25,54 +32,54 @@ const sendEmail = async (
   qrCodeBase64 = null,
   extraAttachments = []
 ) => {
-  const attachments = [...extraAttachments];
-
-  if (qrCodeBase64) {
-    attachments.push({
-      filename: "qrcode.png",
-      content: qrCodeBase64.split("base64,")[1],
-      encoding: "base64",
-      cid: "qrcode",
-    });
-
-    html = html.replace(
-      "{{qrImage}}",
-      `<img src="cid:qrcode" alt="QR Code" style="width:180px;display:block;margin:0 auto;" />`
-    );
-  } else {
-    // fallback remove placeholder
-    html = html.replace("{{qrImage}}", "");
-  }
-
-  const mailOptions = {
-    from: env.notifications.email.from,
-    to,
-    subject,
-    html,
-    attachments,
-  };
-
   try {
+    const attachments = [...extraAttachments];
+
+    // Inline QR attachment if provided
+    if (qrCodeBase64) {
+      attachments.push({
+        filename: "qrcode.png",
+        content: qrCodeBase64.split("base64,")[1],
+        encoding: "base64",
+        cid: "qrcode",
+      });
+
+      html = html.replace(
+        "{{qrImage}}",
+        `<img src="cid:qrcode" alt="QR Code" style="width:180px;display:block;margin:0 auto;" />`
+      );
+    } else {
+      html = html.replace("{{qrImage}}", "");
+    }
+
+    const mailOptions = {
+      from: env.notifications.email.from,
+      to,
+      subject,
+      html,
+      attachments,
+    };
+
     const info = await transporter.sendMail(mailOptions);
 
     const smtpResponse = info?.response || "";
     const smtpCode = parseInt(smtpResponse.split(" ")[0]) || 0;
     const accepted = info?.accepted?.length > 0;
 
-    // Success only if 250-level SMTP code or at least one accepted
     const success = accepted || (smtpCode >= 200 && smtpCode < 300);
-
     if (success) {
-      console.log(`✅ Delivered to ${to} (${smtpResponse})`);
-      return { success: true, response: smtpResponse };
+      console.log(`Email sent to ${to}: ${smtpResponse}`);
     } else {
-      console.warn(
-        `⚠️ SendGrid did not accept email for ${to}: ${smtpResponse}`
-      );
-      return { success: false, response: smtpResponse, code: smtpCode };
+      console.error(`Failed to send email to ${to}: ${smtpResponse}`);
     }
+    return {
+      success,
+      response: smtpResponse,
+      accepted: info.accepted || [],
+      rejected: info.rejected || [],
+      code: smtpCode,
+    };
   } catch (err) {
-    console.error("❌ Email error:", err);
     return {
       success: false,
       error: err.message,
