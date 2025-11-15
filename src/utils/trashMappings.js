@@ -34,6 +34,7 @@ const formController = require("../controllers/SurveyGuru/formController");
 const pvpGameController = require("../controllers/eventduel/pvpGameController");
 const pvpGameSessionController = require("../controllers/eventduel/pvpGameSessionController");
 const pvpQuestionController = require("../controllers/eventduel/pvpQuestionController");
+const tmGameController = require("../controllers/tapmatch/tmGameController");
 
 // -------------------
 // SINGLE SOURCE OF TRUTH
@@ -83,7 +84,7 @@ const moduleMapping = {
       permanentDeleteAll:
         eventRegRegistrationController.permanentDeleteAllRegistrations,
     },
-    condition: { "event.eventType": "public" }, // <-- fixed
+    condition: { "event.eventType": "public" },
   },
 
   "registration-checkin": {
@@ -96,7 +97,7 @@ const moduleMapping = {
       permanentDeleteAll:
         checkInRegistrationController.permanentDeleteAllRegistrations,
     },
-    condition: { "event.eventType": "employee" }, // <-- fixed
+    condition: { "event.eventType": "employee" },
   },
 
   // Other modules
@@ -109,6 +110,7 @@ const moduleMapping = {
       permanentDeleteAll: pollController.permanentDeleteAllPolls,
     },
   },
+
   spinwheel: {
     model: SpinWheel,
     controller: {
@@ -118,6 +120,7 @@ const moduleMapping = {
       permanentDeleteAll: spinWheelController.permanentDeleteAllSpinWheels,
     },
   },
+
   spinwheelparticipant: {
     model: SpinWheelParticipant,
     controller: {
@@ -129,6 +132,7 @@ const moduleMapping = {
         spinWheelParticipantController.permanentDeleteAllParticipants,
     },
   },
+
   displaymedia: {
     model: DisplayMedia,
     controller: {
@@ -138,6 +142,7 @@ const moduleMapping = {
       permanentDeleteAll: displayMediaController.permanentDeleteAllMedia,
     },
   },
+
   wallconfig: {
     model: WallConfig,
     controller: {
@@ -147,6 +152,7 @@ const moduleMapping = {
       permanentDeleteAll: wallConfigController.permanentDeleteAllWalls,
     },
   },
+
   globalconfig: {
     model: GlobalConfig,
     controller: {
@@ -154,6 +160,7 @@ const moduleMapping = {
       permanentDelete: globalConfigController.permanentDeleteConfig,
     },
   },
+
   user: {
     model: User,
     controller: {
@@ -164,7 +171,9 @@ const moduleMapping = {
     },
   },
 
-  // QuizNest
+  // -------------------
+  // QUIZNEST (solo + quiz)
+  // -------------------
   "game-quiznest": {
     model: Game,
     controller: {
@@ -173,8 +182,9 @@ const moduleMapping = {
       restoreAll: qnGameController.restoreAllGames,
       permanentDeleteAll: qnGameController.permanentDeleteAllGames,
     },
-    condition: { mode: "solo" },
+    condition: { mode: "solo", type: "quiz" },
   },
+
   qnquestion: {
     model: Game,
     controller: {
@@ -183,11 +193,27 @@ const moduleMapping = {
       restoreAll: qnQuestionController.restoreAllQuestions,
       permanentDeleteAll: qnQuestionController.permanentDeleteAllQuestions,
     },
-    condition: { mode: "solo" },
-    customAggregation: true, // Flag to indicate we need custom aggregation for embedded questions
+    condition: { mode: "solo", type: "quiz" },
+    customAggregation: true,
   },
 
-  // EventDuel
+  // -------------------
+  // TAPMATCH (solo + memory)
+  // -------------------
+  "game-tapmatch": {
+  model: Game,
+  controller: {
+    restore: tmGameController.restoreGame,
+    permanentDelete: tmGameController.permanentDeleteGame,
+    restoreAll: tmGameController.restoreAllGames,
+    permanentDeleteAll: tmGameController.permanentDeleteAllGames,
+  },
+  condition: { mode: "solo", type: "memory" }
+},
+
+  // -------------------
+  // EVENTDUEL (pvp + quiz)
+  // -------------------
   "game-eventduel": {
     model: Game,
     controller: {
@@ -196,8 +222,9 @@ const moduleMapping = {
       restoreAll: pvpGameController.restoreAllGames,
       permanentDeleteAll: pvpGameController.permanentDeleteAllGames,
     },
-    condition: { mode: "pvp" },
+    condition: { mode: "pvp", type: "quiz" },
   },
+
   "gamesession-eventduel": {
     model: GameSession,
     controller: {
@@ -207,8 +234,9 @@ const moduleMapping = {
       permanentDeleteAll:
         pvpGameSessionController.permanentDeleteAllGameSessions,
     },
-    condition: { "gameId.mode": "pvp" },
+    condition: { "gameId.mode": "pvp", "gameId.type": "quiz" },
   },
+
   pvpquestion: {
     model: Game,
     controller: {
@@ -217,7 +245,7 @@ const moduleMapping = {
       restoreAll: pvpQuestionController.restoreAllQuestions,
       permanentDeleteAll: pvpQuestionController.permanentDeleteAllQuestions,
     },
-    condition: { mode: "pvp" },
+    condition: { mode: "pvp", type: "quiz" },
     customAggregation: true,
   },
 

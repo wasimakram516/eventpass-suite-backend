@@ -16,7 +16,6 @@ const User = require("../models/User");
 const EventQuestion = require("../models/EventQuestion");
 const SpinWheel = require("../models/SpinWheel");
 const SpinWheelParticipant = require("../models/SpinWheelParticipant");
-const Player = require("../models/Player");
 
 async function recalcMetrics(scope = "superadmin", businessId = null) {
   const isAdmin = scope === "superadmin";
@@ -24,7 +23,9 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
   const baseActive = { isDeleted: { $ne: true } };
   const baseTrash = { isDeleted: true };
 
-  // ---------- EVENTS ----------
+  // -------------------------------------------------------------------------
+  // EVENTS
+  // -------------------------------------------------------------------------
   const [eventCounts, trashEventCounts] = await Promise.all([
     Event.aggregate([
       { $match: isAdmin ? baseActive : { ...baseActive, businessId } },
@@ -45,7 +46,9 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
   const trashEmployeeEvents =
     trashEventCounts.find((e) => e._id === "employee")?.count || 0;
 
-  // ---------- REGISTRATIONS & WALKINS ----------
+  // -------------------------------------------------------------------------
+  // REGISTRATIONS + WALKINS
+  // -------------------------------------------------------------------------
   const [registrationCounts, trashRegistrationCounts] = await Promise.all([
     Registration.aggregate([
       { $match: baseActive },
@@ -76,6 +79,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
       { $group: { _id: "$event.eventType", count: { $sum: 1 } } },
     ]),
   ]);
+
   const [walkinCounts, trashWalkinCounts] = await Promise.all([
     WalkIn.aggregate([
       { $match: baseActive },
@@ -125,7 +129,9 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
   const trashEmployeeWalkIns =
     trashWalkinCounts.find((r) => r._id === "employee")?.count || 0;
 
-  // ---------- GAMES ----------
+  // -------------------------------------------------------------------------
+  // GAMES (Existing behavior preserved exactly)
+  // -------------------------------------------------------------------------
   const [gameCounts, trashGameCounts] = await Promise.all([
     Game.aggregate([
       { $match: isAdmin ? baseActive : { ...baseActive, businessId } },
@@ -144,7 +150,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
   const trashPvpGames =
     trashGameCounts.find((g) => g._id === "pvp")?.count || 0;
 
-  // ---------- SOLO PLAYERS (from GameSessions) ----------
+  // SOLO PLAYERS (all solo modes: QUIZ + MEMORY)
   const soloPlayerAgg = await GameSession.aggregate([
     {
       $lookup: {
@@ -158,6 +164,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     {
       $match: {
         "game.mode": "solo",
+        $or: [{ "game.type": "quiz" }, { "game.type": { $exists: false } }],
         ...(isAdmin
           ? baseActive
           : { ...baseActive, "game.businessId": businessId }),
@@ -168,7 +175,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
   ]);
   const soloPlayers = soloPlayerAgg[0]?.count || 0;
 
-  // ---------- TRASH SOLO PLAYERS ----------
+  // TRASH SOLO PLAYERS
   const trashSoloPlayerAgg = await GameSession.aggregate([
     {
       $lookup: {
@@ -182,7 +189,8 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     {
       $match: {
         "game.mode": "solo",
-        ...baseTrash, // game session is deleted
+        $or: [{ "game.type": "quiz" }, { "game.type": { $exists: false } }],
+        ...baseTrash,
         ...(isAdmin ? {} : { "game.businessId": businessId }),
       },
     },
@@ -205,6 +213,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     {
       $match: {
         "game.mode": "pvp",
+        $or: [{ "game.type": "quiz" }, { "game.type": { $exists: false } }],
         ...(isAdmin
           ? baseActive
           : { ...baseActive, "game.businessId": businessId }),
@@ -228,7 +237,8 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     {
       $match: {
         "game.mode": "pvp",
-        ...baseTrash, // game session is deleted
+        $or: [{ "game.type": "quiz" }, { "game.type": { $exists: false } }],
+        ...baseTrash,
         ...(isAdmin ? {} : { "game.businessId": businessId }),
       },
     },
@@ -236,7 +246,71 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
   ]);
   const trashPvpSessions = trashPvpSessionAgg[0]?.count || 0;
 
-  // ---------- POLLS ----------
+  // -------------------------------------------------------------------------
+  // TAPMATCH — Added cleanly (SOLO + MEMORY)
+  // -------------------------------------------------------------------------
+  const tapmatchGames = await Game.countDocuments(
+    isAdmin
+      ? { mode: "solo", type: "memory", isDeleted: { $ne: true } }
+      : { mode: "solo", type: "memory", isDeleted: { $ne: true }, businessId }
+  );
+
+  const trashTapmatchGames = await Game.countDocuments(
+    isAdmin
+      ? { mode: "solo", type: "memory", isDeleted: true }
+      : { mode: "solo", type: "memory", isDeleted: true, businessId }
+  );
+
+  const tapmatchPlayerAgg = await GameSession.aggregate([
+    {
+      $lookup: {
+        from: "games",
+        localField: "gameId",
+        foreignField: "_id",
+        as: "game",
+      },
+    },
+    { $unwind: "$game" },
+    {
+      $match: {
+        "game.mode": "solo",
+        "game.type": "memory",
+        ...(isAdmin
+          ? { "game.isDeleted": { $ne: true } }
+          : { "game.isDeleted": { $ne: true }, "game.businessId": businessId }),
+      },
+    },
+    { $unwind: "$players" },
+    { $count: "count" },
+  ]);
+  const tapmatchPlayers = tapmatchPlayerAgg[0]?.count || 0;
+
+  // TRASH SOLO PLAYERS
+  const trashTapMatchPlayerAgg = await GameSession.aggregate([
+    {
+      $lookup: {
+        from: "games",
+        localField: "gameId",
+        foreignField: "_id",
+        as: "game",
+      },
+    },
+    { $unwind: "$game" },
+    {
+      $match: {
+        "game.mode": "solo",
+        "game.type": "memory",
+        ...baseTrash,
+        ...(isAdmin ? {} : { "game.businessId": businessId }),
+      },
+    },
+    { $unwind: "$players" },
+    { $group: { _id: null, count: { $sum: 1 } } },
+  ]);
+  const trashtapMatchPlayers = trashTapMatchPlayerAgg[0]?.count || 0;
+  // -------------------------------------------------------------------------
+  // POLLS
+  // -------------------------------------------------------------------------
   const [totalPolls, trashPolls] = await Promise.all([
     Poll.countDocuments(
       isAdmin ? baseActive : { ...baseActive, business: businessId }
@@ -246,7 +320,9 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     ),
   ]);
 
-  // ---------- SURVEY FORMS ----------
+  // -------------------------------------------------------------------------
+  // SURVEY
+  // -------------------------------------------------------------------------
   const [totalSurveyForms, trashSurveyForms] = await Promise.all([
     SurveyForm.countDocuments(isAdmin ? {} : { businessId }),
     SurveyForm.countDocuments(
@@ -254,7 +330,6 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     ),
   ]);
 
-  // SURVEY RESPONSES
   const totalSurveyResponsesAgg = await SurveyResponse.aggregate([
     {
       $lookup: {
@@ -269,9 +344,9 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     { $count: "count" },
   ]);
   const totalSurveyResponses = totalSurveyResponsesAgg[0]?.count || 0;
+
   const trashSurveyResponses = await SurveyResponse.countDocuments(baseTrash);
 
-  // SURVEY RECIPIENTS
   const totalSurveyRecipientsAgg = await SurveyRecipient.aggregate([
     {
       $lookup: {
@@ -286,9 +361,12 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     { $count: "count" },
   ]);
   const totalSurveyRecipients = totalSurveyRecipientsAgg[0]?.count || 0;
+
   const trashSurveyRecipients = await SurveyRecipient.countDocuments(baseTrash);
 
-  // ---------- SPIN WHEELS ----------
+  // -------------------------------------------------------------------------
+  // SPINWHEEL
+  // -------------------------------------------------------------------------
   const [totalSpinWheels, trashSpinWheels] = await Promise.all([
     SpinWheel.countDocuments(
       isAdmin ? baseActive : { ...baseActive, business: businessId }
@@ -298,11 +376,8 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     ),
   ]);
 
-  // ---- SpinWheel participants (ACTIVE + TRASH, correctly scoped) ----
-
-  // ACTIVE: participant not deleted AND wheel not deleted; scope by business for non-admin
   const activeParticipantsAgg = await SpinWheelParticipant.aggregate([
-    { $match: { isDeleted: { $ne: true } } }, // participant-level
+    { $match: { isDeleted: { $ne: true } } },
     {
       $lookup: {
         from: "spinwheels",
@@ -325,9 +400,8 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     0
   );
 
-  // TRASH: participant deleted; scope by business for non-admin
   const trashParticipantsAgg = await SpinWheelParticipant.aggregate([
-    { $match: { isDeleted: true } }, // participant-level
+    { $match: { isDeleted: true } },
     {
       $lookup: {
         from: "spinwheels",
@@ -338,9 +412,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     },
     { $unwind: "$wheel" },
     {
-      $match: isAdmin
-        ? {} // show all trash participants
-        : { "wheel.business": businessId },
+      $match: isAdmin ? {} : { "wheel.business": businessId },
     },
     { $group: { _id: "$wheel._id", participants: { $sum: 1 } } },
   ]);
@@ -350,7 +422,9 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     0
   );
 
-  // ---------- VISITORS / QUESTIONS ----------
+  // -------------------------------------------------------------------------
+  // VISITORS + STAGEQ
+  // -------------------------------------------------------------------------
   const [visitorStats, trashVisitors, questionStats, trashQuestions] =
     await Promise.all([
       Visitor.aggregate([
@@ -396,7 +470,9 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     { answered: 0, unanswered: 0 }
   );
 
-  // ---------- DISPLAY MEDIA / WALL CONFIG ----------
+  // -------------------------------------------------------------------------
+  // DISPLAY MEDIA / WALL CONFIG
+  // -------------------------------------------------------------------------
   const [
     totalDisplayMedia,
     trashDisplayMedia,
@@ -413,7 +489,9 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     WallConfig.countDocuments(baseTrash),
   ]);
 
-  // ---------- USERS / BUSINESSES ----------
+  // -------------------------------------------------------------------------
+  // USERS & BUSINESSES
+  // -------------------------------------------------------------------------
   let userStats = { admin: 0, business: 0, staff: 0 };
   let trashUserStats = { admin: 0, business: 0, staff: 0 };
   let totalBusinesses = 0;
@@ -444,6 +522,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
       business: businessId,
       role: "staff",
     });
+
     const trashStaffCount = await User.countDocuments({
       ...baseTrash,
       business: businessId,
@@ -452,12 +531,11 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
 
     userStats = { staff: staffCount };
     trashUserStats = { staff: trashStaffCount };
-
-    totalBusinesses = 0;
-    trashBusinesses = 0;
   }
 
-  // ---------- MODULE RESPONSE ----------
+  // -------------------------------------------------------------------------
+  // FINAL MODULE RESPONSE
+  // -------------------------------------------------------------------------
   const modules = {
     quiznest: {
       totals: {
@@ -469,6 +547,18 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
         players: trashSoloPlayers,
       },
     },
+
+    tapmatch: {
+      totals: {
+        games: tapmatchGames,
+        players: tapmatchPlayers,
+      },
+      trash: {
+        games: trashTapmatchGames,
+        players: trashtapMatchPlayers,
+      },
+    },
+
     eventduel: {
       totals: { games: pvpGames, sessions: pvpSessions },
       trash: { games: trashPvpGames, sessions: trashPvpSessions },
@@ -486,6 +576,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
         walkins: trashPublicWalkIns,
       },
     },
+
     checkin: {
       totals: {
         events: employeeEventsCount,
@@ -498,12 +589,12 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
         walkins: trashEmployeeWalkIns,
       },
     },
+
     stageq: {
       totals: {
         answered: eventQuestionStats.answered,
         unanswered: eventQuestionStats.unanswered,
         visitors: visitorStats[0]?.total || 0,
-        //repeatVisitors: visitorStats[0]?.repeat || 0,
       },
       trash: {
         questions: trashQuestions,
@@ -515,6 +606,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
       totals: { configs: totalWallConfigs, media: totalDisplayMedia },
       trash: { configs: trashWallConfigs, media: trashDisplayMedia },
     },
+
     eventwheel: {
       totals: {
         wheels: totalSpinWheels,
@@ -525,6 +617,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
         participants: trashSpinWheelParticipants,
       },
     },
+
     surveyguru: {
       totals: {
         forms: totalSurveyForms,
@@ -537,14 +630,18 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
         recipients: trashSurveyRecipients,
       },
     },
+
     votecast: { totals: { polls: totalPolls }, trash: { polls: trashPolls } },
+
     global: {
       totals: { businesses: totalBusinesses, users: userStats },
       trash: { businesses: trashBusinesses, users: trashUserStats },
     },
   };
 
-  // ---------- UPSERT METRICS ----------
+  // -------------------------------------------------------------------------
+  // SAVE FINAL METRICS
+  // -------------------------------------------------------------------------
   await Metrics.findOneAndUpdate(
     { scope, businessId },
     { modules, lastUpdated: new Date() },

@@ -24,6 +24,16 @@ const MetricsSchema = new mongoose.Schema(
           players: { type: Number, default: 0 },
         },
       },
+      tapmatch: {
+        totals: {
+          games: { type: Number, default: 0 },
+          players: { type: Number, default: 0 },
+        },
+        trash: {
+          games: { type: Number, default: 0 },
+          players: { type: Number, default: 0 },
+        },
+      },
       eventduel: {
         totals: {
           games: { type: Number, default: 0 },
