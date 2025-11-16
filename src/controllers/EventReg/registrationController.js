@@ -9,6 +9,7 @@ const WalkIn = require("../../models/WalkIn");
 const Event = require("../../models/Event");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
+const recountEventRegistrations = require("../../utils/recountEventRegistrations");
 const sendEmail = require("../../services/emailService");
 const {
   pickFullName,
@@ -404,8 +405,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   });
 
   // --- Increment event counter ---
-  event.registrations += 1;
-  await event.save();
+  await recountEventRegistrations(event._id);
 
   // --- Generate and send email using util ---
   const displayName =
@@ -550,13 +550,18 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   }
 
   const eventId = event._id;
+
+  // **Always fix the count before returning list**
+  await recountEventRegistrations(eventId);
+
+  // Use consistent soft-delete filter
   const totalRegistrations = await Registration.countDocuments({
     eventId,
-    deletedAt: { $exists: false },
+    isDeleted: { $ne: true }, 
   });
 
   const registrations = await Registration.find({ eventId })
-    .notDeleted()
+    .notDeleted() 
     .skip((page - 1) * limit)
     .limit(limit);
 
@@ -572,13 +577,11 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
         emailSent: reg.emailSent,
         createdAt: reg.createdAt,
 
-        // classic top‐level values (may be null if you used custom fields)
         fullName: reg.fullName,
         email: reg.email,
         phone: reg.phone,
         company: reg.company,
 
-        // your entire customFields object
         customFields: reg.customFields || {},
 
         walkIns: walkIns.map((w) => ({
@@ -665,6 +668,7 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   }
 
   const eventId = event._id;
+  await recountEventRegistrations(eventId);
   const totalCount = await Registration.countDocuments({
     eventId,
     isDeleted: { $ne: true }
@@ -794,9 +798,7 @@ exports.deleteRegistration = asyncHandler(async (req, res) => {
   await registration.softDelete(req.user.id);
 
   // decrement count
-  await Event.findByIdAndUpdate(registration.eventId, {
-    $inc: { registrations: -1 },
-  });
+  await recountEventRegistrations(registration.eventId);
 
   // Fire background recompute
   recomputeAndEmit(businessId || null).catch((err) =>
@@ -811,12 +813,11 @@ exports.restoreRegistration = asyncHandler(async (req, res) => {
   const reg = await Registration.findOneDeleted({ _id: req.params.id });
   if (!reg) return response(res, 404, "Registration not found in trash");
 
+  const event = await Event.findById(reg.eventId).lean();
+  if (!event) return response(res, 404, "Associated event not found");
+
   await reg.restore();
-  const event = await Event.findByIdAndUpdate(
-    reg.eventId,
-    { $inc: { registrations: 1 } },
-    { new: true, lean: true }
-  );
+  await recountEventRegistrations(event._id);
 
   // Fire background recompute
   recomputeAndEmit(event.businessId || null).catch((err) =>
@@ -835,9 +836,9 @@ exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
 
   for (const reg of regs) {
     await reg.restore();
-    await Event.findByIdAndUpdate(reg.eventId, { $inc: { registrations: 1 } });
+    await recountEventRegistrations(reg.eventId);
   }
-
+  
   // Fire background recompute
   recomputeAndEmit(null).catch((err) =>
     console.error("Background recompute failed:", err.message)
@@ -850,13 +851,14 @@ exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
 exports.permanentDeleteRegistration = asyncHandler(async (req, res) => {
   const reg = await Registration.findOneDeleted({
     _id: req.params.id,
-  }).populate("eventId", "businessId"); // only fetch businessId
+  }).populate("eventId", "businessId"); 
 
   if (!reg) return response(res, 404, "Registration not found in trash");
 
   const businessId = reg.eventId?.businessId || null;
 
   await reg.deleteOne();
+  await recountEventRegistrations(reg.eventId._id);
 
   // Fire background recompute
   recomputeAndEmit(businessId || null).catch((err) =>
@@ -873,11 +875,14 @@ exports.permanentDeleteAllRegistrations = asyncHandler(async (req, res) => {
     return response(res, 404, "No registrations found in trash to delete");
   }
 
+  const eventId = regs[0].eventId;
+
   const regIds = regs.map((r) => r._id);
 
   await WalkIn.deleteMany({ registrationId: { $in: regIds } });
   const result = await Registration.deleteManyDeleted();
 
+  await recountEventRegistrations(eventId);
   // Fire background recompute
   recomputeAndEmit(null).catch((err) =>
     console.error("Background recompute failed:", err.message)
