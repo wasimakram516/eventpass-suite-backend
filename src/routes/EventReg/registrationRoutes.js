@@ -14,6 +14,7 @@ const {
   sendBulkEmails,
   unsentCount,
   updateRegistration,
+  exportRegistrations,
 } = require("../../controllers/EventReg/registrationController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
@@ -39,6 +40,8 @@ router.get("/event/:slug", eventRegAccess, getRegistrationsByEvent);
 // GET initial registrations (first 50) - triggers background loading
 router.get("/event/:slug/all", eventRegAccess, getAllPublicRegistrationsByEvent);
 
+// EXPORT registrations (supports filters)
+router.get("/event/:slug/export", eventRegAccess, exportRegistrations);
 
 // Delete a registration by ID (protected)
 router.delete("/:id", eventRegAccess, deleteRegistration);

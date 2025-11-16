@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const XLSX = require("xlsx");
 const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
 const QRCode = require("qrcode");
+const { formatLocalDateTime } = require("../../utils/dateUtils");
+const Business = require("../../models/Business");
 const Registration = require("../../models/Registration");
 const WalkIn = require("../../models/WalkIn");
 const Event = require("../../models/Event");
@@ -92,6 +94,217 @@ if (!slug) return response(res, 400, "Event Slug is required");
     uploadProcessor(event, rows)
       .catch(err => console.error("UPLOAD PROCESSOR FAILED:", err));
   });
+});
+
+// EXPORT filtered registrations to CSV
+exports.exportRegistrations = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+
+  const {
+    search,
+    token,
+    scannedBy,
+    createdFrom,
+    createdTo,
+    scannedFrom,
+    scannedTo,
+    ...dynamicFiltersRaw
+  } = req.query;
+
+  const event = await Event.findOne({ slug }).notDeleted();
+  if (!event) return response(res, 404, "Event not found");
+
+  const eventId = event._id;
+
+  // -------------------------
+  // PREPARE DB QUERY FILTERS
+  // -------------------------
+  const mongoQuery = {
+    eventId,
+    isDeleted: { $ne: true }
+  };
+
+  if (token) mongoQuery.token = new RegExp(token, "i");
+
+  // Dynamic field filters
+  const dynamicFilters = Object.entries(dynamicFiltersRaw)
+    .filter(([key]) => key.startsWith("field_"))
+    .reduce((acc, [key, val]) => {
+      const fieldName = key.replace("field_", "");
+      acc[`customFields.${fieldName}`] = new RegExp(val, "i");
+      return acc;
+    }, {});
+  Object.assign(mongoQuery, dynamicFilters);
+
+  // CreatedAt date range
+  if (createdFrom || createdTo) {
+    mongoQuery.createdAt = {};
+    if (createdFrom) mongoQuery.createdAt.$gte = new Date(Number(createdFrom));
+    if (createdTo) mongoQuery.createdAt.$lte = new Date(Number(createdTo));
+  }
+
+  // -------------------------
+  // FETCH DB REGISTRATIONS
+  // -------------------------
+  let regs = await Registration.find(mongoQuery).lean();
+
+  // -------------------------
+  // SEARCH FILTER
+  // -------------------------
+  if (search) {
+    const s = search.toLowerCase();
+    regs = regs.filter(r => {
+      const cf = Object.values(r.customFields || {}).join(" ").toLowerCase();
+
+      return (
+        (r.fullName || "").toLowerCase().includes(s) ||
+        (r.email || "").toLowerCase().includes(s) ||
+        (r.phone || "").toLowerCase().includes(s) ||
+        (r.company || "").toLowerCase().includes(s) ||
+        (r.token || "").toLowerCase().includes(s) ||
+        cf.includes(s)
+      );
+    });
+  }
+
+  // -------------------------
+  // WALK-IN FILTERS
+  // -------------------------
+  const walkins = await WalkIn.find({ eventId })
+    .populate("scannedBy", "name email staffType")
+    .lean();
+
+  const walkMap = {};
+  walkins.forEach(w => {
+    const id = w.registrationId.toString();
+    if (!walkMap[id]) walkMap[id] = [];
+    walkMap[id].push(w);
+  });
+
+  let filteredRegs = regs;
+  if (scannedBy || scannedFrom || scannedTo) {
+    filteredRegs = regs.filter(r => {
+      const list = walkMap[r._id.toString()] || [];
+
+      return list.some(w => {
+        if (scannedBy) {
+          const match =
+            (w.scannedBy?.name || "").toLowerCase().includes(scannedBy.toLowerCase()) ||
+            (w.scannedBy?.email || "").toLowerCase().includes(scannedBy.toLowerCase());
+
+          if (!match) return false;
+        }
+
+        if (scannedFrom && new Date(w.scannedAt) < new Date(Number(scannedFrom))) {
+          return false;
+        }
+
+        if (scannedTo && new Date(w.scannedAt) > new Date(Number(scannedTo))) {
+          return false;
+        }
+
+        return true;
+      });
+    });
+  }
+
+  regs = filteredRegs;
+
+  // -------------------------
+  // DYNAMIC FIELDS
+  // -------------------------
+  const dynamicFields = event.formFields?.length
+    ? event.formFields.map(f => f.inputName)
+    : ["fullName", "email", "phone", "company"];
+
+  // -------------------------
+  // CSV START
+  // -------------------------
+  const lines = [];
+
+  const business = await Business.findById(event.businessId).lean();
+
+  const exportedAt = formatLocalDateTime(Date.now());
+
+  // HEADER SECTION (RESTORED)
+  lines.push(`Event Name,${event.name || "N/A"}`);
+  lines.push(`Business Name,${business?.name || "N/A"}`);
+  lines.push(`Logo URL,${event.logoUrl || "N/A"}`);
+  lines.push(`Event Slug,${event.slug || "N/A"}`);
+  lines.push(`Total Registrations,${event.registrations || 0}`);
+  lines.push(`Exported Registrations,${regs.length}`);
+  lines.push(`Exported At,"${exportedAt}"`);
+  lines.push(""); // spacer
+
+  // -------------------------
+  // REGISTRATIONS SECTION
+  // -------------------------
+  lines.push("=== Registrations ===");
+
+  const regHeaders = [...dynamicFields, "Token", "Registered At"];
+  lines.push(regHeaders.join(","));
+
+  regs.forEach(reg => {
+    const row = dynamicFields.map(f =>
+      `"${((reg.customFields?.[f] ?? reg[f] ?? "") + "").replace(/"/g, '""')}"`
+    );
+
+    row.push(`"${reg.token}"`);
+    row.push(`"${formatLocalDateTime(reg.createdAt)}"`);
+
+    lines.push(row.join(","));
+  });
+
+  // -------------------------
+  // WALK-INS SECTION
+  // -------------------------
+  const allWalkins = walkins.filter(w =>
+    regs.some(r => r._id.toString() === w.registrationId.toString())
+  );
+
+  if (allWalkins.length > 0) {
+    lines.push("");
+    lines.push("=== Walk-ins ===");
+
+    const wiHeaders = [
+      ...dynamicFields,
+      "Token",
+      "Registered At",
+      "Scanned At",
+      "Scanned By",
+      "Staff Type"
+    ];
+    lines.push(wiHeaders.join(","));
+
+    allWalkins.forEach(w => {
+      const reg = regs.find(r => r._id.toString() === w.registrationId.toString());
+
+      const row = dynamicFields.map(f =>
+        `"${((reg?.customFields?.[f] ?? reg?.[f] ?? "") + "").replace(/"/g, '""')}"`
+      );
+
+      row.push(`"${reg.token}"`);
+      row.push(`"${formatLocalDateTime(reg.createdAt)}"`);
+      row.push(`"${formatLocalDateTime(w.scannedAt)}"`);
+      row.push(`"${w.scannedBy?.name || w.scannedBy?.email || ""}"`);
+      row.push(`"${w.scannedBy?.staffType || ""}"`);
+
+      lines.push(row.join(","));
+    });
+  }
+
+  // -------------------------
+  // SEND CSV
+  // -------------------------
+  const csv = "\uFEFF" + lines.join("\n");
+
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=${event.slug}_filtered_registrations.csv`
+  );
+  res.setHeader("Content-Type", "text/csv;charset=utf-8");
+
+  return res.send(csv);
 });
 
 // CREATE public registration
