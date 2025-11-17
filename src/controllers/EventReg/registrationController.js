@@ -729,10 +729,20 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   if (!staffUser?.id)
     return response(res, 401, "Unauthorized – no scanner info");
 
-  const registration = await Registration.findOne({ token }).populate(
-    "eventId"
-  );
+  const registration = await Registration.findOne({ token }).populate("eventId").notDeleted();
   if (!registration) return response(res, 404, "Registration not found");
+
+
+  const eventBusinessId = registration.eventId?.businessId?.toString();
+  const staffBusinessId = staffUser.business?.toString();
+
+  if (!staffBusinessId || staffBusinessId !== eventBusinessId) {
+    return response(
+      res,
+      403,
+      "You are not authorized to scan registrations for this business"
+    );
+  }
 
   const walkin = new WalkIn({
     registrationId: registration._id,
