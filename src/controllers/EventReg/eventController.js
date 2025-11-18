@@ -3,8 +3,7 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const Event = require("../../models/Event");
 const Business = require("../../models/Business");
 const Registration = require("../../models/Registration");
-const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
-const { deleteImage } = require("../../config/cloudinary");
+const { uploadToS3, deleteFromS3 } = require("../../utils/s3Storage");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
 const response = require("../../utils/response");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
@@ -136,20 +135,18 @@ exports.createEvent = asyncHandler(async (req, res) => {
 
   let logoUrl = null;
   if (req.files?.logo) {
-    const uploadResult = await uploadToCloudinary(
-      req.files.logo[0].buffer,
-      req.files.logo[0].mimetype
-    );
-    logoUrl = uploadResult.secure_url;
+    const uploadResult = await uploadToS3(req.files.logo[0], business.slug, "eventreg", {
+      inline: true,
+    });
+    logoUrl = uploadResult.fileUrl;
   }
 
   let backgroundUrl = null;
   if (req.files?.background) {
-    const uploadResult = await uploadToCloudinary(
-      req.files.background[0].buffer,
-      req.files.background[0].mimetype
-    );
-    backgroundUrl = uploadResult.secure_url;
+    const uploadResult = await uploadToS3(req.files.background[0], business.slug, "eventreg", {
+      inline: true,
+    });
+    backgroundUrl = uploadResult.fileUrl;
   }
 
   // Build branding media array (files and/or direct URLs)
@@ -177,8 +174,8 @@ exports.createEvent = asyncHandler(async (req, res) => {
   const baseFromFiles = stitchFromFiles(brandingMediaFiles, brandingMediaMeta);
   const uploadedBrandingUrls = [];
   for (const f of brandingMediaFiles) {
-    const up = await uploadToCloudinary(f.buffer, f.mimetype);
-    uploadedBrandingUrls.push(up.secure_url);
+    const up = await uploadToS3(f, business.slug, "eventreg", { inline: true });
+    uploadedBrandingUrls.push(up.fileUrl);
   }
 
   const brandingMediaFromUrls = parseJsonArray(brandingMediaUrlsRaw)
@@ -199,11 +196,10 @@ exports.createEvent = asyncHandler(async (req, res) => {
 
   let agendaUrl = null;
   if (req.files?.agenda) {
-    const uploadResult = await uploadToCloudinary(
-      req.files.agenda[0].buffer,
-      req.files.agenda[0].mimetype
-    );
-    agendaUrl = uploadResult.secure_url;
+    const uploadResult = await uploadToS3(req.files.agenda[0], business.slug, "eventreg", {
+      inline: true,
+    });
+    agendaUrl = uploadResult.fileUrl;
   }
 
   // Parse and validate formFields
@@ -311,22 +307,22 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     updates.slug = uniqueSlug;
   }
 
+  const business = await Business.findById(event.businessId);
+
   if (req.files?.logo) {
-    if (event.logoUrl) await deleteImage(event.logoUrl);
-    const uploadResult = await uploadToCloudinary(
-      req.files.logo[0].buffer,
-      req.files.logo[0].mimetype
-    );
-    updates.logoUrl = uploadResult.secure_url;
+    if (event.logoUrl) await deleteFromS3(event.logoUrl);
+    const uploadResult = await uploadToS3(req.files.logo[0], business.slug, "eventreg", {
+      inline: true,
+    });
+    updates.logoUrl = uploadResult.fileUrl;
   }
 
   if (req.files?.background) {
-    if (event.backgroundUrl) await deleteImage(event.backgroundUrl);
-    const uploadResult = await uploadToCloudinary(
-      req.files.background[0].buffer,
-      req.files.background[0].mimetype
-    );
-    updates.backgroundUrl = uploadResult.secure_url;
+    if (event.backgroundUrl) await deleteFromS3(event.backgroundUrl);
+    const uploadResult = await uploadToS3(req.files.background[0], business.slug, "eventreg", {
+      inline: true,
+    });
+    updates.backgroundUrl = uploadResult.fileUrl;
   }
 
   if (req.body.clearAllBrandingLogos === "true") {
@@ -334,7 +330,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
       for (const m of event.brandingMedia) {
         if (m?.logoUrl) {
           try {
-            await deleteImage(m.logoUrl);
+            await deleteFromS3(m.logoUrl);
           } catch { }
         }
       }
@@ -367,7 +363,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
       for (const media of event.brandingMedia) {
         if (removeIds.includes(media._id?.toString()) && media.logoUrl) {
           try {
-            await deleteImage(media.logoUrl);
+            await deleteFromS3(media.logoUrl);
           } catch { }
         }
       }
@@ -381,8 +377,8 @@ exports.updateEvent = asyncHandler(async (req, res) => {
 
     const uploadedBrandingUrls = [];
     for (const f of brandingMediaFiles) {
-      const up = await uploadToCloudinary(f.buffer, f.mimetype);
-      uploadedBrandingUrls.push(up.secure_url);
+      const up = await uploadToS3(f, business.slug, "eventreg", { inline: true });
+      uploadedBrandingUrls.push(up.fileUrl);
     }
 
     const fromUrls = parseJsonArray(req.body.brandingMediaUrls)
@@ -403,12 +399,11 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   }
 
   if (req.files?.agenda) {
-    if (event.agendaUrl) await deleteImage(event.agendaUrl);
-    const uploadResult = await uploadToCloudinary(
-      req.files.agenda[0].buffer,
-      req.files.agenda[0].mimetype
-    );
-    updates.agendaUrl = uploadResult.secure_url;
+    if (event.agendaUrl) await deleteFromS3(event.agendaUrl);
+    const uploadResult = await uploadToS3(req.files.agenda[0], business.slug, "eventreg", {
+      inline: true,
+    });
+    updates.agendaUrl = uploadResult.fileUrl;
   }
 
   // Handle updated formFields
@@ -540,17 +535,18 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   await Registration.deleteMany({ eventId: event._id });
 
   // Delete any media
-  if (event.logoUrl) await deleteImage(event.logoUrl);
+  if (event.logoUrl) await deleteFromS3(event.logoUrl);
+  if (event.backgroundUrl) await deleteFromS3(event.backgroundUrl);
   if (Array.isArray(event.brandingMedia) && event.brandingMedia.length) {
     for (const m of event.brandingMedia) {
       if (m?.logoUrl) {
         try {
-          await deleteImage(m.logoUrl);
+          await deleteFromS3(m.logoUrl);
         } catch { }
       }
     }
   }
-  if (event.agendaUrl) await deleteImage(event.agendaUrl);
+  if (event.agendaUrl) await deleteFromS3(event.agendaUrl);
 
   const businessId = event.businessId;
   await event.deleteOne();
