@@ -34,6 +34,163 @@ const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder");
 const uploadProcessor = require("../../processors/eventreg/uploadProcessor");
 const emailProcessor = require("../../processors/eventreg/emailProcessor");
 
+function validateUploadedFileFields(event, rows) {
+  if (!rows || rows.length === 0) {
+    return { valid: false, error: "Uploaded file is empty" };
+  }
+
+  const firstRow = rows[0];
+  const uploadedFields = Object.keys(firstRow).filter(key => key !== "Token");
+
+  const hasCustomFields = event.formFields && event.formFields.length > 0;
+
+  if (hasCustomFields) {
+    const requiredFields = event.formFields
+      .filter(f => f.required)
+      .map(f => f.inputName);
+
+    const missingRequiredFields = requiredFields.filter(field => !uploadedFields.includes(field));
+    if (missingRequiredFields.length > 0) {
+      return {
+        valid: false,
+        error: `Uploaded file is missing required fields: ${missingRequiredFields.join(", ")}`
+      };
+    }
+
+    return { valid: true, error: null };
+  } else {
+    const classicRequiredFields = ["Full Name", "Email"];
+
+    const missingRequiredFields = classicRequiredFields.filter(field => !uploadedFields.includes(field));
+    if (missingRequiredFields.length > 0) {
+      return {
+        valid: false,
+        error: `Uploaded file is missing required fields: ${missingRequiredFields.join(", ")}`
+      };
+    }
+
+    return { valid: true, error: null };
+  }
+}
+
+function isValidEmail(email) {
+  if (!email || typeof email !== "string") return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim());
+}
+
+function validateAllRows(event, rows) {
+  const invalidRowNumbers = [];
+  const invalidEmailRowNumbers = [];
+  const duplicateEmailRowNumbers = [];
+
+  const hasCustomFields = event.formFields && event.formFields.length > 0;
+
+  let allRequiredFields = [];
+  if (hasCustomFields) {
+    allRequiredFields = event.formFields
+      .filter(f => f.required)
+      .map(f => f.inputName);
+  } else {
+    allRequiredFields = ["Full Name", "Email"];
+  }
+
+  const emailOccurrences = {}; // Track emails for duplicates
+
+  rows.forEach((row, index) => {
+    const rowNumber = index + 2;
+    let hasMissingFields = false;
+    let hasInvalidEmail = false;
+
+    let extractedEmail = null; // For duplicate tracking
+
+    if (hasCustomFields) {
+      for (const field of event.formFields) {
+        const value = row[field.inputName];
+
+        if (field.required) {
+          if (!value || (typeof value === "string" && value.trim() === "")) {
+            hasMissingFields = true;
+            break;
+          }
+        }
+
+        if (field.inputType === "email") {
+          extractedEmail = value;
+          if (value && !isValidEmail(value)) {
+            hasInvalidEmail = true;
+          }
+        }
+      }
+    } else {
+      const fullName = row["Full Name"];
+      const email = row["Email"];
+      extractedEmail = email;
+
+      if (!fullName || fullName.trim() === "" || !email || email.trim() === "") {
+        hasMissingFields = true;
+      }
+      if (email && !isValidEmail(email)) {
+        hasInvalidEmail = true;
+      }
+    }
+
+    // Track duplicates (only non-empty, valid-looking emails)
+    if (extractedEmail) {
+      const emailLower = extractedEmail.toString().trim().toLowerCase();
+      if (!emailOccurrences[emailLower]) emailOccurrences[emailLower] = [];
+      emailOccurrences[emailLower].push(rowNumber);
+    }
+
+    if (hasMissingFields) invalidRowNumbers.push(rowNumber);
+    if (hasInvalidEmail) invalidEmailRowNumbers.push(rowNumber);
+  });
+
+  // -----------------------------
+  // Check for duplicate emails
+  // -----------------------------
+  for (const email in emailOccurrences) {
+    if (emailOccurrences[email].length > 1) {
+      duplicateEmailRowNumbers.push(...emailOccurrences[email]);
+    }
+  }
+
+  if (invalidRowNumbers.length > 0) {
+    const rowNumbersText = formatRowNumbers(invalidRowNumbers);
+    return {
+      valid: false,
+      error: `Cannot upload file. Row${invalidRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${invalidRowNumbers.length > 1 ? "have" : "has"} missing required fields: ${allRequiredFields.join(", ")}.`
+    };
+  }
+
+  if (invalidEmailRowNumbers.length > 0) {
+    const rowNumbersText = formatRowNumbers(invalidEmailRowNumbers);
+    return {
+      valid: false,
+      error: `Cannot upload file. Row${invalidEmailRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${invalidEmailRowNumbers.length > 1 ? "have" : "has"} invalid email format.`
+    };
+  }
+
+  if (duplicateEmailRowNumbers.length > 0) {
+    const rowNumbersText = formatRowNumbers(duplicateEmailRowNumbers);
+    return {
+      valid: false,
+      error: `Cannot upload file. Duplicate email(s) found at row${duplicateEmailRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText}. Each email must be unique.`
+    };
+  }
+
+  return { valid: true, error: null };
+}
+
+// Helper for row number formatting
+function formatRowNumbers(arr) {
+  return arr.length === 1
+    ? arr[0].toString()
+    : arr.length === 2
+      ? `${arr[0]} and ${arr[1]}`
+      : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
+}
+
 // DOWNLOAD sample Excel template
 exports.downloadSampleExcel = asyncHandler(async (req, res) => {
   const { slug } = req.params;
@@ -70,7 +227,7 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
 // -------------------------------------------
 exports.uploadRegistrations = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-if (!slug) return response(res, 400, "Event Slug is required");
+  if (!slug) return response(res, 400, "Event Slug is required");
 
   const event = await Event.findOne({ slug }).notDeleted();
   if (!event) return response(res, 404, "Event not found");
@@ -85,12 +242,20 @@ if (!slug) return response(res, 400, "Event Slug is required");
     return response(res, 400, "Uploaded file is empty");
   }
 
-  // Early response immediately
+  const fieldValidation = validateUploadedFileFields(event, rows);
+  if (!fieldValidation.valid) {
+    return response(res, 400, fieldValidation.error || "Uploaded file does not contain required fields.");
+  }
+
+  const rowValidation = validateAllRows(event, rows);
+  if (!rowValidation.valid) {
+    return response(res, 400, rowValidation.error);
+  }
+
   response(res, 200, "Upload started", {
     total: rows.length,
   });
 
-  // Background processor
   setImmediate(() => {
     uploadProcessor(event, rows)
       .catch(err => console.error("UPLOAD PROCESSOR FAILED:", err));
@@ -373,19 +538,31 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   }
 
   // --- Extract basic info ---
-  const fullName = req.body.fullName || pickFullName(customFields);
-  const email = req.body.email || pickEmail(customFields);
-  const phone = req.body.phone || pickPhone(customFields);
-  const company = req.body.company || pickCompany(customFields);
+  let fullName = null;
+  let email = null;
+  let phone = null;
+  let company = null;
 
-  if (!formFields.length && (!fullName || !email || !phone)) {
-    return response(res, 400, "Full name, email, and phone are required");
+  if (formFields.length > 0) {
+    // Custom fields exist - store everything in customFields only, leave classic fields empty
+  } else {
+    // No custom fields - use classic fields
+    fullName = req.body.fullName || pickFullName(customFields);
+    email = req.body.email || pickEmail(customFields);
+    phone = req.body.phone || pickPhone(customFields);
+    company = req.body.company || pickCompany(customFields);
+
+    if (!fullName || !email || !phone) {
+      return response(res, 400, "Full name, email, and phone are required");
+    }
   }
 
   // --- Prevent duplicates ---
+  const emailForDuplicate = formFields.length > 0 ? pickEmail(customFields) : email;
+  const phoneForDuplicate = formFields.length > 0 ? pickPhone(customFields) : phone;
   const orClauses = [];
-  if (email) orClauses.push({ email });
-  if (phone) orClauses.push({ phone });
+  if (emailForDuplicate) orClauses.push({ email: emailForDuplicate });
+  if (phoneForDuplicate) orClauses.push({ phone: phoneForDuplicate });
 
   if (orClauses.length) {
     const dup = await Registration.findOne({ eventId, $or: orClauses });
@@ -408,19 +585,22 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   await recountEventRegistrations(event._id);
 
   // --- Generate and send email using util ---
-  const displayName =
-    fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
+  const emailForSending = formFields.length > 0 ? pickEmail(customFields) : email;
+  const displayNameForEmail =
+    formFields.length > 0
+      ? pickFullName(customFields) || (event.defaultLanguage === "ar" ? "ضيف" : "Guest")
+      : fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
   const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
     event,
     registration: newRegistration,
-    displayName,
+    displayName: displayNameForEmail,
     customFields,
   });
 
-  if (email) {
+  if (emailForSending) {
     const result = await sendEmail(
-      email,
+      emailForSending,
       subject,
       html,
       qrCodeDataUrl,
@@ -431,7 +611,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       await newRegistration.save();
     } else {
       console.error(
-        `Email failed for ${email}:`,
+        `Email failed for ${emailForSending}:`,
         result.response || result.error
       );
     }
@@ -450,8 +630,11 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { fields } = req.body;
 
-  const reg = await Registration.findById(id);
+  const reg = await Registration.findById(id).populate("eventId");
   if (!reg) return response(res, 404, "Registration not found");
+
+  const event = reg.eventId;
+  const hasCustomFields = event?.formFields && event.formFields.length > 0;
 
   // Merge into existing customFields map
   const newCustomFields = {
@@ -459,23 +642,40 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     ...fields,
   };
 
-  // Determine updated top-level fields
-  const fullName =
-    fields["Full Name"] || fields["fullName"] || fields["Name"] || reg.fullName;
-  const email = fields["Email"] || fields["email"] || reg.email;
-  const phone = fields["Phone"] || fields["phone"] || reg.phone;
-  const company =
-    fields["Company"] ||
-    fields["Institution"] ||
-    fields["Organization"] ||
-    fields["company"] ||
-    reg.company;
+  if (hasCustomFields) {
+    reg.customFields = newCustomFields;
+    reg.fullName = null;
+    reg.email = null;
+    reg.phone = null;
+    reg.company = null;
+  } else {
+    const fullName =
+      "Full Name" in fields
+        ? fields["Full Name"]
+        : "fullName" in fields
+          ? fields["fullName"]
+          : "Name" in fields
+            ? fields["Name"]
+            : reg.fullName;
+    const email = "Email" in fields ? fields["Email"] : "email" in fields ? fields["email"] : reg.email;
+    const phone = "Phone" in fields ? fields["Phone"] : "phone" in fields ? fields["phone"] : reg.phone;
+    const company =
+      "Company" in fields
+        ? fields["Company"]
+        : "Institution" in fields
+          ? fields["Institution"]
+          : "Organization" in fields
+            ? fields["Organization"]
+            : "company" in fields
+              ? fields["company"]
+              : reg.company;
 
-  reg.customFields = newCustomFields;
-  reg.fullName = fullName;
-  reg.email = email;
-  reg.phone = phone;
-  reg.company = company;
+    reg.customFields = {};
+    reg.fullName = fullName;
+    reg.email = email;
+    reg.phone = phone;
+    reg.company = company;
+  }
 
   await reg.save();
 
@@ -557,11 +757,11 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   // Use consistent soft-delete filter
   const totalRegistrations = await Registration.countDocuments({
     eventId,
-    isDeleted: { $ne: true }, 
+    isDeleted: { $ne: true },
   });
 
   const registrations = await Registration.find({ eventId })
-    .notDeleted() 
+    .notDeleted()
     .skip((page - 1) * limit)
     .limit(limit);
 
@@ -848,7 +1048,7 @@ exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
     await reg.restore();
     await recountEventRegistrations(reg.eventId);
   }
-  
+
   // Fire background recompute
   recomputeAndEmit(null).catch((err) =>
     console.error("Background recompute failed:", err.message)
@@ -861,7 +1061,7 @@ exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
 exports.permanentDeleteRegistration = asyncHandler(async (req, res) => {
   const reg = await Registration.findOneDeleted({
     _id: req.params.id,
-  }).populate("eventId", "businessId"); 
+  }).populate("eventId", "businessId");
 
   if (!reg) return response(res, 404, "Registration not found in trash");
 
