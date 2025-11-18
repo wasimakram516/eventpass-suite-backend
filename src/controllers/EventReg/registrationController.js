@@ -34,6 +34,45 @@ const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder");
 const uploadProcessor = require("../../processors/eventreg/uploadProcessor");
 const emailProcessor = require("../../processors/eventreg/emailProcessor");
 
+function validateUploadedFileFields(event, rows) {
+  if (!rows || rows.length === 0) {
+    return { valid: false, error: "Uploaded file is empty" };
+  }
+
+  const firstRow = rows[0];
+  const uploadedFields = Object.keys(firstRow).filter(key => key !== "Token");
+
+  const hasCustomFields = event.formFields && event.formFields.length > 0;
+
+  if (hasCustomFields) {
+    const requiredFields = event.formFields
+      .filter(f => f.required)
+      .map(f => f.inputName);
+
+    const missingRequiredFields = requiredFields.filter(field => !uploadedFields.includes(field));
+    if (missingRequiredFields.length > 0) {
+      return {
+        valid: false,
+        error: `Uploaded file is missing required fields: ${missingRequiredFields.join(", ")}`
+      };
+    }
+
+    return { valid: true, error: null };
+  } else {
+    const classicRequiredFields = ["Full Name", "Email"];
+
+    const missingRequiredFields = classicRequiredFields.filter(field => !uploadedFields.includes(field));
+    if (missingRequiredFields.length > 0) {
+      return {
+        valid: false,
+        error: `Uploaded file is missing required fields: ${missingRequiredFields.join(", ")}`
+      };
+    }
+
+    return { valid: true, error: null };
+  }
+}
+
 // DOWNLOAD sample Excel template
 exports.downloadSampleExcel = asyncHandler(async (req, res) => {
   const { slug } = req.params;
@@ -70,7 +109,7 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
 // -------------------------------------------
 exports.uploadRegistrations = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-if (!slug) return response(res, 400, "Event Slug is required");
+  if (!slug) return response(res, 400, "Event Slug is required");
 
   const event = await Event.findOne({ slug }).notDeleted();
   if (!event) return response(res, 404, "Event not found");
@@ -83,6 +122,12 @@ if (!slug) return response(res, 400, "Event Slug is required");
 
   if (!rows.length) {
     return response(res, 400, "Uploaded file is empty");
+  }
+
+  // Validate file fields against event fields
+  const validation = validateUploadedFileFields(event, rows);
+  if (!validation.valid) {
+    return response(res, 400, validation.error || "Uploaded file does not contain required fields.");
   }
 
   // Early response immediately
@@ -373,19 +418,31 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   }
 
   // --- Extract basic info ---
-  const fullName = req.body.fullName || pickFullName(customFields);
-  const email = req.body.email || pickEmail(customFields);
-  const phone = req.body.phone || pickPhone(customFields);
-  const company = req.body.company || pickCompany(customFields);
+  let fullName = null;
+  let email = null;
+  let phone = null;
+  let company = null;
 
-  if (!formFields.length && (!fullName || !email || !phone)) {
-    return response(res, 400, "Full name, email, and phone are required");
+  if (formFields.length > 0) {
+    // Custom fields exist - store everything in customFields only, leave classic fields empty
+  } else {
+    // No custom fields - use classic fields
+    fullName = req.body.fullName || pickFullName(customFields);
+    email = req.body.email || pickEmail(customFields);
+    phone = req.body.phone || pickPhone(customFields);
+    company = req.body.company || pickCompany(customFields);
+
+    if (!fullName || !email || !phone) {
+      return response(res, 400, "Full name, email, and phone are required");
+    }
   }
 
   // --- Prevent duplicates ---
+  const emailForDuplicate = formFields.length > 0 ? pickEmail(customFields) : email;
+  const phoneForDuplicate = formFields.length > 0 ? pickPhone(customFields) : phone;
   const orClauses = [];
-  if (email) orClauses.push({ email });
-  if (phone) orClauses.push({ phone });
+  if (emailForDuplicate) orClauses.push({ email: emailForDuplicate });
+  if (phoneForDuplicate) orClauses.push({ phone: phoneForDuplicate });
 
   if (orClauses.length) {
     const dup = await Registration.findOne({ eventId, $or: orClauses });
@@ -408,19 +465,22 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   await recountEventRegistrations(event._id);
 
   // --- Generate and send email using util ---
-  const displayName =
-    fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
+  const emailForSending = formFields.length > 0 ? pickEmail(customFields) : email;
+  const displayNameForEmail =
+    formFields.length > 0
+      ? pickFullName(customFields) || (event.defaultLanguage === "ar" ? "ضيف" : "Guest")
+      : fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
   const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
     event,
     registration: newRegistration,
-    displayName,
+    displayName: displayNameForEmail,
     customFields,
   });
 
-  if (email) {
+  if (emailForSending) {
     const result = await sendEmail(
-      email,
+      emailForSending,
       subject,
       html,
       qrCodeDataUrl,
@@ -431,7 +491,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       await newRegistration.save();
     } else {
       console.error(
-        `Email failed for ${email}:`,
+        `Email failed for ${emailForSending}:`,
         result.response || result.error
       );
     }
@@ -450,8 +510,11 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { fields } = req.body;
 
-  const reg = await Registration.findById(id);
+  const reg = await Registration.findById(id).populate("eventId");
   if (!reg) return response(res, 404, "Registration not found");
+
+  const event = reg.eventId;
+  const hasCustomFields = event?.formFields && event.formFields.length > 0;
 
   // Merge into existing customFields map
   const newCustomFields = {
@@ -459,23 +522,40 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     ...fields,
   };
 
-  // Determine updated top-level fields
-  const fullName =
-    fields["Full Name"] || fields["fullName"] || fields["Name"] || reg.fullName;
-  const email = fields["Email"] || fields["email"] || reg.email;
-  const phone = fields["Phone"] || fields["phone"] || reg.phone;
-  const company =
-    fields["Company"] ||
-    fields["Institution"] ||
-    fields["Organization"] ||
-    fields["company"] ||
-    reg.company;
+  if (hasCustomFields) {
+    reg.customFields = newCustomFields;
+    reg.fullName = null;
+    reg.email = null;
+    reg.phone = null;
+    reg.company = null;
+  } else {
+    const fullName =
+      "Full Name" in fields
+        ? fields["Full Name"]
+        : "fullName" in fields
+          ? fields["fullName"]
+          : "Name" in fields
+            ? fields["Name"]
+            : reg.fullName;
+    const email = "Email" in fields ? fields["Email"] : "email" in fields ? fields["email"] : reg.email;
+    const phone = "Phone" in fields ? fields["Phone"] : "phone" in fields ? fields["phone"] : reg.phone;
+    const company =
+      "Company" in fields
+        ? fields["Company"]
+        : "Institution" in fields
+          ? fields["Institution"]
+          : "Organization" in fields
+            ? fields["Organization"]
+            : "company" in fields
+              ? fields["company"]
+              : reg.company;
 
-  reg.customFields = newCustomFields;
-  reg.fullName = fullName;
-  reg.email = email;
-  reg.phone = phone;
-  reg.company = company;
+    reg.customFields = {};
+    reg.fullName = fullName;
+    reg.email = email;
+    reg.phone = phone;
+    reg.company = company;
+  }
 
   await reg.save();
 
@@ -557,11 +637,11 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   // Use consistent soft-delete filter
   const totalRegistrations = await Registration.countDocuments({
     eventId,
-    isDeleted: { $ne: true }, 
+    isDeleted: { $ne: true },
   });
 
   const registrations = await Registration.find({ eventId })
-    .notDeleted() 
+    .notDeleted()
     .skip((page - 1) * limit)
     .limit(limit);
 
@@ -848,7 +928,7 @@ exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
     await reg.restore();
     await recountEventRegistrations(reg.eventId);
   }
-  
+
   // Fire background recompute
   recomputeAndEmit(null).catch((err) =>
     console.error("Background recompute failed:", err.message)
@@ -861,7 +941,7 @@ exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
 exports.permanentDeleteRegistration = asyncHandler(async (req, res) => {
   const reg = await Registration.findOneDeleted({
     _id: req.params.id,
-  }).populate("eventId", "businessId"); 
+  }).populate("eventId", "businessId");
 
   if (!reg) return response(res, 404, "Registration not found in trash");
 
