@@ -4,8 +4,7 @@ const Player = require("../../models/Player");
 const GameSession = require("../../models/GameSession");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
-const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
-const { deleteImage } = require("../../config/cloudinary");
+const { uploadToS3, deleteFromS3 } = require("../../utils/s3Storage");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
@@ -32,33 +31,29 @@ exports.createGame = asyncHandler(async (req, res) => {
 
   const businessId = business._id;
 
-  // Handle image uploads
   let coverImage = "",
     nameImage = "",
     backgroundImage = "";
 
   if (req.files?.cover) {
-    const uploaded = await uploadToCloudinary(
-      req.files.cover[0].buffer,
-      req.files.cover[0].mimetype
-    );
-    coverImage = uploaded.secure_url;
+    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "quiznest", {
+      inline: true,
+    });
+    coverImage = uploaded.fileUrl;
   }
 
   if (req.files?.name) {
-    const uploaded = await uploadToCloudinary(
-      req.files.name[0].buffer,
-      req.files.name[0].mimetype
-    );
-    nameImage = uploaded.secure_url;
+    const uploaded = await uploadToS3(req.files.name[0], business.slug, "quiznest", {
+      inline: true,
+    });
+    nameImage = uploaded.fileUrl;
   }
 
   if (req.files?.background) {
-    const uploaded = await uploadToCloudinary(
-      req.files.background[0].buffer,
-      req.files.background[0].mimetype
-    );
-    backgroundImage = uploaded.secure_url;
+    const uploaded = await uploadToS3(req.files.background[0], business.slug, "quiznest", {
+      inline: true,
+    });
+    backgroundImage = uploaded.fileUrl;
   }
 
   // Save game with resolved businessId
@@ -101,32 +96,31 @@ exports.updateGame = asyncHandler(async (req, res) => {
   game.countdownTimer = countdownTimer || game.countdownTimer;
   game.gameSessionTimer = gameSessionTimer || game.gameSessionTimer;
 
-  // Replace images if new ones provided
+  const business = await Business.findById(game.businessId);
+  if (!business) return response(res, 404, "Business not found");
+
   if (req.files?.cover) {
-    if (game.coverImage) await deleteImage(game.coverImage);
-    const uploaded = await uploadToCloudinary(
-      req.files.cover[0].buffer,
-      req.files.cover[0].mimetype
-    );
-    game.coverImage = uploaded.secure_url;
+    if (game.coverImage) await deleteFromS3(game.coverImage);
+    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "quiznest", {
+      inline: true,
+    });
+    game.coverImage = uploaded.fileUrl;
   }
 
   if (req.files?.name) {
-    if (game.nameImage) await deleteImage(game.nameImage);
-    const uploaded = await uploadToCloudinary(
-      req.files.name[0].buffer,
-      req.files.name[0].mimetype
-    );
-    game.nameImage = uploaded.secure_url;
+    if (game.nameImage) await deleteFromS3(game.nameImage);
+    const uploaded = await uploadToS3(req.files.name[0], business.slug, "quiznest", {
+      inline: true,
+    });
+    game.nameImage = uploaded.fileUrl;
   }
 
   if (req.files?.background) {
-    if (game.backgroundImage) await deleteImage(game.backgroundImage);
-    const uploaded = await uploadToCloudinary(
-      req.files.background[0].buffer,
-      req.files.background[0].mimetype
-    );
-    game.backgroundImage = uploaded.secure_url;
+    if (game.backgroundImage) await deleteFromS3(game.backgroundImage);
+    const uploaded = await uploadToS3(req.files.background[0], business.slug, "quiznest", {
+      inline: true,
+    });
+    game.backgroundImage = uploaded.fileUrl;
   }
 
   await game.save();
@@ -212,9 +206,9 @@ exports.permanentDeleteGame = asyncHandler(async (req, res) => {
   // Cascade permanent delete all related data
   await cascadePermanentDeleteGame(game._id);
 
-  if (game.coverImage) await deleteImage(game.coverImage);
-  if (game.nameImage) await deleteImage(game.nameImage);
-  if (game.backgroundImage) await deleteImage(game.backgroundImage);
+  if (game.coverImage) await deleteFromS3(game.coverImage);
+  if (game.nameImage) await deleteFromS3(game.nameImage);
+  if (game.backgroundImage) await deleteFromS3(game.backgroundImage);
 
   await game.deleteOne();
 
@@ -255,9 +249,9 @@ exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
   for (const game of games) {
     await cascadePermanentDeleteGame(game._id);
 
-    if (game.coverImage) await deleteImage(game.coverImage);
-    if (game.nameImage) await deleteImage(game.nameImage);
-    if (game.backgroundImage) await deleteImage(game.backgroundImage);
+    if (game.coverImage) await deleteFromS3(game.coverImage);
+    if (game.nameImage) await deleteFromS3(game.nameImage);
+    if (game.backgroundImage) await deleteFromS3(game.backgroundImage);
 
     await game.deleteOne();
   }
@@ -275,9 +269,9 @@ exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
 /* Cascade permanent delete everything linked to a game */
 async function cascadePermanentDeleteGame(gameId) {
   const sessions = await GameSession.find({ gameId });
-  
+
   if (sessions.length > 0) {
-    const playerIds = sessions.flatMap(session => 
+    const playerIds = sessions.flatMap(session =>
       session.players.map(p => p.playerId)
     );
 
