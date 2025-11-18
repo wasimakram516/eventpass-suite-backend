@@ -19,29 +19,50 @@ module.exports = async function uploadProcessor(event, rows) {
         processed++;
 
         try {
-          const customFields = {};
-          let missingField = null;
-
-          for (const field of event.formFields) {
-            const value = row[field.inputName];
-            if (field.required && !value) {
-              missingField = field.inputName;
-              break;
-            }
-            if (value) customFields[field.inputName] = value;
-          }
-
-          if (missingField) {
-            skipped++;
-            continue;
-          }
-
-          await Registration.create({
+          const hasCustomFields = event.formFields && event.formFields.length > 0;
+          let registrationData = {
             eventId,
-            customFields,
             token: row["Token"] || undefined,
-          });
+          };
 
+          if (hasCustomFields) {
+            const customFields = {};
+            let missingField = null;
+
+            for (const field of event.formFields) {
+              const value = row[field.inputName];
+              if (field.required && !value) {
+                missingField = field.inputName;
+                break;
+              }
+              if (value) customFields[field.inputName] = value;
+            }
+
+            if (missingField) {
+              skipped++;
+              continue;
+            }
+
+            registrationData.customFields = customFields;
+          } else {
+            // Case: No custom fields - use classic fields
+            const fullName = row["Full Name"];
+            const email = row["Email"];
+            const phone = row["Phone"] || null;
+            const company = row["Company"] || null;
+            if (!fullName || !email) {
+              skipped++;
+              continue;
+            }
+
+            registrationData.fullName = fullName;
+            registrationData.email = email;
+            registrationData.phone = phone;
+            registrationData.company = company;
+            registrationData.customFields = {};
+          }
+
+          await Registration.create(registrationData);
           imported++;
         } catch (err) {
           skipped++;
