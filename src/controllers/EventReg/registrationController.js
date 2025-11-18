@@ -73,6 +73,96 @@ function validateUploadedFileFields(event, rows) {
   }
 }
 
+function isValidEmail(email) {
+  if (!email || typeof email !== "string") return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim());
+}
+
+function validateAllRows(event, rows) {
+  const invalidRowNumbers = [];
+  const invalidEmailRowNumbers = [];
+  const hasCustomFields = event.formFields && event.formFields.length > 0;
+
+  let allRequiredFields = [];
+  if (hasCustomFields) {
+    allRequiredFields = event.formFields
+      .filter(f => f.required)
+      .map(f => f.inputName);
+  } else {
+    allRequiredFields = ["Full Name", "Email"];
+  }
+
+  rows.forEach((row, index) => {
+    const rowNumber = index + 2;
+    let hasMissingFields = false;
+    let hasInvalidEmail = false;
+
+    if (hasCustomFields) {
+      for (const field of event.formFields) {
+        if (field.required) {
+          const value = row[field.inputName];
+          if (!value || (typeof value === "string" && value.trim() === "")) {
+            hasMissingFields = true;
+            break;
+          }
+        }
+        if (field.inputType === "email") {
+          const value = row[field.inputName];
+          if (value && !isValidEmail(value)) {
+            hasInvalidEmail = true;
+          }
+        }
+      }
+    } else {
+      const fullName = row["Full Name"];
+      const email = row["Email"];
+      if (!fullName || (typeof fullName === "string" && fullName.trim() === "") ||
+        !email || (typeof email === "string" && email.trim() === "")) {
+        hasMissingFields = true;
+      }
+      if (email && !isValidEmail(email)) {
+        hasInvalidEmail = true;
+      }
+    }
+
+    if (hasMissingFields) {
+      invalidRowNumbers.push(rowNumber);
+    }
+    if (hasInvalidEmail) {
+      invalidEmailRowNumbers.push(rowNumber);
+    }
+  });
+
+  if (invalidRowNumbers.length > 0) {
+    const rowNumbersText = invalidRowNumbers.length === 1
+      ? invalidRowNumbers[0].toString()
+      : invalidRowNumbers.length === 2
+        ? `${invalidRowNumbers[0]} and ${invalidRowNumbers[1]}`
+        : `${invalidRowNumbers.slice(0, -1).join(", ")}, and ${invalidRowNumbers[invalidRowNumbers.length - 1]}`;
+
+    return {
+      valid: false,
+      error: `Cannot upload file. Record${invalidRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${invalidRowNumbers.length > 1 ? "have" : "has"} missing required fields: ${allRequiredFields.join(", ")}.`
+    };
+  }
+
+  if (invalidEmailRowNumbers.length > 0) {
+    const rowNumbersText = invalidEmailRowNumbers.length === 1
+      ? invalidEmailRowNumbers[0].toString()
+      : invalidEmailRowNumbers.length === 2
+        ? `${invalidEmailRowNumbers[0]} and ${invalidEmailRowNumbers[1]}`
+        : `${invalidEmailRowNumbers.slice(0, -1).join(", ")}, and ${invalidEmailRowNumbers[invalidEmailRowNumbers.length - 1]}`;
+
+    return {
+      valid: false,
+      error: `Cannot upload file. Record${invalidEmailRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${invalidEmailRowNumbers.length > 1 ? "have" : "has"} invalid email format.`
+    };
+  }
+
+  return { valid: true, error: null };
+}
+
 // DOWNLOAD sample Excel template
 exports.downloadSampleExcel = asyncHandler(async (req, res) => {
   const { slug } = req.params;
@@ -124,18 +214,20 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
     return response(res, 400, "Uploaded file is empty");
   }
 
-  // Validate file fields against event fields
-  const validation = validateUploadedFileFields(event, rows);
-  if (!validation.valid) {
-    return response(res, 400, validation.error || "Uploaded file does not contain required fields.");
+  const fieldValidation = validateUploadedFileFields(event, rows);
+  if (!fieldValidation.valid) {
+    return response(res, 400, fieldValidation.error || "Uploaded file does not contain required fields.");
   }
 
-  // Early response immediately
+  const rowValidation = validateAllRows(event, rows);
+  if (!rowValidation.valid) {
+    return response(res, 400, rowValidation.error);
+  }
+
   response(res, 200, "Upload started", {
     total: rows.length,
   });
 
-  // Background processor
   setImmediate(() => {
     uploadProcessor(event, rows)
       .catch(err => console.error("UPLOAD PROCESSOR FAILED:", err));
