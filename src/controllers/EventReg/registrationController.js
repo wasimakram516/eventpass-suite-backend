@@ -82,6 +82,8 @@ function isValidEmail(email) {
 function validateAllRows(event, rows) {
   const invalidRowNumbers = [];
   const invalidEmailRowNumbers = [];
+  const duplicateEmailRowNumbers = [];
+
   const hasCustomFields = event.formFields && event.formFields.length > 0;
 
   let allRequiredFields = [];
@@ -93,22 +95,28 @@ function validateAllRows(event, rows) {
     allRequiredFields = ["Full Name", "Email"];
   }
 
+  const emailOccurrences = {}; // Track emails for duplicates
+
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
     let hasMissingFields = false;
     let hasInvalidEmail = false;
 
+    let extractedEmail = null; // For duplicate tracking
+
     if (hasCustomFields) {
       for (const field of event.formFields) {
+        const value = row[field.inputName];
+
         if (field.required) {
-          const value = row[field.inputName];
           if (!value || (typeof value === "string" && value.trim() === "")) {
             hasMissingFields = true;
             break;
           }
         }
+
         if (field.inputType === "email") {
-          const value = row[field.inputName];
+          extractedEmail = value;
           if (value && !isValidEmail(value)) {
             hasInvalidEmail = true;
           }
@@ -117,8 +125,9 @@ function validateAllRows(event, rows) {
     } else {
       const fullName = row["Full Name"];
       const email = row["Email"];
-      if (!fullName || (typeof fullName === "string" && fullName.trim() === "") ||
-        !email || (typeof email === "string" && email.trim() === "")) {
+      extractedEmail = email;
+
+      if (!fullName || fullName.trim() === "" || !email || email.trim() === "") {
         hasMissingFields = true;
       }
       if (email && !isValidEmail(email)) {
@@ -126,41 +135,60 @@ function validateAllRows(event, rows) {
       }
     }
 
-    if (hasMissingFields) {
-      invalidRowNumbers.push(rowNumber);
+    // Track duplicates (only non-empty, valid-looking emails)
+    if (extractedEmail) {
+      const emailLower = extractedEmail.toString().trim().toLowerCase();
+      if (!emailOccurrences[emailLower]) emailOccurrences[emailLower] = [];
+      emailOccurrences[emailLower].push(rowNumber);
     }
-    if (hasInvalidEmail) {
-      invalidEmailRowNumbers.push(rowNumber);
-    }
+
+    if (hasMissingFields) invalidRowNumbers.push(rowNumber);
+    if (hasInvalidEmail) invalidEmailRowNumbers.push(rowNumber);
   });
 
-  if (invalidRowNumbers.length > 0) {
-    const rowNumbersText = invalidRowNumbers.length === 1
-      ? invalidRowNumbers[0].toString()
-      : invalidRowNumbers.length === 2
-        ? `${invalidRowNumbers[0]} and ${invalidRowNumbers[1]}`
-        : `${invalidRowNumbers.slice(0, -1).join(", ")}, and ${invalidRowNumbers[invalidRowNumbers.length - 1]}`;
+  // -----------------------------
+  // Check for duplicate emails
+  // -----------------------------
+  for (const email in emailOccurrences) {
+    if (emailOccurrences[email].length > 1) {
+      duplicateEmailRowNumbers.push(...emailOccurrences[email]);
+    }
+  }
 
+  if (invalidRowNumbers.length > 0) {
+    const rowNumbersText = formatRowNumbers(invalidRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Record${invalidRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${invalidRowNumbers.length > 1 ? "have" : "has"} missing required fields: ${allRequiredFields.join(", ")}.`
+      error: `Cannot upload file. Row${invalidRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${invalidRowNumbers.length > 1 ? "have" : "has"} missing required fields: ${allRequiredFields.join(", ")}.`
     };
   }
 
   if (invalidEmailRowNumbers.length > 0) {
-    const rowNumbersText = invalidEmailRowNumbers.length === 1
-      ? invalidEmailRowNumbers[0].toString()
-      : invalidEmailRowNumbers.length === 2
-        ? `${invalidEmailRowNumbers[0]} and ${invalidEmailRowNumbers[1]}`
-        : `${invalidEmailRowNumbers.slice(0, -1).join(", ")}, and ${invalidEmailRowNumbers[invalidEmailRowNumbers.length - 1]}`;
-
+    const rowNumbersText = formatRowNumbers(invalidEmailRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Record${invalidEmailRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${invalidEmailRowNumbers.length > 1 ? "have" : "has"} invalid email format.`
+      error: `Cannot upload file. Row${invalidEmailRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${invalidEmailRowNumbers.length > 1 ? "have" : "has"} invalid email format.`
+    };
+  }
+
+  if (duplicateEmailRowNumbers.length > 0) {
+    const rowNumbersText = formatRowNumbers(duplicateEmailRowNumbers);
+    return {
+      valid: false,
+      error: `Cannot upload file. Duplicate email(s) found at row${duplicateEmailRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText}. Each email must be unique.`
     };
   }
 
   return { valid: true, error: null };
+}
+
+// Helper for row number formatting
+function formatRowNumbers(arr) {
+  return arr.length === 1
+    ? arr[0].toString()
+    : arr.length === 2
+      ? `${arr[0]} and ${arr[1]}`
+      : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
 }
 
 // DOWNLOAD sample Excel template
