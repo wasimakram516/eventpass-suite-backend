@@ -16,7 +16,11 @@ exports.getGameSessions = asyncHandler(async (req, res) => {
 
   if (!gameSlug) return response(res, 400, "Missing gameSlug in query");
 
-  const game = await Game.findOne({ slug: gameSlug }).notDeleted();
+  const game = await Game.findOne({
+    slug: gameSlug,
+    mode: "pvp",
+    type: "quiz",
+  }).notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
   const pageNumber = parseInt(page);
@@ -112,8 +116,12 @@ exports.startGameSession = asyncHandler(async (req, res) => {
     return response(res, 400, "Missing gameSlug in request body");
   }
 
-  const game = await Game.findOne({ slug: gameSlug }).notDeleted();
-  if (!game || game.mode !== "pvp") {
+  const game = await Game.findOne({
+    slug: gameSlug,
+    mode: "pvp",
+    type: "quiz",
+  }).notDeleted();
+  if (!game) {
     return response(res, 404, "Game not found");
   }
 
@@ -191,8 +199,12 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
     return response(res, 400, "Missing required fields: gameSlug or name");
   }
 
-  const game = await Game.findOne({ slug: gameSlug }).notDeleted();
-  if (!game || game.mode !== "pvp") {
+  const game = await Game.findOne({
+    slug: gameSlug,
+    mode: "pvp",
+    type: "quiz",
+  }).notDeleted();
+  if (!game) {
     return response(res, 400, "Invalid or non-PvP game.");
   }
 
@@ -339,7 +351,11 @@ exports.abandonGameSession = asyncHandler(async (req, res) => {
   }
 
   // Load the game to check mode
-  const game = await Game.findById(session.gameId).notDeleted();
+  const game = await Game.findOne({
+    _id: session.gameId,
+    mode: "pvp",
+    type: "quiz",
+  }).notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
   // --- PvP Mode ---
@@ -386,7 +402,7 @@ exports.activateGameSession = asyncHandler(async (req, res) => {
   if (!session) return response(res, 404, "Session not found");
 
   const game = session.gameId;
-  if (!game || game.mode !== "pvp")
+  if (!game || game.mode !== "pvp" || game.type !== "quiz")
     return response(res, 400, "Invalid PvP game");
 
   // --- PvP Mode ---
@@ -445,8 +461,12 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
   const session = await GameSession.findById(sessionId);
   if (!session) return response(res, 404, "Session not found");
 
-  const game = await Game.findById(session.gameId);
-  if (!game || game.mode !== "pvp")
+  const game = await Game.findOne({
+    _id: session.gameId,
+    mode: "pvp",
+    type: "quiz",
+  });
+  if (!game)
     return response(res, 400, "Invalid or non-PvP game.");
 
   // ────────────────────────────────
@@ -652,8 +672,12 @@ exports.endGameSession = asyncHandler(async (req, res) => {
   const session = await GameSession.findById(sessionId);
   if (!session) return response(res, 404, "Session not found");
 
-  const game = await Game.findById(session.gameId);
-  if (!game || game.mode !== "pvp")
+  const game = await Game.findOne({
+    _id: session.gameId,
+    mode: "pvp",
+    type: "quiz",
+  });
+  if (!game)
     return response(res, 400, "Invalid or non-PvP game.");
 
   // Wait briefly to allow last updates
@@ -782,8 +806,12 @@ exports.resetGameSessions = asyncHandler(async (req, res) => {
   const { gameSlug } = req.body;
   if (!gameSlug) return response(res, 400, "Missing gameSlug in request body");
 
-  const game = await Game.findOne({ slug: gameSlug });
-  if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
+  const game = await Game.findOne({
+    slug: gameSlug,
+    mode: "pvp",
+    type: "quiz",
+  });
+  if (!game) return response(res, 404, "Game not found");
 
   const sessions = await GameSession.find({ gameId: game._id });
   if (!sessions.length)
@@ -860,7 +888,7 @@ exports.restoreGameSession = asyncHandler(async (req, res) => {
   if (!session) return response(res, 404, "Deleted session not found");
 
   const game = session.gameId;
-  if (!game || game.mode !== "pvp")
+  if (!game || game.mode !== "pvp" || game.type !== "quiz")
     return response(res, 404, "Game not found or not PvP");
 
   await session.restore();
@@ -918,7 +946,7 @@ exports.restoreAllGameSessions = asyncHandler(async (req, res) => {
       },
     },
     { $unwind: "$game" },
-    { $match: { "game.mode": "pvp" } },
+    { $match: { "game.mode": "pvp", "game.type": "quiz" } },
   ]);
 
   if (!sessions.length)
@@ -1026,7 +1054,7 @@ exports.permanentDeleteAllGameSessions = asyncHandler(async (req, res) => {
       },
     },
     { $unwind: "$game" },
-    { $match: { "game.mode": "pvp" } },
+    { $match: { "game.mode": "pvp", "game.type": "quiz" } },
   ]);
 
   if (!sessions.length)
@@ -1071,7 +1099,11 @@ exports.permanentDeleteAllGameSessions = asyncHandler(async (req, res) => {
 exports.exportResults = asyncHandler(async (req, res) => {
   const gameSlug = req.params.gameSlug;
 
-  const game = await Game.findOne({ slug: gameSlug })
+  const game = await Game.findOne({
+    slug: gameSlug,
+    mode: "pvp",
+    type: "quiz",
+  })
     .populate("businessId", "name")
     .notDeleted();
   if (!game) return response(res, 404, "Game not found");
@@ -1224,7 +1256,11 @@ exports.exportResults = asyncHandler(async (req, res) => {
 exports.getLeaderboard = asyncHandler(async (req, res) => {
   const gameSlug = req.params.gameSlug;
 
-  const game = await Game.findOne({ slug: gameSlug }).notDeleted();
+  const game = await Game.findOne({
+    slug: gameSlug,
+    mode: "pvp",
+    type: "quiz",
+  }).notDeleted();
   if (!game) return response(res, 404, "Game not found");
   if (game.mode !== "pvp")
     return response(res, 400, "Leaderboard only available for PvP games");

@@ -7,8 +7,12 @@ const eventDuelSocket = (io, socket) => {
    */
   socket.on("joinGameRoom", async (gameSlug) => {
     try {
-      const game = await Game.findOne({ slug: gameSlug }).notDeleted();
-      if (!game || game.mode !== "pvp") {
+      const game = await Game.findOne({
+        slug: gameSlug,
+        mode: "pvp",
+        type: "quiz",
+      }).notDeleted();
+      if (!game) {
         console.warn(`Invalid or non-PvP gameSlug: ${gameSlug}`);
         return socket.emit("error", "Invalid or non-PvP gameSlug");
       }
@@ -58,7 +62,11 @@ const eventDuelSocket = (io, socket) => {
    */
   socket.on("getAllSessions", async ({ gameSlug }) => {
     try {
-      const game = await Game.findOne({ slug: gameSlug }).notDeleted();
+      const game = await Game.findOne({
+        slug: gameSlug,
+        mode: "pvp",
+        type: "quiz",
+      }).notDeleted();
       if (!game) {
         console.warn(`Game not found for slug: ${gameSlug}`);
         return;
