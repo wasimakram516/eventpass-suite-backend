@@ -30,15 +30,15 @@ exports.createGame = asyncHandler(async (req, res) => {
     backgroundImage = {};
 
   if (req.files?.cover?.[0])
-    coverImage = await uploadToS3(req.files.cover[0], business.name, {
+    coverImage = await uploadToS3(req.files.cover[0], business.slug, "TapMatch", {
       inline: true,
     });
   if (req.files?.name?.[0])
-    nameImage = await uploadToS3(req.files.name[0], business.name, {
+    nameImage = await uploadToS3(req.files.name[0], business.slug, "TapMatch", {
       inline: true,
     });
   if (req.files?.background?.[0])
-    backgroundImage = await uploadToS3(req.files.background[0], business.name, {
+    backgroundImage = await uploadToS3(req.files.background[0], business.slug, "TapMatch", {
       inline: true,
     });
 
@@ -46,7 +46,7 @@ exports.createGame = asyncHandler(async (req, res) => {
   const memoryImages = [];
   if (req.files?.memoryImages?.length) {
     for (const file of req.files.memoryImages) {
-      const uploaded = await uploadToS3(file, business.name, { inline: true });
+      const uploaded = await uploadToS3(file, business.slug, "TapMatch", { inline: true });
       memoryImages.push({ key: uploaded.key, url: uploaded.fileUrl });
     }
   }
@@ -96,7 +96,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
   // Replace images if new ones provided
   if (req.files?.cover?.[0]) {
     await deleteFromS3(game.coverImage);
-    const uploaded = await uploadToS3(req.files.cover[0], business.name, {
+    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "TapMatch", {
       inline: true,
     });
     game.coverImage = uploaded.fileUrl;
@@ -104,7 +104,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
 
   if (req.files?.name?.[0]) {
     await deleteFromS3(game.nameImage);
-    const uploaded = await uploadToS3(req.files.name[0], business.name, {
+    const uploaded = await uploadToS3(req.files.name[0], business.slug, "TapMatch", {
       inline: true,
     });
     game.nameImage = uploaded.fileUrl;
@@ -112,7 +112,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
 
   if (req.files?.background?.[0]) {
     await deleteFromS3(game.backgroundImage);
-    const uploaded = await uploadToS3(req.files.background[0], business.name, {
+    const uploaded = await uploadToS3(req.files.background[0], business.slug, "TapMatch", {
       inline: true,
     });
     game.backgroundImage = uploaded.fileUrl;
@@ -127,7 +127,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
     // Upload new ones
     const newMemoryImages = [];
     for (const file of req.files.memoryImages) {
-      const uploaded = await uploadToS3(file, business.name, { inline: true });
+      const uploaded = await uploadToS3(file, business.slug, "TapMatch", { inline: true });
       newMemoryImages.push({ key: uploaded.key, url: uploaded.fileUrl });
     }
     game.memoryImages = newMemoryImages;

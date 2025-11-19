@@ -1,10 +1,10 @@
 const Game = require("../../models/Game");
+const Business = require("../../models/Business");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const XLSX = require("xlsx");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
-const { deleteImage } = require("../../config/cloudinary");
-const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
+const { uploadToS3, deleteFromS3 } = require("../../utils/s3Storage");
 
 // Download sample Excel template
 exports.downloadSampleTemplate = asyncHandler(async (req, res) => {
@@ -158,27 +158,25 @@ exports.addQuestion = asyncHandler(async (req, res) => {
     return response(res, 400, `This quiz requires exactly ${game.choicesCount} options`);
   }
 
-  // Upload images
+  const business = await Business.findById(game.businessId);
+  if (!business) return response(res, 404, "Business not found");
+
   let questionImage = null;
   const answerImages = [];
 
   if (req.files?.questionImage?.[0]) {
-    const upload = await uploadToCloudinary(
-      req.files.questionImage[0].buffer,
-      req.files.questionImage[0].mimetype,
-      'quiznest/questions'
-    );
-    questionImage = upload.secure_url;
+    const upload = await uploadToS3(req.files.questionImage[0], business.slug, "QuizNest", {
+      inline: true,
+    });
+    questionImage = upload.fileUrl;
   }
 
   if (req.files?.answerImages) {
     for (const file of req.files.answerImages) {
-      const upload = await uploadToCloudinary(
-        file.buffer,
-        file.mimetype,
-        'quiznest/answers'
-      );
-      answerImages.push(upload.secure_url);
+      const upload = await uploadToS3(file, business.slug, "QuizNest", {
+        inline: true,
+      });
+      answerImages.push(upload.fileUrl);
     }
   }
 
@@ -216,9 +214,11 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
     return response(res, 400, `This quiz requires exactly ${game.choicesCount} options`);
   }
 
-  // Handle question image removal
+  const business = await Business.findById(game.businessId);
+  if (!business) return response(res, 404, "Business not found");
+
   if (removeQuestionImage === 'true' && q.questionImage) {
-    await deleteImage(q.questionImage);
+    await deleteFromS3(q.questionImage);
     q.questionImage = null;
   }
 
@@ -226,22 +226,20 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
     const indicesToRemove = JSON.parse(removeAnswerImages);
     for (const index of indicesToRemove) {
       if (q.answerImages[index]) {
-        await deleteImage(q.answerImages[index]);
+        await deleteFromS3(q.answerImages[index]);
         q.answerImages[index] = null;
       }
     }
   }
 
   if (req.files?.questionImage?.[0]) {
-    if (q.questionImage) await deleteImage(q.questionImage);
-    const upload = await uploadToCloudinary(
-      req.files.questionImage[0].buffer,
-      req.files.questionImage[0].mimetype,
-      'quiznest/questions'
-    );
-    q.questionImage = upload.secure_url;
+    if (q.questionImage) await deleteFromS3(q.questionImage);
+    const upload = await uploadToS3(req.files.questionImage[0], business.slug, "QuizNest", {
+      inline: true,
+    });
+    q.questionImage = upload.fileUrl;
   }
-  
+
   if (req.files?.answerImages && req.body.answerImageIndices) {
     const indices = Array.isArray(req.body.answerImageIndices)
       ? req.body.answerImageIndices.map(Number)
@@ -253,17 +251,15 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
       const file = req.files.answerImages[i];
       const targetIndex = indices[i];
 
-      const upload = await uploadToCloudinary(
-        file.buffer,
-        file.mimetype,
-        'quiznest/answers'
-      );
+      const upload = await uploadToS3(file, business.slug, "QuizNest", {
+        inline: true,
+      });
 
       if (newAnswerImages[targetIndex]) {
-        await deleteImage(newAnswerImages[targetIndex]).catch(console.error);
+        await deleteFromS3(newAnswerImages[targetIndex]).catch(console.error);
       }
 
-      newAnswerImages[targetIndex] = upload.secure_url;
+      newAnswerImages[targetIndex] = upload.fileUrl;
     }
 
     q.answerImages = newAnswerImages;
@@ -291,10 +287,10 @@ exports.deleteQuestion = asyncHandler(async (req, res) => {
   const q = game.questions.id(req.params.questionId);
   if (!q) return response(res, 404, "Question not found");
 
-  if (q.questionImage) await deleteImage(q.questionImage).catch(console.error);
+  if (q.questionImage) await deleteFromS3(q.questionImage).catch(console.error);
 
   for (const img of q.answerImages.filter(Boolean)) {
-    await deleteImage(img).catch(console.error);
+    await deleteFromS3(img).catch(console.error);
   }
 
   await q.softDelete(req.user.id);
@@ -351,10 +347,10 @@ exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
 
   const q = game.questions[questionIndex];
 
-  if (q.questionImage) await deleteImage(q.questionImage).catch(console.error);
+  if (q.questionImage) await deleteFromS3(q.questionImage).catch(console.error);
 
   for (const img of q.answerImages.filter(Boolean)) {
-    await deleteImage(img).catch(console.error);
+    await deleteFromS3(img).catch(console.error);
   }
 
   game.questions.splice(questionIndex, 1);

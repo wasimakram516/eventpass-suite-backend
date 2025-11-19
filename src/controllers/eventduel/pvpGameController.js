@@ -2,8 +2,7 @@ const Game = require("../../models/Game");
 const Business = require("../../models/Business");
 const Player = require("../../models/Player");
 const Team = require("../../models/Team");
-const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
-const { deleteImage } = require("../../config/cloudinary");
+const { uploadToS3, deleteFromS3 } = require("../../utils/s3Storage");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
@@ -44,25 +43,22 @@ exports.createGame = asyncHandler(async (req, res) => {
     backgroundImage = "";
 
   if (req.files?.cover) {
-    const uploaded = await uploadToCloudinary(
-      req.files.cover[0].buffer,
-      req.files.cover[0].mimetype
-    );
-    coverImage = uploaded.secure_url;
+    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "EventDuel", {
+      inline: true,
+    });
+    coverImage = uploaded.fileUrl;
   }
   if (req.files?.name) {
-    const uploaded = await uploadToCloudinary(
-      req.files.name[0].buffer,
-      req.files.name[0].mimetype
-    );
-    nameImage = uploaded.secure_url;
+    const uploaded = await uploadToS3(req.files.name[0], business.slug, "EventDuel", {
+      inline: true,
+    });
+    nameImage = uploaded.fileUrl;
   }
   if (req.files?.background) {
-    const uploaded = await uploadToCloudinary(
-      req.files.background[0].buffer,
-      req.files.background[0].mimetype
-    );
-    backgroundImage = uploaded.secure_url;
+    const uploaded = await uploadToS3(req.files.background[0], business.slug, "EventDuel", {
+      inline: true,
+    });
+    backgroundImage = uploaded.fileUrl;
   }
 
   const game = await Game.create({
@@ -184,32 +180,31 @@ exports.updateGame = asyncHandler(async (req, res) => {
     }
   }
 
-  // Image handling unchanged...
+  const business = await Business.findById(game.businessId);
+  if (!business) return response(res, 404, "Business not found");
+
   if (req.files?.cover) {
-    if (game.coverImage) await deleteImage(game.coverImage);
-    const uploaded = await uploadToCloudinary(
-      req.files.cover[0].buffer,
-      req.files.cover[0].mimetype
-    );
-    game.coverImage = uploaded.secure_url;
+    if (game.coverImage) await deleteFromS3(game.coverImage);
+    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "EventDuel", {
+      inline: true,
+    });
+    game.coverImage = uploaded.fileUrl;
   }
 
   if (req.files?.name) {
-    if (game.nameImage) await deleteImage(game.nameImage);
-    const uploaded = await uploadToCloudinary(
-      req.files.name[0].buffer,
-      req.files.name[0].mimetype
-    );
-    game.nameImage = uploaded.secure_url;
+    if (game.nameImage) await deleteFromS3(game.nameImage);
+    const uploaded = await uploadToS3(req.files.name[0], business.slug, "EventDuel", {
+      inline: true,
+    });
+    game.nameImage = uploaded.fileUrl;
   }
 
   if (req.files?.background) {
-    if (game.backgroundImage) await deleteImage(game.backgroundImage);
-    const uploaded = await uploadToCloudinary(
-      req.files.background[0].buffer,
-      req.files.background[0].mimetype
-    );
-    game.backgroundImage = uploaded.secure_url;
+    if (game.backgroundImage) await deleteFromS3(game.backgroundImage);
+    const uploaded = await uploadToS3(req.files.background[0], business.slug, "EventDuel", {
+      inline: true,
+    });
+    game.backgroundImage = uploaded.fileUrl;
   }
 
   await game.save();
@@ -314,10 +309,9 @@ exports.permanentDeleteGame = asyncHandler(async (req, res) => {
   const game = await Game.findOneDeleted({ _id: req.params.id, mode: "pvp" });
   if (!game) return response(res, 404, "Game not found in trash");
 
-  // Delete linked images
-  if (game.coverImage) await deleteImage(game.coverImage);
-  if (game.nameImage) await deleteImage(game.nameImage);
-  if (game.backgroundImage) await deleteImage(game.backgroundImage);
+  if (game.coverImage) await deleteFromS3(game.coverImage);
+  if (game.nameImage) await deleteFromS3(game.nameImage);
+  if (game.backgroundImage) await deleteFromS3(game.backgroundImage);
 
   const businessId = game.businessId;
 
@@ -365,10 +359,9 @@ exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
       game.isTeamMode ? game.teams : []
     );
 
-    // Delete related images
-    if (game.coverImage) await deleteImage(game.coverImage);
-    if (game.nameImage) await deleteImage(game.nameImage);
-    if (game.backgroundImage) await deleteImage(game.backgroundImage);
+    if (game.coverImage) await deleteFromS3(game.coverImage);
+    if (game.nameImage) await deleteFromS3(game.nameImage);
+    if (game.backgroundImage) await deleteFromS3(game.backgroundImage);
 
     await game.deleteOne();
   }

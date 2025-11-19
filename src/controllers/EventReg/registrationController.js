@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 const XLSX = require("xlsx");
-const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
 const QRCode = require("qrcode");
 const { formatLocalDateTime } = require("../../utils/dateUtils");
 const Business = require("../../models/Business");

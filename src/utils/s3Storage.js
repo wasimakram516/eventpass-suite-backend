@@ -10,19 +10,19 @@ AWS.config.update({
 
 const s3 = new AWS.S3();
 
-const getFolderPath = (businessName, mimetype, originalname) => {
+const getFolderPath = (businessSlug, moduleName, mimetype, originalname) => {
   let folder = "others";
   if (mimetype.startsWith("image/")) folder = "images";
   else if (mimetype.startsWith("video/")) folder = "videos";
   else if (mimetype === "application/pdf") folder = "pdfs";
-  return `${businessName}/${folder}/${Date.now()}_${path.basename(
+  return `${businessSlug}/${moduleName}/${folder}/${Date.now()}_${path.basename(
     originalname
   )}`;
 };
 
 // Upload
-exports.uploadToS3 = async (file, businessName, options = {}) => {
-  const key = getFolderPath(businessName, file.mimetype, file.originalname);
+exports.uploadToS3 = async (file, businessSlug, moduleName, options = {}) => {
+  const key = getFolderPath(businessSlug, moduleName, file.mimetype, file.originalname);
 
   // Default to "attachment", but allow override
   const dispositionType = options.inline ? "inline" : "attachment";
