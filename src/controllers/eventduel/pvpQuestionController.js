@@ -58,9 +58,12 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
   const gameId = req.params.gameId;
   if (!req.file) return response(res, 400, "No file uploaded");
 
-  const game = await Game.findById(gameId);
-  if (!game || game.mode !== "pvp")
-    return response(res, 404, "PvP game not found");
+  const game = await Game.findOne({
+    _id: gameId,
+    mode: "pvp",
+    type: "quiz",
+  });
+  if (!game) return response(res, 404, "PvP game not found");
 
   const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -111,7 +114,11 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
 exports.getQuestions = asyncHandler(async (req, res) => {
   const { gameId } = req.params;
 
-  const game = await Game.findById(gameId).notDeleted();
+  const game = await Game.findOne({
+    _id: gameId,
+    mode: "pvp",
+    type: "quiz",
+  }).notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
   const activeQuestions = game.questions.filter((q) => !q.isDeleted);
@@ -127,7 +134,11 @@ exports.addQuestion = asyncHandler(async (req, res) => {
     return response(res, 400, "All fields are required");
   }
 
-  const game = await Game.findById(req.params.gameId).notDeleted();
+  const game = await Game.findOne({
+    _id: req.params.gameId,
+    mode: "pvp",
+    type: "quiz",
+  }).notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
   const parsedAnswers = typeof answers === 'string' ? JSON.parse(answers) : answers;
@@ -181,7 +192,11 @@ exports.addQuestion = asyncHandler(async (req, res) => {
 exports.updateQuestion = asyncHandler(async (req, res) => {
   const { question, answers, correctAnswerIndex, hint, removeQuestionImage, removeAnswerImages } = req.body;
 
-  const game = await Game.findById(req.params.gameId).notDeleted();
+  const game = await Game.findOne({
+    _id: req.params.gameId,
+    mode: "pvp",
+    type: "quiz",
+  }).notDeleted();
   if (!game) return response(res, 404, "Game not found");
 
   const q = game.questions.id(req.params.questionId);
@@ -260,7 +275,11 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
 
 // Delete Question
 exports.deleteQuestion = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.gameId);
+  const game = await Game.findOne({
+    _id: req.params.gameId,
+    mode: "pvp",
+    type: "quiz",
+  });
   if (!game) return response(res, 404, "Game not found");
 
   const q = game.questions.id(req.params.questionId);
@@ -289,6 +308,7 @@ exports.restoreQuestion = asyncHandler(async (req, res) => {
     "questions._id": id,
     "questions.isDeleted": true,
     mode: "pvp",
+    type: "quiz",
   });
   if (!game)
     return response(res, 404, "Deleted question not found in PvP games");
@@ -314,6 +334,7 @@ exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
     "questions._id": id,
     "questions.isDeleted": true,
     mode: "pvp",
+    type: "quiz",
   });
   if (!game)
     return response(res, 404, "Deleted question not found in PvP games");
@@ -343,7 +364,7 @@ exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
 
 // Restore all questions
 exports.restoreAllQuestions = asyncHandler(async (req, res) => {
-  const games = await Game.find({ mode: "pvp" });
+  const games = await Game.find({ mode: "pvp", type: "quiz" });
   let restoredCount = 0;
 
   for (const game of games) {
@@ -375,7 +396,7 @@ exports.restoreAllQuestions = asyncHandler(async (req, res) => {
 
 // Permanent delete all questions
 exports.permanentDeleteAllQuestions = asyncHandler(async (req, res) => {
-  const games = await Game.find({ mode: "pvp" });
+  const games = await Game.find({ mode: "pvp", type: "quiz" });
   let deletedCount = 0;
 
   for (const game of games) {

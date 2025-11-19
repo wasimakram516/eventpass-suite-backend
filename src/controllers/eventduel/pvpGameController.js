@@ -95,7 +95,11 @@ exports.createGame = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
-  const populatedGame = await Game.findById(game._id)
+  const populatedGame = await Game.findOne({
+    _id: game._id,
+    mode: "pvp",
+    type: "quiz",
+  })
     .populate("teams", "name")
     .populate("businessId", "name");
 
@@ -109,8 +113,12 @@ exports.createGame = asyncHandler(async (req, res) => {
 
 // UPDATE GAME (PvP / Team Mode)
 exports.updateGame = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id).populate("teams");
-  if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
+  const game = await Game.findOne({
+    _id: req.params.id,
+    mode: "pvp",
+    type: "quiz",
+  }).populate("teams");
+  if (!game) return response(res, 404, "Game not found");
 
   const {
     title,
@@ -209,7 +217,11 @@ exports.updateGame = asyncHandler(async (req, res) => {
 
   await game.save();
 
-  const populatedGame = await Game.findById(game._id)
+  const populatedGame = await Game.findOne({
+    _id: game._id,
+    mode: "pvp",
+    type: "quiz",
+  })
     .populate("teams", "name")
     .populate("businessId", "name");
 
@@ -235,6 +247,7 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
   const games = await Game.find({
     businessId: business._id,
     mode: "pvp",
+    type: "quiz",
   })
     .populate("teams", "name")
     .notDeleted();
@@ -243,29 +256,41 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
 
 // Get PvP game by ID or slug
 exports.getGameById = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id)
+  const game = await Game.findOne({
+    _id: req.params.id,
+    mode: "pvp",
+    type: "quiz",
+  })
     .populate("teams", "name")
     .notDeleted();
 
-  if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
+  if (!game) return response(res, 404, "Game not found");
 
   return response(res, 200, "Game found", game);
 });
 
 exports.getGameBySlug = asyncHandler(async (req, res) => {
-  const game = await Game.findOne({ slug: req.params.slug })
+  const game = await Game.findOne({
+    slug: req.params.slug,
+    mode: "pvp",
+    type: "quiz",
+  })
     .populate("teams", "name")
     .notDeleted();
 
-  if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
+  if (!game) return response(res, 404, "Game not found");
 
   return response(res, 200, "Game found", game);
 });
 
 // Delete Game
 exports.deleteGame = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id);
-  if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
+  const game = await Game.findOne({
+    _id: req.params.id,
+    mode: "pvp",
+    type: "quiz",
+  });
+  if (!game) return response(res, 404, "Game not found");
 
   // check for active sessions
   const sessionsExist = await GameSession.exists({ gameId: game._id });
@@ -284,13 +309,19 @@ exports.deleteGame = asyncHandler(async (req, res) => {
 
 // Restore Game
 exports.restoreGame = asyncHandler(async (req, res) => {
-  const game = await Game.findOneDeleted({ _id: req.params.id, mode: "pvp" });
+  const game = await Game.findOneDeleted({
+    _id: req.params.id,
+    mode: "pvp",
+    type: "quiz",
+  });
   if (!game) return response(res, 404, "Game not found in trash");
 
   const conflict = await Game.findOne({
     _id: { $ne: game._id },
     slug: game.slug,
     isDeleted: false,
+    mode: "pvp",
+    type: "quiz",
   });
   if (conflict)
     return response(res, 409, "Cannot restore: slug already in use");
@@ -306,7 +337,11 @@ exports.restoreGame = asyncHandler(async (req, res) => {
 
 // Permanently delete Game
 exports.permanentDeleteGame = asyncHandler(async (req, res) => {
-  const game = await Game.findOneDeleted({ _id: req.params.id, mode: "pvp" });
+  const game = await Game.findOneDeleted({
+    _id: req.params.id,
+    mode: "pvp",
+    type: "quiz",
+  });
   if (!game) return response(res, 404, "Game not found in trash");
 
   if (game.coverImage) await deleteFromS3(game.coverImage);
@@ -329,7 +364,7 @@ exports.permanentDeleteGame = asyncHandler(async (req, res) => {
 
 // Restore all games
 exports.restoreAllGames = asyncHandler(async (req, res) => {
-  const games = await Game.findDeleted({ mode: "pvp" });
+  const games = await Game.findDeleted({ mode: "pvp", type: "quiz" });
   if (!games.length) {
     return response(res, 404, "No PvP games found in trash to restore");
   }
@@ -348,7 +383,7 @@ exports.restoreAllGames = asyncHandler(async (req, res) => {
 
 // Permanently delete ALL PvP (and Team) games in trash
 exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
-  const games = await Game.findDeleted({ mode: "pvp" });
+  const games = await Game.findDeleted({ mode: "pvp", type: "quiz" });
   if (!games.length) {
     return response(res, 404, "No PvP games found in trash to delete");
   }
@@ -400,6 +435,8 @@ async function cascadePermanentDeleteGame(gameId, teamIds = []) {
       _id: { $ne: gameId },
       teams: { $in: teamIds },
       isDeleted: false,
+      mode: "pvp",
+      type: "quiz",
     });
 
     const deletableTeams = teamIds.filter(
