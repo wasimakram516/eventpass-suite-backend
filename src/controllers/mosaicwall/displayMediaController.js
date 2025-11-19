@@ -1,8 +1,8 @@
 const DisplayMedia = require("../../models/DisplayMedia");
 const WallConfig = require("../../models/WallConfig");
+const Business = require("../../models/Business");
 const response = require("../../utils/response");
-const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
-const { deleteImage } = require("../../config/cloudinary");
+const { uploadToS3, deleteFromS3 } = require("../../utils/s3Storage");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const { emitToRoom } = require("../../utils/socketUtils");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
@@ -38,13 +38,16 @@ exports.createDisplayMedia = asyncHandler(async (req, res) => {
   if (!req.file) return response(res, 400, "Image file is required.");
   if (!wallSlug) return response(res, 400, "Wall slug is required.");
 
-  const wall = await WallConfig.findOne({ slug: wallSlug });
+  const wall = await WallConfig.findOne({ slug: wallSlug }).populate("business", "slug");
   if (!wall) return response(res, 404, "Wall configuration not found.");
 
-  const uploaded = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+  const business = await Business.findById(wall.business);
+  if (!business) return response(res, 404, "Business not found.");
+
+  const uploaded = await uploadToS3(req.file, business.slug, "MosaicWall", { inline: true });
 
   const media = await DisplayMedia.create({
-    imageUrl: uploaded.secure_url,
+    imageUrl: uploaded.fileUrl,
     text: wall.mode === "card" ? text : "",
     wall: wall._id,
   });
@@ -70,12 +73,15 @@ exports.updateDisplayMedia = asyncHandler(async (req, res) => {
   if (req.body.text !== undefined) item.text = req.body.text;
 
   if (req.file) {
-    await deleteImage(item.imageUrl);
-    const uploaded = await uploadToCloudinary(
-      req.file.buffer,
-      req.file.mimetype
-    );
-    item.imageUrl = uploaded.secure_url;
+    const wall = await WallConfig.findById(item.wall).populate("business", "slug");
+    if (!wall) return response(res, 404, "Wall not found.");
+
+    const business = await Business.findById(wall.business);
+    if (!business) return response(res, 404, "Business not found.");
+
+    await deleteFromS3(item.imageUrl);
+    const uploaded = await uploadToS3(req.file, business.slug, "MosaicWall", { inline: true });
+    item.imageUrl = uploaded.fileUrl;
   }
 
   await item.save();
@@ -140,7 +146,7 @@ exports.permanentDeleteMedia = asyncHandler(async (req, res) => {
   const item = await DisplayMedia.findOneDeleted({ _id: req.params.id });
   if (!item) return response(res, 404, "Media not found in trash.");
 
-  if (item.imageUrl) await deleteImage(item.imageUrl);
+  if (item.imageUrl) await deleteFromS3(item.imageUrl);
   await item.deleteOne();
 
   const wall = await WallConfig.findById(item.wall);
@@ -177,7 +183,7 @@ exports.permanentDeleteAllMedia = asyncHandler(async (req, res) => {
   const deletedMedia = await DisplayMedia.findDeleted();
 
   for (const media of deletedMedia) {
-    if (media.imageUrl) await deleteImage(media.imageUrl);
+    if (media.imageUrl) await deleteFromS3(media.imageUrl);
     await media.deleteOne();
   }
 
