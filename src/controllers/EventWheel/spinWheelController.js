@@ -3,8 +3,7 @@ const SpinWheelParticipant = require("../../models/SpinWheelParticipant");
 const Business = require("../../models/Business");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
-const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
-const { deleteImage } = require("../../config/cloudinary");
+const { uploadToS3, deleteFromS3 } = require("../../utils/s3Storage");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
@@ -27,19 +26,23 @@ exports.createSpinWheel = asyncHandler(async (req, res) => {
     backgroundUrl = "";
 
   if (req.files?.logo) {
-    const uploaded = await uploadToCloudinary(
-      req.files.logo[0].buffer,
-      req.files.logo[0].mimetype
+    const uploaded = await uploadToS3(
+      req.files.logo[0],
+      existingBusiness.slug,
+      "EventWheel",
+      { inline: true }
     );
-    logoUrl = uploaded.secure_url;
+    logoUrl = uploaded.fileUrl;
   }
 
   if (req.files?.background) {
-    const uploaded = await uploadToCloudinary(
-      req.files.background[0].buffer,
-      req.files.background[0].mimetype
+    const uploaded = await uploadToS3(
+      req.files.background[0],
+      existingBusiness.slug,
+      "EventWheel",
+      { inline: true }
     );
-    backgroundUrl = uploaded.secure_url;
+    backgroundUrl = uploaded.fileUrl;
   }
 
   const spinWheel = await SpinWheel.create({
@@ -101,22 +104,29 @@ exports.updateSpinWheel = asyncHandler(async (req, res) => {
   wheel.title = title || wheel.title;
   wheel.type = type || wheel.type;
 
+  const business = await Business.findById(wheel.business);
+  if (!business) return response(res, 404, "Business not found");
+
   if (req.files?.logo) {
-    if (wheel.logoUrl) await deleteImage(wheel.logoUrl);
-    const uploaded = await uploadToCloudinary(
-      req.files.logo[0].buffer,
-      req.files.logo[0].mimetype
+    if (wheel.logoUrl) await deleteFromS3(wheel.logoUrl);
+    const uploaded = await uploadToS3(
+      req.files.logo[0],
+      business.slug,
+      "EventWheel",
+      { inline: true }
     );
-    wheel.logoUrl = uploaded.secure_url;
+    wheel.logoUrl = uploaded.fileUrl;
   }
 
   if (req.files?.background) {
-    if (wheel.backgroundUrl) await deleteImage(wheel.backgroundUrl);
-    const uploaded = await uploadToCloudinary(
-      req.files.background[0].buffer,
-      req.files.background[0].mimetype
+    if (wheel.backgroundUrl) await deleteFromS3(wheel.backgroundUrl);
+    const uploaded = await uploadToS3(
+      req.files.background[0],
+      business.slug,
+      "EventWheel",
+      { inline: true }
     );
-    wheel.backgroundUrl = uploaded.secure_url;
+    wheel.backgroundUrl = uploaded.fileUrl;
   }
 
   await wheel.save();
@@ -171,8 +181,8 @@ exports.permanentDeleteSpinWheel = asyncHandler(async (req, res) => {
   const wheel = await SpinWheel.findOneDeleted({ _id: req.params.id });
   if (!wheel) return response(res, 404, "SpinWheel not found in trash");
 
-  if (wheel.logoUrl) await deleteImage(wheel.logoUrl);
-  if (wheel.backgroundUrl) await deleteImage(wheel.backgroundUrl);
+  if (wheel.logoUrl) await deleteFromS3(wheel.logoUrl);
+  if (wheel.backgroundUrl) await deleteFromS3(wheel.backgroundUrl);
 
   await cascadePermanentDeleteSpinWheel(wheel._id);
   // Fire background recompute
@@ -199,8 +209,8 @@ exports.permanentDeleteAllSpinWheels = asyncHandler(async (req, res) => {
   const deletedWheels = await SpinWheel.findDeleted();
 
   for (const wheel of deletedWheels) {
-    if (wheel.logoUrl) await deleteImage(wheel.logoUrl);
-    if (wheel.backgroundUrl) await deleteImage(wheel.backgroundUrl);
+    if (wheel.logoUrl) await deleteFromS3(wheel.logoUrl);
+    if (wheel.backgroundUrl) await deleteFromS3(wheel.backgroundUrl);
     await cascadePermanentDeleteSpinWheel(wheel._id);
   }
 
@@ -208,7 +218,7 @@ exports.permanentDeleteAllSpinWheels = asyncHandler(async (req, res) => {
   recomputeAndEmit(null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
-  
+
   return response(
     res,
     200,

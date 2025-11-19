@@ -4,6 +4,7 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const XLSX = require("xlsx");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
+const { uploadToS3, deleteFromS3 } = require("../../utils/s3Storage");
 
 // GET polls
 exports.getPolls = asyncHandler(async (req, res) => {
@@ -72,11 +73,13 @@ exports.createPoll = asyncHandler(async (req, res) => {
 
       let imageUrl = "";
       if (files[idx]) {
-        const uploaded = await uploadToCloudinary(
-          files[idx].buffer,
-          files[idx].mimetype
+        const uploaded = await uploadToS3(
+          files[idx],
+          business.slug,
+          "VoteCast",
+          { inline: true }
         );
-        imageUrl = uploaded.secure_url;
+        imageUrl = uploaded.fileUrl;
       }
 
       return {
@@ -145,11 +148,17 @@ exports.updatePoll = asyncHandler(async (req, res) => {
         let imageUrl = opt.imageUrl || "";
 
         if (files[idx]) {
-          const uploaded = await uploadToCloudinary(
-            files[idx].buffer,
-            files[idx].mimetype
+          const existingOption = poll.options[idx];
+          if (existingOption?.imageUrl) {
+            await deleteFromS3(existingOption.imageUrl);
+          }
+          const uploaded = await uploadToS3(
+            files[idx],
+            poll.business.slug,
+            "VoteCast",
+            { inline: true }
           );
-          imageUrl = uploaded.secure_url;
+          imageUrl = uploaded.fileUrl;
         }
 
         return {
@@ -213,6 +222,12 @@ exports.permanentDeletePoll = asyncHandler(async (req, res) => {
   const poll = await Poll.findOneDeleted({ _id: req.params.id });
   if (!poll) return response(res, 404, "Poll not found in trash");
 
+  for (const option of poll.options || []) {
+    if (option.imageUrl) {
+      await deleteFromS3(option.imageUrl);
+    }
+  }
+
   await poll.deleteOne();
 
   // Fire background recompute
@@ -250,6 +265,11 @@ exports.permanentDeleteAllPolls = asyncHandler(async (req, res) => {
   }
 
   for (const poll of polls) {
+    for (const option of poll.options || []) {
+      if (option.imageUrl) {
+        await deleteFromS3(option.imageUrl);
+      }
+    }
     await poll.deleteOne();
   }
 
