@@ -76,9 +76,12 @@ exports.createGame = asyncHandler(async (req, res) => {
 // Update TapMatch Game
 // ---------------------------------------------------------
 exports.updateGame = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id).notDeleted();
-  if (!game || game.type !== "memory")
-    return response(res, 404, "TapMatch game not found");
+  const game = await Game.findOne({
+    _id: req.params.id,
+    type: "memory",
+    mode: "solo",
+  }).notDeleted();
+  if (!game) return response(res, 404, "TapMatch game not found");
 
   const { title, slug, countdownTimer, gameSessionTimer } = req.body;
 
@@ -145,7 +148,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
 // Get All TapMatch Games
 // ---------------------------------------------------------
 exports.getAllGames = asyncHandler(async (req, res) => {
-  const games = await Game.find({ type: "memory" })
+  const games = await Game.find({ type: "memory", mode: "solo" })
     .notDeleted()
     .populate("businessId", "name slug")
     .sort({ createdAt: -1 });
@@ -162,7 +165,11 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
   }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
-  const games = await Game.find({ businessId: business._id, type: "memory" })
+  const games = await Game.find({
+    businessId: business._id,
+    type: "memory",
+    mode: "solo",
+  })
     .notDeleted()
     .populate("businessId", "name slug")
     .sort({ createdAt: -1 });
@@ -174,9 +181,12 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
 // Get Game by ID
 // ---------------------------------------------------------
 exports.getGameById = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id).notDeleted();
-  if (!game || game.type !== "memory")
-    return response(res, 404, "TapMatch game not found");
+  const game = await Game.findOne({
+    _id: req.params.id,
+    type: "memory",
+    mode: "solo",
+  }).notDeleted();
+  if (!game) return response(res, 404, "TapMatch game not found");
 
   return response(res, 200, "Game found", game);
 });
@@ -188,6 +198,7 @@ exports.getGameBySlug = asyncHandler(async (req, res) => {
   const game = await Game.findOne({
     slug: req.params.slug,
     type: "memory",
+    mode: "solo",
   }).notDeleted();
 
   if (!game) return response(res, 404, "Game not found");
@@ -198,9 +209,12 @@ exports.getGameBySlug = asyncHandler(async (req, res) => {
 // Soft Delete Game
 // ---------------------------------------------------------
 exports.deleteGame = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id);
-  if (!game || game.type !== "memory")
-    return response(res, 404, "TapMatch game not found");
+  const game = await Game.findOne({
+    _id: req.params.id,
+    type: "memory",
+    mode: "solo",
+  });
+  if (!game) return response(res, 404, "TapMatch game not found");
 
   const playersExist = await Player.exists({ gameId: game._id });
   if (playersExist)
@@ -222,6 +236,7 @@ exports.restoreGame = asyncHandler(async (req, res) => {
   const game = await Game.findOneDeleted({
     _id: req.params.id,
     type: "memory",
+    mode: "solo",
   });
   if (!game) return response(res, 404, "Game not found in trash");
 
@@ -238,7 +253,7 @@ exports.restoreGame = asyncHandler(async (req, res) => {
 // Restore All Games
 // ---------------------------------------------------------
 exports.restoreAllGames = asyncHandler(async (req, res) => {
-  const games = await Game.findDeleted({ type: "memory" });
+  const games = await Game.findDeleted({ type: "memory", mode: "solo" });
   if (!games.length) return response(res, 404, "No TapMatch games in trash");
 
   for (const game of games) await game.restore();
@@ -257,6 +272,7 @@ exports.permanentDeleteGame = asyncHandler(async (req, res) => {
   const game = await Game.findOneDeleted({
     _id: req.params.id,
     type: "memory",
+    mode: "solo",
   });
   if (!game) return response(res, 404, "Game not found in trash");
 
@@ -281,7 +297,7 @@ exports.permanentDeleteGame = asyncHandler(async (req, res) => {
 // Permanently Delete All Games
 // ---------------------------------------------------------
 exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
-  const games = await Game.findDeleted({ type: "memory" });
+  const games = await Game.findDeleted({ type: "memory", mode: "solo" });
   if (!games.length) return response(res, 404, "No TapMatch games in trash");
 
   for (const game of games) {
