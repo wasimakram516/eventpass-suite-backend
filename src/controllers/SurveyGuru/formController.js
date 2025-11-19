@@ -5,9 +5,9 @@ const response = require("../../utils/response");
 const SurveyForm = require("../../models/SurveyForm");
 const SurveyResponse = require("../../models/SurveyResponse");
 const SurveyRecipient = require("../../models/SurveyRecipient");
+const Business = require("../../models/Business");
 
-const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
-const { deleteImage } = require("../../config/cloudinary");
+const { uploadToS3, deleteFromS3 } = require("../../utils/s3Storage");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const { slugify, generateUniqueSlug } = require("../../utils/slugGenerator");
 
@@ -26,7 +26,15 @@ const parseJson = (v) => {
 const OPTION_IMG_RX_A = /^optionImage\[(\d+)\]\[(\d+)\]$/;
 const OPTION_IMG_RX_B = /^optionImage_(\d+)_(\d+)$/;
 
-async function attachOptionImages(questions = [], files = [], prevForm = null) {
+async function attachOptionImages(questions = [], files = [], prevForm = null, businessSlug = null) {
+  if (!businessSlug && prevForm) {
+    const business = await Business.findById(prevForm.businessId);
+    if (business) businessSlug = business.slug;
+  }
+  if (!businessSlug) {
+    throw new Error("Business slug is required for image uploads");
+  }
+
   // Build lookup from fieldname -> {qi, oi}
   const fileMap = new Map();
   for (const f of files || []) {
@@ -59,18 +67,18 @@ async function attachOptionImages(questions = [], files = [], prevForm = null) {
 
       if (fileMap.has(key)) {
         const file = fileMap.get(key);
-        const uploaded = await uploadToCloudinary(file.buffer, file.mimetype);
-        const newUrl = uploaded.secure_url;
+        const uploaded = await uploadToS3(file, businessSlug, "SurveyGuru", { inline: true });
+        const newUrl = uploaded.fileUrl;
 
         if (prevForm && prevImg[key]) {
-          await deleteImage(prevImg[key]);
+          await deleteFromS3(prevImg[key]);
         }
         opt.imageUrl = newUrl;
         delete opt.imageRemove;
       } else if (incomingRemoveFlag) {
         // explicit remove request (no file uploaded but user cleared image)
         if (prevForm && prevImg[key]) {
-          await deleteImage(prevImg[key]);
+          await deleteFromS3(prevImg[key]);
         }
         opt.imageUrl = null;
         delete opt.imageRemove;
@@ -127,11 +135,16 @@ exports.createForm = asyncHandler(async (req, res) => {
 
   body.slug = baseSlug;
 
+  const business = await Business.findById(body.businessId);
+  if (!business) return response(res, 404, "Business not found");
+  const businessSlug = business.slug;
+
   // Attach option images from uploaded files
   body.questions = await attachOptionImages(
     body.questions,
     req.files || [],
-    null
+    null,
+    businessSlug
   );
 
   const form = await SurveyForm.create(body);
@@ -234,11 +247,16 @@ exports.updateForm = asyncHandler(async (req, res) => {
         : req.body.defaultLanguage,
   };
 
+  const business = await Business.findById(patch.businessId || prev.businessId);
+  if (!business) return response(res, 404, "Business not found");
+  const businessSlug = business.slug;
+
   // attach/replace/remove option images based on uploaded files + flags
   patch.questions = await attachOptionImages(
     patch.questions,
     req.files || [],
-    prev
+    prev,
+    businessSlug
   );
 
   const updated = await SurveyForm.findByIdAndUpdate(id, patch, { new: true });
@@ -294,7 +312,7 @@ exports.permanentDeleteForm = asyncHandler(async (req, res) => {
   for (const q of form.questions || []) {
     for (const o of q.options || []) {
       if (o?.imageUrl) {
-        await deleteImage(o.imageUrl);
+        await deleteFromS3(o.imageUrl);
       }
     }
   }
@@ -341,7 +359,7 @@ exports.permanentDeleteAllForms = asyncHandler(async (req, res) => {
     for (const q of form.questions || []) {
       for (const o of q.options || []) {
         if (o?.imageUrl) {
-          await deleteImage(o.imageUrl);
+          await deleteFromS3(o.imageUrl);
         }
       }
     }
