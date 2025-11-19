@@ -17,12 +17,15 @@ exports.exportResults = asyncHandler(async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(gameId))
     return response(res, 400, "Invalid game ID");
 
-  const game = await Game.findById(gameId)
+  const game = await Game.findOne({
+    _id: gameId,
+    type: "memory",
+    mode: "solo",
+  })
     .populate("businessId", "name email phone website")
     .notDeleted();
 
-  if (!game || game.type !== "memory")
-    return response(res, 404, "TapMatch game not found");
+  if (!game) return response(res, 404, "TapMatch game not found");
 
   const sessions = await GameSession.find({ gameId })
     .notDeleted()
@@ -96,9 +99,12 @@ exports.joinGame = asyncHandler(async (req, res) => {
 
   if (!name) return response(res, 400, "Name is required");
 
-  const game = await Game.findById(gameId).notDeleted();
-  if (!game || game.type !== "memory")
-    return response(res, 404, "TapMatch game not found");
+  const game = await Game.findOne({
+    _id: gameId,
+    type: "memory",
+    mode: "solo",
+  }).notDeleted();
+  if (!game) return response(res, 404, "TapMatch game not found");
 
   const player = await Player.create({ name, company, phone });
 

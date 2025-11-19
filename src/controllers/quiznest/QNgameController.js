@@ -96,7 +96,11 @@ exports.createGame = asyncHandler(async (req, res) => {
 
 // Update Game
 exports.updateGame = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id);
+  const game = await Game.findOne({
+    _id: req.params.id,
+    mode: "solo",
+    type: "quiz",
+  });
   if (!game) return response(res, 404, "Game not found");
 
   const { title, slug, choicesCount, countdownTimer, gameSessionTimer } =
@@ -228,7 +232,11 @@ exports.getGameBySlug = asyncHandler(async (req, res) => {
 
 // Delete Game
 exports.deleteGame = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id);
+  const game = await Game.findOne({
+    _id: req.params.id,
+    mode: "solo",
+    type: "quiz",
+  });
   if (!game) return response(res, 404, "Game not found");
 
   const playersExist = await Player.exists({ gameId: game._id });
@@ -247,7 +255,11 @@ exports.deleteGame = asyncHandler(async (req, res) => {
 });
 
 exports.restoreGame = asyncHandler(async (req, res) => {
-  const game = await Game.findOneDeleted({ _id: req.params.id, mode: "solo" });
+  const game = await Game.findOneDeleted({
+    _id: req.params.id,
+    mode: "solo",
+    type: "quiz",
+  });
   if (!game) return response(res, 404, "Game not found in trash");
 
   await game.restore();
@@ -261,7 +273,11 @@ exports.restoreGame = asyncHandler(async (req, res) => {
 });
 
 exports.permanentDeleteGame = asyncHandler(async (req, res) => {
-  const game = await Game.findOneDeleted({ _id: req.params.id, mode: "solo" });
+  const game = await Game.findOneDeleted({
+    _id: req.params.id,
+    mode: "solo",
+    type: "quiz",
+  });
   if (!game) return response(res, 404, "Game not found in trash");
 
   // Cascade permanent delete all related data
@@ -283,7 +299,7 @@ exports.permanentDeleteGame = asyncHandler(async (req, res) => {
 
 // Restore all games
 exports.restoreAllGames = asyncHandler(async (req, res) => {
-  const games = await Game.findDeleted({ mode: "solo" });
+  const games = await Game.findDeleted({ mode: "solo", type: "quiz" });
   if (!games.length) {
     return response(res, 404, "No solo games found in trash to restore");
   }
@@ -302,7 +318,7 @@ exports.restoreAllGames = asyncHandler(async (req, res) => {
 
 // Permanent delete all games
 exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
-  const games = await Game.findDeleted({ mode: "solo" });
+  const games = await Game.findDeleted({ mode: "solo", type: "quiz" });
   if (!games.length) {
     return response(res, 404, "No solo games found in trash to delete");
   }
