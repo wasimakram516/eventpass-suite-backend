@@ -33,12 +33,12 @@ const gameSchema = new mongoose.Schema(
     },
     countdownTimer: { type: Number, default: 3 },
     gameSessionTimer: { type: Number, required: true },
-    mode: { type: String, enum: ["solo", "pvp"], required: true },
+    mode: { type: String, enum: ["solo", "pvp"], required: true }, // Solo = QuizNest, TapMatch | pvp = EventDuel
     questions: [questionSchema],
 
     type: {
       type: String,
-      enum: ["quiz", "memory"],
+      enum: ["quiz", "memory"], // quiz = QuizNest, EventDuel | memory = TapMatch
       default: "quiz",
     },
 

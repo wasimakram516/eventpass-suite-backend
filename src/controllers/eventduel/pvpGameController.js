@@ -72,6 +72,7 @@ exports.createGame = asyncHandler(async (req, res) => {
     countdownTimer: Number(countdownTimer) || 3,
     gameSessionTimer: Number(gameSessionTimer),
     mode: "pvp",
+    type: "quiz",
     isTeamMode: teamMode,
     maxTeams: parsedMaxTeams,
     playersPerTeam: parsedPlayersPerTeam,
@@ -109,7 +110,12 @@ exports.createGame = asyncHandler(async (req, res) => {
 
 // UPDATE GAME (PvP / Team Mode)
 exports.updateGame = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id).populate("teams");
+  const game = await Game.findById({
+    _id: req.params.id,
+    mode: "pvp",
+    type: "quiz",
+  }).populate("teams");
+  
   if (!game || game.mode !== "pvp") return response(res, 404, "Game not found");
 
   const {

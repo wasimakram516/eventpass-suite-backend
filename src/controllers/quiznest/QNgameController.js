@@ -96,7 +96,12 @@ exports.createGame = asyncHandler(async (req, res) => {
 
 // Update Game
 exports.updateGame = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id);
+  const game = await Game.find({
+    _id: req.params.id,
+    type: "quiz",
+    mode: "solo",
+  });
+
   if (!game) return response(res, 404, "Game not found");
 
   const { title, slug, choicesCount, countdownTimer, gameSessionTimer } =
