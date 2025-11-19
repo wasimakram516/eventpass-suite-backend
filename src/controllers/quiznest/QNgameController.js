@@ -36,23 +36,38 @@ exports.createGame = asyncHandler(async (req, res) => {
     backgroundImage = "";
 
   if (req.files?.cover) {
-    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "QuizNest", {
-      inline: true,
-    });
+    const uploaded = await uploadToS3(
+      req.files.cover[0],
+      business.slug,
+      "QuizNest",
+      {
+        inline: true,
+      }
+    );
     coverImage = uploaded.fileUrl;
   }
 
   if (req.files?.name) {
-    const uploaded = await uploadToS3(req.files.name[0], business.slug, "QuizNest", {
-      inline: true,
-    });
+    const uploaded = await uploadToS3(
+      req.files.name[0],
+      business.slug,
+      "QuizNest",
+      {
+        inline: true,
+      }
+    );
     nameImage = uploaded.fileUrl;
   }
 
   if (req.files?.background) {
-    const uploaded = await uploadToS3(req.files.background[0], business.slug, "QuizNest", {
-      inline: true,
-    });
+    const uploaded = await uploadToS3(
+      req.files.background[0],
+      business.slug,
+      "QuizNest",
+      {
+        inline: true,
+      }
+    );
     backgroundImage = uploaded.fileUrl;
   }
 
@@ -68,6 +83,7 @@ exports.createGame = asyncHandler(async (req, res) => {
     countdownTimer: countdownTimer || 3,
     gameSessionTimer,
     mode: "solo",
+    type: "quiz",
   });
 
   // Fire background recompute
@@ -101,25 +117,40 @@ exports.updateGame = asyncHandler(async (req, res) => {
 
   if (req.files?.cover) {
     if (game.coverImage) await deleteFromS3(game.coverImage);
-    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "QuizNest", {
-      inline: true,
-    });
+    const uploaded = await uploadToS3(
+      req.files.cover[0],
+      business.slug,
+      "QuizNest",
+      {
+        inline: true,
+      }
+    );
     game.coverImage = uploaded.fileUrl;
   }
 
   if (req.files?.name) {
     if (game.nameImage) await deleteFromS3(game.nameImage);
-    const uploaded = await uploadToS3(req.files.name[0], business.slug, "QuizNest", {
-      inline: true,
-    });
+    const uploaded = await uploadToS3(
+      req.files.name[0],
+      business.slug,
+      "QuizNest",
+      {
+        inline: true,
+      }
+    );
     game.nameImage = uploaded.fileUrl;
   }
 
   if (req.files?.background) {
     if (game.backgroundImage) await deleteFromS3(game.backgroundImage);
-    const uploaded = await uploadToS3(req.files.background[0], business.slug, "QuizNest", {
-      inline: true,
-    });
+    const uploaded = await uploadToS3(
+      req.files.background[0],
+      business.slug,
+      "QuizNest",
+      {
+        inline: true,
+      }
+    );
     game.backgroundImage = uploaded.fileUrl;
   }
 
@@ -135,33 +166,63 @@ exports.updateGame = asyncHandler(async (req, res) => {
 
 // Get Games by Business Slug
 exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
-  const business = await Business.findOne({ slug: req.params.slug }).notDeleted();
+  const business = await Business.findOne({
+    slug: req.params.slug,
+  }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
-  const games = await Game.find({ businessId: business._id, mode: "solo" })
+  const games = await Game.find({
+    businessId: business._id,
+    type: "quiz",
+    mode: "solo",
+  })
     .notDeleted()
     .populate("businessId", "name slug")
     .sort({ createdAt: -1 });
-  return response(res, 200, `Solo Games fetched for ${business.name}`, games);
+
+  return response(
+    res,
+    200,
+    `Solo Quiz Games fetched for ${business.name}`,
+    games
+  );
 });
 
 // Get All Games
 exports.getAllGames = asyncHandler(async (req, res) => {
-  const games = await Game.find().notDeleted().populate("businessId", "name slug");
-  return response(res, 200, "All games fetched", games);
+  const games = await Game.find({
+    type: "quiz",
+    mode: "solo",
+  })
+    .notDeleted()
+    .populate("businessId", "name slug");
+
+  return response(res, 200, "All solo quiz games fetched", games);
 });
 
 // Get Game by ID
 exports.getGameById = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.id).notDeleted();
+  const game = await Game.findOne({
+    _id: req.params.id,
+    type: "quiz",
+    mode: "solo",
+  }).notDeleted();
+
   if (!game) return response(res, 404, "Game not found");
+
   return response(res, 200, "Game found", game);
 });
 
 // Get game by slug
 exports.getGameBySlug = asyncHandler(async (req, res) => {
-  const game = await Game.findOne({ slug: req.params.slug }).notDeleted();
+  const game = await Game.findOne({
+    slug: req.params.slug,
+    type: "quiz",
+    mode: "solo",
+  }).notDeleted();
+
   if (!game) return response(res, 404, "Game not found");
+
   return response(res, 200, "Game found", game);
 });
 
@@ -264,15 +325,13 @@ exports.permanentDeleteAllGames = asyncHandler(async (req, res) => {
   return response(res, 200, "All eligible games permanently deleted");
 });
 
-
-
 /* Cascade permanent delete everything linked to a game */
 async function cascadePermanentDeleteGame(gameId) {
   const sessions = await GameSession.find({ gameId });
 
   if (sessions.length > 0) {
-    const playerIds = sessions.flatMap(session =>
-      session.players.map(p => p.playerId)
+    const playerIds = sessions.flatMap((session) =>
+      session.players.map((p) => p.playerId)
     );
 
     if (playerIds.length > 0) {

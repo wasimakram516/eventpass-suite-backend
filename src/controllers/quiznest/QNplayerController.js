@@ -16,10 +16,15 @@ exports.exportResults = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid game ID");
   }
 
-  const game = await Game.findById(gameId)
+  const game = await Game.findOne({
+    _id: gameId,
+    type: "quiz",
+    mode: "solo",
+  })
     .populate("businessId", "name")
     .notDeleted();
-  if (!game) return response(res, 404, "Game not found");
+
+  if (!game) return response(res, 404, "Game not found or invalid type/mode");
 
   const sessions = await GameSession.find({
     gameId,
@@ -77,8 +82,13 @@ exports.joinGame = asyncHandler(async (req, res) => {
 
   if (!name) return response(res, 400, "Name is required");
 
-  const game = await Game.findById(gameId).notDeleted();
-  if (!game) return response(res, 404, "Game not found");
+  const game = await Game.findOne({
+    _id: gameId,
+    type: "quiz",
+    mode: "solo",
+  }).notDeleted();
+
+  if (!game) return response(res, 404, "Game not found or invalid type/mode");
 
   // 1. Create Player
   const player = await Player.create({ name, company });
@@ -116,7 +126,16 @@ exports.submitResult = asyncHandler(async (req, res) => {
   const session = await GameSession.findById(sessionId)
     .notDeleted()
     .populate("gameId");
+
   if (!session) return response(res, 404, "Game session not found");
+
+  if (
+    !session.gameId ||
+    session.gameId.type !== "quiz" ||
+    session.gameId.mode !== "solo"
+  ) {
+    return response(res, 400, "Invalid game type or mode");
+  }
 
   const playerData = session.players.find(
     (p) => p.playerId.toString() === playerId
@@ -138,9 +157,18 @@ exports.submitResult = asyncHandler(async (req, res) => {
 
   return response(res, 200, "Result submitted", playerData);
 });
+
 // Get all players for a game
 exports.getPlayersByGame = asyncHandler(async (req, res) => {
   const gameId = req.params.gameId;
+
+  const game = await Game.findOne({
+    _id: gameId,
+    type: "quiz",
+    mode: "solo",
+  }).notDeleted();
+
+  if (!game) return response(res, 404, "Game not found or invalid type/mode");
 
   const sessions = await GameSession.find({ gameId })
     .notDeleted()
@@ -163,6 +191,14 @@ exports.getPlayersByGame = asyncHandler(async (req, res) => {
 // Get leaderboard for a game
 exports.getLeaderboard = asyncHandler(async (req, res) => {
   const gameId = req.params.gameId;
+
+  const game = await Game.findOne({
+    _id: gameId,
+    type: "quiz",
+    mode: "solo",
+  }).notDeleted();
+
+  if (!game) return response(res, 404, "Game not found or invalid type/mode");
 
   const sessions = await GameSession.find({
     gameId,

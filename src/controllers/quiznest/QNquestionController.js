@@ -58,7 +58,12 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
   const gameId = req.params.gameId;
   if (!req.file) return response(res, 400, "No file uploaded");
 
-  const game = await Game.findById(gameId).notDeleted();
+  const game = await Game.findOne({
+    _id: gameId,
+    type: "quiz",
+    mode: "solo",
+  }).notDeleted();
+
   if (!game) return response(res, 404, "Game not found");
 
   const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
@@ -132,7 +137,12 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
 
 // Get all questions for a game
 exports.getQuestions = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.gameId).notDeleted();
+  const game = await Game.findOne({
+    _id: req.params.gameId,
+    type: "quiz",
+    mode: "solo",
+  }).notDeleted();
+
   if (!game) return response(res, 404, "Game not found");
 
   const activeQuestions = game.questions.filter(
@@ -149,13 +159,23 @@ exports.addQuestion = asyncHandler(async (req, res) => {
     return response(res, 400, "All fields are required");
   }
 
-  const game = await Game.findById(req.params.gameId).notDeleted();
+  const game = await Game.findOne({
+    _id: req.params.gameId,
+    type: "quiz",
+    mode: "solo",
+  }).notDeleted();
+
   if (!game) return response(res, 404, "Game not found");
 
-  const parsedAnswers = typeof answers === 'string' ? JSON.parse(answers) : answers;
+  const parsedAnswers =
+    typeof answers === "string" ? JSON.parse(answers) : answers;
 
   if (parsedAnswers.length !== game.choicesCount) {
-    return response(res, 400, `This quiz requires exactly ${game.choicesCount} options`);
+    return response(
+      res,
+      400,
+      `This quiz requires exactly ${game.choicesCount} options`
+    );
   }
 
   const business = await Business.findById(game.businessId);
@@ -165,9 +185,14 @@ exports.addQuestion = asyncHandler(async (req, res) => {
   const answerImages = [];
 
   if (req.files?.questionImage?.[0]) {
-    const upload = await uploadToS3(req.files.questionImage[0], business.slug, "QuizNest", {
-      inline: true,
-    });
+    const upload = await uploadToS3(
+      req.files.questionImage[0],
+      business.slug,
+      "QuizNest",
+      {
+        inline: true,
+      }
+    );
     questionImage = upload.fileUrl;
   }
 
@@ -200,24 +225,44 @@ exports.addQuestion = asyncHandler(async (req, res) => {
 
 // Update a question
 exports.updateQuestion = asyncHandler(async (req, res) => {
-  const { question, answers, correctAnswerIndex, hint, removeQuestionImage, removeAnswerImages } = req.body;
+  const {
+    question,
+    answers,
+    correctAnswerIndex,
+    hint,
+    removeQuestionImage,
+    removeAnswerImages,
+  } = req.body;
 
-  const game = await Game.findById(req.params.gameId).notDeleted();
+  const game = await Game.findOne({
+    _id: req.params.gameId,
+    type: "quiz",
+    mode: "solo",
+  }).notDeleted();
+
   if (!game) return response(res, 404, "Game not found");
 
   const q = game.questions.id(req.params.questionId);
   if (!q) return response(res, 404, "Question not found");
 
-  const parsedAnswers = answers ? (typeof answers === 'string' ? JSON.parse(answers) : answers) : null;
+  const parsedAnswers = answers
+    ? typeof answers === "string"
+      ? JSON.parse(answers)
+      : answers
+    : null;
 
   if (parsedAnswers && parsedAnswers.length !== game.choicesCount) {
-    return response(res, 400, `This quiz requires exactly ${game.choicesCount} options`);
+    return response(
+      res,
+      400,
+      `This quiz requires exactly ${game.choicesCount} options`
+    );
   }
 
   const business = await Business.findById(game.businessId);
   if (!business) return response(res, 404, "Business not found");
 
-  if (removeQuestionImage === 'true' && q.questionImage) {
+  if (removeQuestionImage === "true" && q.questionImage) {
     await deleteFromS3(q.questionImage);
     q.questionImage = null;
   }
@@ -234,9 +279,14 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
 
   if (req.files?.questionImage?.[0]) {
     if (q.questionImage) await deleteFromS3(q.questionImage);
-    const upload = await uploadToS3(req.files.questionImage[0], business.slug, "QuizNest", {
-      inline: true,
-    });
+    const upload = await uploadToS3(
+      req.files.questionImage[0],
+      business.slug,
+      "QuizNest",
+      {
+        inline: true,
+      }
+    );
     q.questionImage = upload.fileUrl;
   }
 
@@ -245,7 +295,9 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
       ? req.body.answerImageIndices.map(Number)
       : [Number(req.body.answerImageIndices)];
 
-    const newAnswerImages = [...(q.answerImages || Array(game.choicesCount).fill(null))];
+    const newAnswerImages = [
+      ...(q.answerImages || Array(game.choicesCount).fill(null)),
+    ];
 
     for (let i = 0; i < req.files.answerImages.length; i++) {
       const file = req.files.answerImages[i];
@@ -267,7 +319,10 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
 
   q.question = question || q.question;
   q.answers = parsedAnswers || q.answers;
-  q.correctAnswerIndex = correctAnswerIndex !== undefined ? parseInt(correctAnswerIndex) : q.correctAnswerIndex;
+  q.correctAnswerIndex =
+    correctAnswerIndex !== undefined
+      ? parseInt(correctAnswerIndex)
+      : q.correctAnswerIndex;
   q.hint = hint !== undefined ? hint : q.hint;
 
   await game.save();
@@ -281,7 +336,12 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
 
 // Delete a question (soft delete)
 exports.deleteQuestion = asyncHandler(async (req, res) => {
-  const game = await Game.findById(req.params.gameId);
+  const game = await Game.findOne({
+    _id: req.params.gameId,
+    type: "quiz",
+    mode: "solo",
+  });
+
   if (!game) return response(res, 404, "Game not found");
 
   const q = game.questions.id(req.params.questionId);
@@ -310,7 +370,9 @@ exports.restoreQuestion = asyncHandler(async (req, res) => {
     "questions._id": id,
     "questions.isDeleted": true,
     mode: "solo",
+    type: "quiz",
   });
+
   if (!game)
     return response(res, 404, "Deleted question not found in solo games");
 
@@ -336,6 +398,7 @@ exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
     "questions._id": id,
     "questions.isDeleted": true,
     mode: "solo",
+    type: "quiz",
   });
   if (!game)
     return response(res, 404, "Deleted question not found in solo games");
@@ -365,7 +428,11 @@ exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
 
 // Restore all questions
 exports.restoreAllQuestions = asyncHandler(async (req, res) => {
-  const games = await Game.find({ mode: "solo" });
+  const games = await Game.find({
+    mode: "solo",
+    type: "quiz",
+  });
+
   let restoredCount = 0;
 
   for (const game of games) {
@@ -397,7 +464,11 @@ exports.restoreAllQuestions = asyncHandler(async (req, res) => {
 
 // Permanent delete all questions
 exports.permanentDeleteAllQuestions = asyncHandler(async (req, res) => {
-  const games = await Game.find({ mode: "solo" });
+  const games = await Game.find({
+    mode: "solo",
+    type: "quiz",
+  });
+
   let deletedCount = 0;
 
   for (const game of games) {
