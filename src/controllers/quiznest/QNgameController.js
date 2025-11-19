@@ -36,21 +36,21 @@ exports.createGame = asyncHandler(async (req, res) => {
     backgroundImage = "";
 
   if (req.files?.cover) {
-    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "quiznest", {
+    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "QuizNest", {
       inline: true,
     });
     coverImage = uploaded.fileUrl;
   }
 
   if (req.files?.name) {
-    const uploaded = await uploadToS3(req.files.name[0], business.slug, "quiznest", {
+    const uploaded = await uploadToS3(req.files.name[0], business.slug, "QuizNest", {
       inline: true,
     });
     nameImage = uploaded.fileUrl;
   }
 
   if (req.files?.background) {
-    const uploaded = await uploadToS3(req.files.background[0], business.slug, "quiznest", {
+    const uploaded = await uploadToS3(req.files.background[0], business.slug, "QuizNest", {
       inline: true,
     });
     backgroundImage = uploaded.fileUrl;
@@ -101,7 +101,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
 
   if (req.files?.cover) {
     if (game.coverImage) await deleteFromS3(game.coverImage);
-    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "quiznest", {
+    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "QuizNest", {
       inline: true,
     });
     game.coverImage = uploaded.fileUrl;
@@ -109,7 +109,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
 
   if (req.files?.name) {
     if (game.nameImage) await deleteFromS3(game.nameImage);
-    const uploaded = await uploadToS3(req.files.name[0], business.slug, "quiznest", {
+    const uploaded = await uploadToS3(req.files.name[0], business.slug, "QuizNest", {
       inline: true,
     });
     game.nameImage = uploaded.fileUrl;
@@ -117,7 +117,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
 
   if (req.files?.background) {
     if (game.backgroundImage) await deleteFromS3(game.backgroundImage);
-    const uploaded = await uploadToS3(req.files.background[0], business.slug, "quiznest", {
+    const uploaded = await uploadToS3(req.files.background[0], business.slug, "QuizNest", {
       inline: true,
     });
     game.backgroundImage = uploaded.fileUrl;

@@ -165,7 +165,7 @@ exports.addQuestion = asyncHandler(async (req, res) => {
   const answerImages = [];
 
   if (req.files?.questionImage?.[0]) {
-    const upload = await uploadToS3(req.files.questionImage[0], business.slug, "quiznest", {
+    const upload = await uploadToS3(req.files.questionImage[0], business.slug, "QuizNest", {
       inline: true,
     });
     questionImage = upload.fileUrl;
@@ -173,7 +173,7 @@ exports.addQuestion = asyncHandler(async (req, res) => {
 
   if (req.files?.answerImages) {
     for (const file of req.files.answerImages) {
-      const upload = await uploadToS3(file, business.slug, "quiznest", {
+      const upload = await uploadToS3(file, business.slug, "QuizNest", {
         inline: true,
       });
       answerImages.push(upload.fileUrl);
@@ -234,7 +234,7 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
 
   if (req.files?.questionImage?.[0]) {
     if (q.questionImage) await deleteFromS3(q.questionImage);
-    const upload = await uploadToS3(req.files.questionImage[0], business.slug, "quiznest", {
+    const upload = await uploadToS3(req.files.questionImage[0], business.slug, "QuizNest", {
       inline: true,
     });
     q.questionImage = upload.fileUrl;
@@ -251,7 +251,7 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
       const file = req.files.answerImages[i];
       const targetIndex = indices[i];
 
-      const upload = await uploadToS3(file, business.slug, "quiznest", {
+      const upload = await uploadToS3(file, business.slug, "QuizNest", {
         inline: true,
       });
 
