@@ -8,7 +8,7 @@ const response = require("../../utils/response");
 // Get question distribution for pie charts (multi, rating, nps questions)
 exports.getQuestionDistribution = asyncHandler(async (req, res) => {
     const { slug } = req.params;
-    const { questionId, topN } = req.query;
+    const { questionId } = req.query;
 
     if (!questionId) return response(res, 400, "Question ID is required");
 
@@ -21,8 +21,6 @@ exports.getQuestionDistribution = asyncHandler(async (req, res) => {
     if (question.type === "text") {
         return response(res, 400, "Text questions are not supported for insights");
     }
-
-    const topLimit = topN ? parseInt(topN) : null;
 
     let pipeline = [];
 
@@ -55,10 +53,6 @@ exports.getQuestionDistribution = asyncHandler(async (req, res) => {
             },
             { $sort: { count: -1 } }
         ];
-
-        if (topLimit && topLimit > 0) {
-            pipeline.push({ $limit: topLimit });
-        }
 
         const distribution = await SurveyResponse.aggregate(pipeline);
 
@@ -229,7 +223,6 @@ exports.getAvailableQuestions = asyncHandler(async (req, res) => {
                     name: String(q._id),
                     label: q.label || `Question ${idx + 1}`,
                     type: "multi",
-                    allowTopN: true,
                     questionType: "multi",
                     options: (q.options || []).map(opt => ({
                         id: String(opt._id),
@@ -241,7 +234,6 @@ exports.getAvailableQuestions = asyncHandler(async (req, res) => {
                     name: String(q._id),
                     label: q.label || `Question ${idx + 1}`,
                     type: q.type,
-                    allowTopN: false,
                     questionType: q.type,
                     scale: q.scale || { min: 1, max: 5, step: 1 }
                 });
