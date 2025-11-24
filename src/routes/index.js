@@ -37,6 +37,7 @@ const insightsRoutes = require("./EventReg/insightsRoutes");
 const surveyRecipientRoutes = require("./surveyguru/surveyRecipientRoutes");
 const surveyFormRoutes = require("./surveyguru/surveyFormRoutes");
 const surveyResponseRoutes = require("./surveyguru/surveyResponseRoutes");
+const surveyGuruInsightsRoutes = require("./surveyguru/insightsRoutes");
 
 // CheckIn
 const checkInEventRoutes = require("./CheckIn/eventRoutes");
@@ -93,6 +94,7 @@ router.use("/eventreg/insights", insightsRoutes);
 router.use("/surveyguru", surveyRecipientRoutes);
 router.use("/surveyguru", surveyFormRoutes);
 router.use("/surveyguru", surveyResponseRoutes);
+router.use("/surveyguru", surveyGuruInsightsRoutes);
 
 // ------------------ CheckIn ------------------
 router.use("/checkin/events", checkInEventRoutes);
