@@ -27,4 +27,12 @@ function emitLoadingProgress(eventId, loaded, total, data = null) {
   });
 }
 
-module.exports = { emitUploadProgress, emitEmailProgress, emitLoadingProgress };
+// Emit new registration when created
+function emitNewRegistration(eventId, registrationData) {
+  emitUpdate("registrationNew", {
+    eventId,
+    registration: registrationData,
+  });
+}
+
+module.exports = { emitUploadProgress, emitEmailProgress, emitLoadingProgress, emitNewRegistration };
