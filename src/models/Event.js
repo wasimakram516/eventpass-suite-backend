@@ -34,6 +34,7 @@ const EventSchema = new mongoose.Schema({
   capacity: { type: Number, default: 999 },
   showQrAfterRegistration: { type: Boolean, default: false },
   showQrOnBadge: { type: Boolean, default: true },
+  requiresApproval: { type: Boolean, default: false },
   defaultLanguage: {
     type: String,
     enum: ["en", "ar"],
