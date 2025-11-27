@@ -101,6 +101,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     businessSlug,
     showQrAfterRegistration,
     showQrOnBadge,
+    requiresApproval,
     defaultLanguage,
   } = req.body;
 
@@ -243,6 +244,8 @@ exports.createEvent = asyncHandler(async (req, res) => {
     formFields: parsedFormFields,
     showQrAfterRegistration,
     showQrOnBadge,
+    requiresApproval:
+      requiresApproval === "true" || requiresApproval === true,
     defaultLanguage: defaultLanguage || "en",
   });
 
@@ -267,6 +270,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     formFields,
     showQrAfterRegistration,
     showQrOnBadge,
+    requiresApproval,
     defaultLanguage,
   } = req.body;
 
@@ -447,6 +451,15 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     showQrOnBadge === "false"
   ) {
     updates.showQrOnBadge = showQrOnBadge === "true" || showQrOnBadge === true;
+  }
+
+  if (
+    typeof requiresApproval === "boolean" ||
+    requiresApproval === "true" ||
+    requiresApproval === "false"
+  ) {
+    updates.requiresApproval =
+      requiresApproval === "true" || requiresApproval === true;
   }
 
   if (defaultLanguage && ["en", "ar"].includes(defaultLanguage)) {
