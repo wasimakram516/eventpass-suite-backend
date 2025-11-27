@@ -14,6 +14,7 @@ const {
   sendBulkEmails,
   unsentCount,
   updateRegistration,
+  updateRegistrationApproval,
   exportRegistrations,
 } = require("../../controllers/EventReg/registrationController");
 
@@ -24,6 +25,9 @@ const eventRegAccess = [protect, checkPermission.eventreg];
 router.post("/", createRegistration);
 
 router.put("/:id", eventRegAccess, updateRegistration);
+
+// Update registration approval status
+router.patch("/:id/approval", eventRegAccess, updateRegistrationApproval);
 
 // GET count of unemailed registrations for an event (protected)
 router.get("/event/:slug/unsent-count", eventRegAccess, unsentCount);
