@@ -24,7 +24,8 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const {
   emitUploadProgress,
   emitEmailProgress,
-  emitLoadingProgress
+  emitLoadingProgress,
+  emitNewRegistration
 } = require("../../socket/modules/eventreg/eventRegSocket");
 
 const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder");
@@ -571,6 +572,9 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   }
 
   // --- Create registration ---
+
+  const approvalStatus = event.requiresApproval ? "pending" : "approved";
+
   const newRegistration = await Registration.create({
     eventId,
     fullName,
@@ -578,6 +582,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     phone,
     company,
     customFields,
+    approvalStatus,
   });
 
   // --- Increment event counter ---
@@ -620,6 +625,23 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   recomputeAndEmit(event.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
+
+
+  const enhancedRegistration = {
+    _id: newRegistration._id,
+    token: newRegistration.token,
+    emailSent: newRegistration.emailSent,
+    createdAt: newRegistration.createdAt,
+    approvalStatus: newRegistration.approvalStatus,
+    fullName: newRegistration.fullName,
+    email: newRegistration.email,
+    phone: newRegistration.phone,
+    company: newRegistration.company,
+    customFields: newRegistration.customFields || {},
+    walkIns: [],
+  };
+
+  emitNewRegistration(event._id.toString(), enhancedRegistration);
 
   return response(res, 201, "Registration successful", newRegistration);
 });
@@ -679,6 +701,48 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
   await reg.save();
 
   return response(res, 200, "Registration updated successfully", reg);
+});
+
+// UPDATE registration approval status
+exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return response(res, 400, "Invalid registration ID");
+  }
+
+  const validStatuses = ["pending", "approved", "rejected"];
+  if (!status || !validStatuses.includes(status)) {
+    return response(
+      res,
+      400,
+      `Status must be one of: ${validStatuses.join(", ")}`
+    );
+  }
+
+  const registration = await Registration.findById(id).populate("eventId");
+  if (!registration) {
+    return response(res, 404, "Registration not found");
+  }
+
+  if (!registration.eventId?.requiresApproval) {
+    return response(
+      res,
+      400,
+      "This event does not require approval"
+    );
+  }
+
+  registration.approvalStatus = status;
+  await registration.save();
+
+
+  recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(res, 200, "Registration approval status updated", registration);
 });
 
 exports.unsentCount = asyncHandler(async (req, res) => {
@@ -831,6 +895,7 @@ async function loadRemainingRecords(eventId, total) {
             token: reg.token,
             emailSent: reg.emailSent,
             createdAt: reg.createdAt,
+            approvalStatus: reg.approvalStatus,
             fullName: reg.fullName,
             email: reg.email,
             phone: reg.phone,
@@ -892,6 +957,7 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
         token: reg.token,
         emailSent: reg.emailSent,
         createdAt: reg.createdAt,
+        approvalStatus: reg.approvalStatus,
         fullName: reg.fullName,
         email: reg.email,
         phone: reg.phone,
@@ -943,6 +1009,20 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     );
   }
 
+  if (registration.eventId?.requiresApproval) {
+    if (registration.approvalStatus !== "approved") {
+      return response(
+        res,
+        200,
+        "This registration is not approved",
+        {
+          notApproved: true,
+          approvalStatus: registration.approvalStatus
+        }
+      );
+    }
+  }
+
   const walkin = new WalkIn({
     registrationId: registration._id,
     eventId: registration.eventId?._id,
@@ -981,6 +1061,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     eventName: registration.eventId?.name || "Unknown Event",
     eventId: registration.eventId?._id,
     showQrOnBadge: registration.eventId?.showQrOnBadge,
+    requiresApproval: registration.eventId?.requiresApproval || false,
     createdAt: registration.createdAt,
     walkinId: walkin._id,
     scannedAt: walkin.scannedAt,
