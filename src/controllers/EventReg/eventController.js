@@ -147,17 +147,38 @@ exports.createEvent = asyncHandler(async (req, res) => {
     logoUrl = uploadResult.fileUrl;
   }
 
-  let backgroundUrl = null;
-  if (req.files?.background) {
+  const background = {};
+  if (req.files?.backgroundEn) {
+    const file = req.files.backgroundEn[0];
     const uploadResult = await uploadToS3(
-      req.files.background[0],
+      file,
       business.slug,
       "EventReg",
       {
         inline: true,
       }
     );
-    backgroundUrl = uploadResult.fileUrl;
+    background.en = {
+      key: uploadResult.key,
+      url: uploadResult.fileUrl,
+      fileType: file.mimetype.startsWith("video/") ? "video" : "image",
+    };
+  }
+  if (req.files?.backgroundAr) {
+    const file = req.files.backgroundAr[0];
+    const uploadResult = await uploadToS3(
+      file,
+      business.slug,
+      "EventReg",
+      {
+        inline: true,
+      }
+    );
+    background.ar = {
+      key: uploadResult.key,
+      url: uploadResult.fileUrl,
+      fileType: file.mimetype.startsWith("video/") ? "video" : "image",
+    };
   }
 
   // Build branding media array (files and/or direct URLs)
@@ -230,7 +251,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
           inputType: field.inputType,
           values:
             ["radio", "list"].includes(field.inputType) &&
-            Array.isArray(field.values)
+              Array.isArray(field.values)
               ? field.values
               : [],
           required: field.required === true,
@@ -251,7 +272,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     venue,
     description,
     logoUrl,
-    backgroundUrl,
+    ...(Object.keys(background).length > 0 ? { background } : {}),
     ...(brandingMedia.length ? { brandingMedia } : {}),
     agendaUrl,
     capacity,
@@ -287,7 +308,8 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     requiresApproval,
     defaultLanguage,
     removeLogo,
-    removeBackground,
+    removeBackgroundEn,
+    removeBackgroundAr,
   } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -342,17 +364,54 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     updates.logoUrl = uploadResult.fileUrl;
   }
 
-  if (req.files?.background) {
-    if (event.backgroundUrl) await deleteFromS3(event.backgroundUrl);
+  if (req.files?.backgroundEn) {
+    const file = req.files.backgroundEn[0];
+    if (event.background?.en?.key || event.background?.en?.url) {
+      try {
+        await deleteFromS3(event.background.en.key || event.background.en.url);
+      } catch { }
+    }
     const uploadResult = await uploadToS3(
-      req.files.background[0],
+      file,
       business.slug,
       "EventReg",
       {
         inline: true,
       }
     );
-    updates.backgroundUrl = uploadResult.fileUrl;
+    updates.background = {
+      ...(updates.background || event.background || {}),
+      en: {
+        key: uploadResult.key,
+        url: uploadResult.fileUrl,
+        fileType: file.mimetype.startsWith("video/") ? "video" : "image",
+      },
+    };
+  }
+
+  if (req.files?.backgroundAr) {
+    const file = req.files.backgroundAr[0];
+    if (event.background?.ar?.key || event.background?.ar?.url) {
+      try {
+        await deleteFromS3(event.background.ar.key || event.background.ar.url);
+      } catch { }
+    }
+    const uploadResult = await uploadToS3(
+      file,
+      business.slug,
+      "EventReg",
+      {
+        inline: true,
+      }
+    );
+    updates.background = {
+      ...(updates.background || event.background || {}),
+      ar: {
+        key: uploadResult.key,
+        url: uploadResult.fileUrl,
+        fileType: file.mimetype.startsWith("video/") ? "video" : "image",
+      },
+    };
   }
 
   if (removeLogo === "true") {
@@ -360,9 +419,28 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     updates.logoUrl = null;
   }
 
-  if (removeBackground === "true") {
-    if (event.backgroundUrl) await deleteFromS3(event.backgroundUrl);
-    updates.backgroundUrl = null;
+  if (removeBackgroundEn === "true") {
+    if (event.background?.en?.key || event.background?.en?.url) {
+      try {
+        await deleteFromS3(event.background.en.key || event.background.en.url);
+      } catch { }
+    }
+    updates.background = {
+      ...(updates.background || event.background || {}),
+      en: null,
+    };
+  }
+
+  if (removeBackgroundAr === "true") {
+    if (event.background?.ar?.key || event.background?.ar?.url) {
+      try {
+        await deleteFromS3(event.background.ar.key || event.background.ar.url);
+      } catch { }
+    }
+    updates.background = {
+      ...(updates.background || event.background || {}),
+      ar: null,
+    };
   }
 
   if (req.body.clearAllBrandingLogos === "true") {
@@ -371,7 +449,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         if (m?.logoUrl) {
           try {
             await deleteFromS3(m.logoUrl);
-          } catch {}
+          } catch { }
         }
       }
     }
@@ -404,7 +482,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         if (removeIds.includes(media._id?.toString()) && media.logoUrl) {
           try {
             await deleteFromS3(media.logoUrl);
-          } catch {}
+          } catch { }
         }
       }
     }
@@ -465,7 +543,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
           inputType: field.inputType,
           values:
             ["radio", "list"].includes(field.inputType) &&
-            Array.isArray(field.values)
+              Array.isArray(field.values)
               ? field.values
               : [],
           required: field.required === true,
@@ -593,12 +671,23 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   // Delete any media
   if (event.logoUrl) await deleteFromS3(event.logoUrl);
   if (event.backgroundUrl) await deleteFromS3(event.backgroundUrl);
+  // Delete background 
+  if (event.background?.en?.key || event.background?.en?.url) {
+    try {
+      await deleteFromS3(event.background.en.key || event.background.en.url);
+    } catch { }
+  }
+  if (event.background?.ar?.key || event.background?.ar?.url) {
+    try {
+      await deleteFromS3(event.background.ar.key || event.background.ar.url);
+    } catch { }
+  }
   if (Array.isArray(event.brandingMedia) && event.brandingMedia.length) {
     for (const m of event.brandingMedia) {
       if (m?.logoUrl) {
         try {
           await deleteFromS3(m.logoUrl);
-        } catch {}
+        } catch { }
       }
     }
   }
