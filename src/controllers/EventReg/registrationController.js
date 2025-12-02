@@ -25,7 +25,7 @@ const {
   emitUploadProgress,
   emitEmailProgress,
   emitLoadingProgress,
-  emitNewRegistration
+  emitNewRegistration,
 } = require("../../socket/modules/eventreg/eventRegSocket");
 
 const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder");
@@ -40,20 +40,24 @@ function validateUploadedFileFields(event, rows) {
   }
 
   const firstRow = rows[0];
-  const uploadedFields = Object.keys(firstRow).filter(key => key !== "Token");
+  const uploadedFields = Object.keys(firstRow).filter((key) => key !== "Token");
 
   const hasCustomFields = event.formFields && event.formFields.length > 0;
 
   if (hasCustomFields) {
     const requiredFields = event.formFields
-      .filter(f => f.required)
-      .map(f => f.inputName);
+      .filter((f) => f.required)
+      .map((f) => f.inputName);
 
-    const missingRequiredFields = requiredFields.filter(field => !uploadedFields.includes(field));
+    const missingRequiredFields = requiredFields.filter(
+      (field) => !uploadedFields.includes(field)
+    );
     if (missingRequiredFields.length > 0) {
       return {
         valid: false,
-        error: `Uploaded file is missing required fields: ${missingRequiredFields.join(", ")}`
+        error: `Uploaded file is missing required fields: ${missingRequiredFields.join(
+          ", "
+        )}`,
       };
     }
 
@@ -61,11 +65,15 @@ function validateUploadedFileFields(event, rows) {
   } else {
     const classicRequiredFields = ["Full Name", "Email"];
 
-    const missingRequiredFields = classicRequiredFields.filter(field => !uploadedFields.includes(field));
+    const missingRequiredFields = classicRequiredFields.filter(
+      (field) => !uploadedFields.includes(field)
+    );
     if (missingRequiredFields.length > 0) {
       return {
         valid: false,
-        error: `Uploaded file is missing required fields: ${missingRequiredFields.join(", ")}`
+        error: `Uploaded file is missing required fields: ${missingRequiredFields.join(
+          ", "
+        )}`,
       };
     }
 
@@ -89,8 +97,8 @@ function validateAllRows(event, rows) {
   let allRequiredFields = [];
   if (hasCustomFields) {
     allRequiredFields = event.formFields
-      .filter(f => f.required)
-      .map(f => f.inputName);
+      .filter((f) => f.required)
+      .map((f) => f.inputName);
   } else {
     allRequiredFields = ["Full Name", "Email"];
   }
@@ -127,7 +135,12 @@ function validateAllRows(event, rows) {
       const email = row["Email"];
       extractedEmail = email;
 
-      if (!fullName || fullName.trim() === "" || !email || email.trim() === "") {
+      if (
+        !fullName ||
+        fullName.trim() === "" ||
+        !email ||
+        email.trim() === ""
+      ) {
         hasMissingFields = true;
       }
       if (email && !isValidEmail(email)) {
@@ -159,7 +172,11 @@ function validateAllRows(event, rows) {
     const rowNumbersText = formatRowNumbers(invalidRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Row${invalidRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${invalidRowNumbers.length > 1 ? "have" : "has"} missing required fields: ${allRequiredFields.join(", ")}.`
+      error: `Cannot upload file. Row${
+        invalidRowNumbers.length > 1 ? "s" : ""
+      } ${rowNumbersText} ${
+        invalidRowNumbers.length > 1 ? "have" : "has"
+      } missing required fields: ${allRequiredFields.join(", ")}.`,
     };
   }
 
@@ -167,7 +184,11 @@ function validateAllRows(event, rows) {
     const rowNumbersText = formatRowNumbers(invalidEmailRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Row${invalidEmailRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${invalidEmailRowNumbers.length > 1 ? "have" : "has"} invalid email format.`
+      error: `Cannot upload file. Row${
+        invalidEmailRowNumbers.length > 1 ? "s" : ""
+      } ${rowNumbersText} ${
+        invalidEmailRowNumbers.length > 1 ? "have" : "has"
+      } invalid email format.`,
     };
   }
 
@@ -175,7 +196,9 @@ function validateAllRows(event, rows) {
     const rowNumbersText = formatRowNumbers(duplicateEmailRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Duplicate email(s) found at row${duplicateEmailRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText}. Each email must be unique.`
+      error: `Cannot upload file. Duplicate email(s) found at row${
+        duplicateEmailRowNumbers.length > 1 ? "s" : ""
+      } ${rowNumbersText}. Each email must be unique.`,
     };
   }
 
@@ -187,8 +210,8 @@ function formatRowNumbers(arr) {
   return arr.length === 1
     ? arr[0].toString()
     : arr.length === 2
-      ? `${arr[0]} and ${arr[1]}`
-      : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
+    ? `${arr[0]} and ${arr[1]}`
+    : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
 }
 
 // DOWNLOAD sample Excel template
@@ -236,7 +259,9 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
 
   const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
   const sheetName = workbook.SheetNames[0];
-  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+    defval: "",
+  });
 
   if (!rows.length) {
     return response(res, 400, "Uploaded file is empty");
@@ -244,7 +269,11 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
 
   const fieldValidation = validateUploadedFileFields(event, rows);
   if (!fieldValidation.valid) {
-    return response(res, 400, fieldValidation.error || "Uploaded file does not contain required fields.");
+    return response(
+      res,
+      400,
+      fieldValidation.error || "Uploaded file does not contain required fields."
+    );
   }
 
   const rowValidation = validateAllRows(event, rows);
@@ -257,8 +286,9 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
   });
 
   setImmediate(() => {
-    uploadProcessor(event, rows)
-      .catch(err => console.error("UPLOAD PROCESSOR FAILED:", err));
+    uploadProcessor(event, rows).catch((err) =>
+      console.error("UPLOAD PROCESSOR FAILED:", err)
+    );
   });
 });
 
@@ -287,7 +317,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   // -------------------------
   const mongoQuery = {
     eventId,
-    isDeleted: { $ne: true }
+    isDeleted: { $ne: true },
   };
 
   if (token) mongoQuery.token = new RegExp(token, "i");
@@ -319,8 +349,10 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   // -------------------------
   if (search) {
     const s = search.toLowerCase();
-    regs = regs.filter(r => {
-      const cf = Object.values(r.customFields || {}).join(" ").toLowerCase();
+    regs = regs.filter((r) => {
+      const cf = Object.values(r.customFields || {})
+        .join(" ")
+        .toLowerCase();
 
       return (
         (r.fullName || "").toLowerCase().includes(s) ||
@@ -341,7 +373,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     .lean();
 
   const walkMap = {};
-  walkins.forEach(w => {
+  walkins.forEach((w) => {
     const id = w.registrationId.toString();
     if (!walkMap[id]) walkMap[id] = [];
     walkMap[id].push(w);
@@ -349,19 +381,26 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
   let filteredRegs = regs;
   if (scannedBy || scannedFrom || scannedTo) {
-    filteredRegs = regs.filter(r => {
+    filteredRegs = regs.filter((r) => {
       const list = walkMap[r._id.toString()] || [];
 
-      return list.some(w => {
+      return list.some((w) => {
         if (scannedBy) {
           const match =
-            (w.scannedBy?.name || "").toLowerCase().includes(scannedBy.toLowerCase()) ||
-            (w.scannedBy?.email || "").toLowerCase().includes(scannedBy.toLowerCase());
+            (w.scannedBy?.name || "")
+              .toLowerCase()
+              .includes(scannedBy.toLowerCase()) ||
+            (w.scannedBy?.email || "")
+              .toLowerCase()
+              .includes(scannedBy.toLowerCase());
 
           if (!match) return false;
         }
 
-        if (scannedFrom && new Date(w.scannedAt) < new Date(Number(scannedFrom))) {
+        if (
+          scannedFrom &&
+          new Date(w.scannedAt) < new Date(Number(scannedFrom))
+        ) {
           return false;
         }
 
@@ -380,7 +419,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   // DYNAMIC FIELDS
   // -------------------------
   const dynamicFields = event.formFields?.length
-    ? event.formFields.map(f => f.inputName)
+    ? event.formFields.map((f) => f.inputName)
     : ["fullName", "email", "phone", "company"];
 
   // -------------------------
@@ -410,9 +449,13 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   const regHeaders = [...dynamicFields, "Token", "Registered At"];
   lines.push(regHeaders.join(","));
 
-  regs.forEach(reg => {
-    const row = dynamicFields.map(f =>
-      `"${((reg.customFields?.[f] ?? reg[f] ?? "") + "").replace(/"/g, '""')}"`
+  regs.forEach((reg) => {
+    const row = dynamicFields.map(
+      (f) =>
+        `"${((reg.customFields?.[f] ?? reg[f] ?? "") + "").replace(
+          /"/g,
+          '""'
+        )}"`
     );
 
     row.push(`"${reg.token}"`);
@@ -424,8 +467,8 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   // -------------------------
   // WALK-INS SECTION
   // -------------------------
-  const allWalkins = walkins.filter(w =>
-    regs.some(r => r._id.toString() === w.registrationId.toString())
+  const allWalkins = walkins.filter((w) =>
+    regs.some((r) => r._id.toString() === w.registrationId.toString())
   );
 
   if (allWalkins.length > 0) {
@@ -438,15 +481,21 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
       "Registered At",
       "Scanned At",
       "Scanned By",
-      "Staff Type"
+      "Staff Type",
     ];
     lines.push(wiHeaders.join(","));
 
-    allWalkins.forEach(w => {
-      const reg = regs.find(r => r._id.toString() === w.registrationId.toString());
+    allWalkins.forEach((w) => {
+      const reg = regs.find(
+        (r) => r._id.toString() === w.registrationId.toString()
+      );
 
-      const row = dynamicFields.map(f =>
-        `"${((reg?.customFields?.[f] ?? reg?.[f] ?? "") + "").replace(/"/g, '""')}"`
+      const row = dynamicFields.map(
+        (f) =>
+          `"${((reg?.customFields?.[f] ?? reg?.[f] ?? "") + "").replace(
+            /"/g,
+            '""'
+          )}"`
       );
 
       row.push(`"${reg.token}"`);
@@ -558,17 +607,37 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   }
 
   // --- Prevent duplicates ---
-  const emailForDuplicate = formFields.length > 0 ? pickEmail(customFields) : email;
-  const phoneForDuplicate = formFields.length > 0 ? pickPhone(customFields) : phone;
-  const orClauses = [];
-  if (emailForDuplicate) orClauses.push({ email: emailForDuplicate });
-  if (phoneForDuplicate) orClauses.push({ phone: phoneForDuplicate });
+  let extractedEmail = null;
+  let extractedPhone = null;
 
-  if (orClauses.length) {
-    const dup = await Registration.findOne({ eventId, $or: orClauses });
-    if (dup) {
-      return response(res, 409, "Already registered with this email or phone");
-    }
+  if (formFields.length > 0) {
+    extractedEmail = pickEmail(customFields);
+    extractedPhone = pickPhone(customFields);
+  } else {
+    extractedEmail = email;
+    extractedPhone = phone;
+  }
+
+  // Build duplicate filter
+  const duplicateFilter = { eventId };
+  const or = [];
+
+  if (extractedEmail) {
+    or.push({ "customFields.Email": extractedEmail });
+    or.push({ email: extractedEmail }); // for classic-mode events
+  }
+
+  if (extractedPhone) {
+    or.push({ "customFields.Phone": extractedPhone });
+    or.push({ phone: extractedPhone });
+  }
+
+  if (or.length > 0) duplicateFilter.$or = or;
+
+  // Check DB
+  const dup = await Registration.findOne(duplicateFilter);
+  if (dup) {
+    return response(res, 409, "Already registered with this email or phone");
   }
 
   // --- Create registration ---
@@ -589,10 +658,12 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   await recountEventRegistrations(event._id);
 
   // --- Generate and send email using util ---
-  const emailForSending = formFields.length > 0 ? pickEmail(customFields) : email;
+  const emailForSending =
+    formFields.length > 0 ? pickEmail(customFields) : email;
   const displayNameForEmail =
     formFields.length > 0
-      ? pickFullName(customFields) || (event.defaultLanguage === "ar" ? "ضيف" : "Guest")
+      ? pickFullName(customFields) ||
+        (event.defaultLanguage === "ar" ? "ضيف" : "Guest")
       : fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
   const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
@@ -625,7 +696,6 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   recomputeAndEmit(event.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
-
 
   const enhancedRegistration = {
     _id: newRegistration._id,
@@ -674,22 +744,32 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
       "Full Name" in fields
         ? fields["Full Name"]
         : "fullName" in fields
-          ? fields["fullName"]
-          : "Name" in fields
-            ? fields["Name"]
-            : reg.fullName;
-    const email = "Email" in fields ? fields["Email"] : "email" in fields ? fields["email"] : reg.email;
-    const phone = "Phone" in fields ? fields["Phone"] : "phone" in fields ? fields["phone"] : reg.phone;
+        ? fields["fullName"]
+        : "Name" in fields
+        ? fields["Name"]
+        : reg.fullName;
+    const email =
+      "Email" in fields
+        ? fields["Email"]
+        : "email" in fields
+        ? fields["email"]
+        : reg.email;
+    const phone =
+      "Phone" in fields
+        ? fields["Phone"]
+        : "phone" in fields
+        ? fields["phone"]
+        : reg.phone;
     const company =
       "Company" in fields
         ? fields["Company"]
         : "Institution" in fields
-          ? fields["Institution"]
-          : "Organization" in fields
-            ? fields["Organization"]
-            : "company" in fields
-              ? fields["company"]
-              : reg.company;
+        ? fields["Institution"]
+        : "Organization" in fields
+        ? fields["Organization"]
+        : "company" in fields
+        ? fields["company"]
+        : reg.company;
 
     reg.customFields = {};
     reg.fullName = fullName;
@@ -727,22 +807,22 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
   }
 
   if (!registration.eventId?.requiresApproval) {
-    return response(
-      res,
-      400,
-      "This event does not require approval"
-    );
+    return response(res, 400, "This event does not require approval");
   }
 
   registration.approvalStatus = status;
   await registration.save();
 
-
   recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "Registration approval status updated", registration);
+  return response(
+    res,
+    200,
+    "Registration approval status updated",
+    registration
+  );
 });
 
 exports.unsentCount = asyncHandler(async (req, res) => {
@@ -795,8 +875,9 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
 
   // Background processor
   setImmediate(() => {
-    emailProcessor(event, pending)
-      .catch(err => console.error("EMAIL PROCESSOR FAILED:", err));
+    emailProcessor(event, pending).catch((err) =>
+      console.error("EMAIL PROCESSOR FAILED:", err)
+    );
   });
 });
 
@@ -875,7 +956,8 @@ async function loadRemainingRecords(eventId, total) {
       const limit = Math.min(BATCH_SIZE, total - skip);
 
       const registrations = await Registration.find({ eventId })
-        .where('isDeleted').ne(true)
+        .where("isDeleted")
+        .ne(true)
         .sort({ createdAt: 1, _id: 1 })
         .skip(skip)
         .limit(limit)
@@ -912,7 +994,7 @@ async function loadRemainingRecords(eventId, total) {
       const currentLoaded = skip + enhanced.length;
       emitLoadingProgress(eventId.toString(), currentLoaded, total, enhanced);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
     emitLoadingProgress(eventId.toString(), total, total);
@@ -935,12 +1017,13 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   await recountEventRegistrations(eventId);
   const totalCount = await Registration.countDocuments({
     eventId,
-    isDeleted: { $ne: true }
+    isDeleted: { $ne: true },
   });
 
   // Return first 50 records immediately
   const registrations = await Registration.find({ eventId })
-    .where('isDeleted').ne(true)
+    .where("isDeleted")
+    .ne(true)
     .sort({ createdAt: 1 })
     .limit(50)
     .lean();
@@ -994,9 +1077,10 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   if (!staffUser?.id)
     return response(res, 401, "Unauthorized – no scanner info");
 
-  const registration = await Registration.findOne({ token }).populate("eventId").notDeleted();
+  const registration = await Registration.findOne({ token })
+    .populate("eventId")
+    .notDeleted();
   if (!registration) return response(res, 404, "Registration not found");
-
 
   const eventBusinessId = registration.eventId?.businessId?.toString();
   const staffBusinessId = staffUser.business?.toString();
@@ -1011,15 +1095,10 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
 
   if (registration.eventId?.requiresApproval) {
     if (registration.approvalStatus !== "approved") {
-      return response(
-        res,
-        200,
-        "This registration is not approved",
-        {
-          notApproved: true,
-          approvalStatus: registration.approvalStatus
-        }
-      );
+      return response(res, 200, "This registration is not approved", {
+        notApproved: true,
+        approvalStatus: registration.approvalStatus,
+      });
     }
   }
 

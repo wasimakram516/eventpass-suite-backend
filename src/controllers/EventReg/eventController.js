@@ -136,17 +136,27 @@ exports.createEvent = asyncHandler(async (req, res) => {
 
   let logoUrl = null;
   if (req.files?.logo) {
-    const uploadResult = await uploadToS3(req.files.logo[0], business.slug, "EventReg", {
-      inline: true,
-    });
+    const uploadResult = await uploadToS3(
+      req.files.logo[0],
+      business.slug,
+      "EventReg",
+      {
+        inline: true,
+      }
+    );
     logoUrl = uploadResult.fileUrl;
   }
 
   let backgroundUrl = null;
   if (req.files?.background) {
-    const uploadResult = await uploadToS3(req.files.background[0], business.slug, "EventReg", {
-      inline: true,
-    });
+    const uploadResult = await uploadToS3(
+      req.files.background[0],
+      business.slug,
+      "EventReg",
+      {
+        inline: true,
+      }
+    );
     backgroundUrl = uploadResult.fileUrl;
   }
 
@@ -197,9 +207,14 @@ exports.createEvent = asyncHandler(async (req, res) => {
 
   let agendaUrl = null;
   if (req.files?.agenda) {
-    const uploadResult = await uploadToS3(req.files.agenda[0], business.slug, "EventReg", {
-      inline: true,
-    });
+    const uploadResult = await uploadToS3(
+      req.files.agenda[0],
+      business.slug,
+      "EventReg",
+      {
+        inline: true,
+      }
+    );
     agendaUrl = uploadResult.fileUrl;
   }
 
@@ -215,7 +230,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
           inputType: field.inputType,
           values:
             ["radio", "list"].includes(field.inputType) &&
-              Array.isArray(field.values)
+            Array.isArray(field.values)
               ? field.values
               : [],
           required: field.required === true,
@@ -244,8 +259,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     formFields: parsedFormFields,
     showQrAfterRegistration,
     showQrOnBadge,
-    requiresApproval:
-      requiresApproval === "true" || requiresApproval === true,
+    requiresApproval: requiresApproval === "true" || requiresApproval === true,
     defaultLanguage: defaultLanguage || "en",
   });
 
@@ -272,6 +286,8 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     showQrOnBadge,
     requiresApproval,
     defaultLanguage,
+    removeLogo,
+    removeBackground,
   } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -315,18 +331,38 @@ exports.updateEvent = asyncHandler(async (req, res) => {
 
   if (req.files?.logo) {
     if (event.logoUrl) await deleteFromS3(event.logoUrl);
-    const uploadResult = await uploadToS3(req.files.logo[0], business.slug, "EventReg", {
-      inline: true,
-    });
+    const uploadResult = await uploadToS3(
+      req.files.logo[0],
+      business.slug,
+      "EventReg",
+      {
+        inline: true,
+      }
+    );
     updates.logoUrl = uploadResult.fileUrl;
   }
 
   if (req.files?.background) {
     if (event.backgroundUrl) await deleteFromS3(event.backgroundUrl);
-    const uploadResult = await uploadToS3(req.files.background[0], business.slug, "EventReg", {
-      inline: true,
-    });
+    const uploadResult = await uploadToS3(
+      req.files.background[0],
+      business.slug,
+      "EventReg",
+      {
+        inline: true,
+      }
+    );
     updates.backgroundUrl = uploadResult.fileUrl;
+  }
+
+  if (removeLogo === "true") {
+    if (event.logoUrl) await deleteFromS3(event.logoUrl);
+    updates.logoUrl = null;
+  }
+
+  if (removeBackground === "true") {
+    if (event.backgroundUrl) await deleteFromS3(event.backgroundUrl);
+    updates.backgroundUrl = null;
   }
 
   if (req.body.clearAllBrandingLogos === "true") {
@@ -335,7 +371,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         if (m?.logoUrl) {
           try {
             await deleteFromS3(m.logoUrl);
-          } catch { }
+          } catch {}
         }
       }
     }
@@ -368,7 +404,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         if (removeIds.includes(media._id?.toString()) && media.logoUrl) {
           try {
             await deleteFromS3(media.logoUrl);
-          } catch { }
+          } catch {}
         }
       }
     }
@@ -381,7 +417,9 @@ exports.updateEvent = asyncHandler(async (req, res) => {
 
     const uploadedBrandingUrls = [];
     for (const f of brandingMediaFiles) {
-      const up = await uploadToS3(f, business.slug, "EventReg", { inline: true });
+      const up = await uploadToS3(f, business.slug, "EventReg", {
+        inline: true,
+      });
       uploadedBrandingUrls.push(up.fileUrl);
     }
 
@@ -404,9 +442,14 @@ exports.updateEvent = asyncHandler(async (req, res) => {
 
   if (req.files?.agenda) {
     if (event.agendaUrl) await deleteFromS3(event.agendaUrl);
-    const uploadResult = await uploadToS3(req.files.agenda[0], business.slug, "EventReg", {
-      inline: true,
-    });
+    const uploadResult = await uploadToS3(
+      req.files.agenda[0],
+      business.slug,
+      "EventReg",
+      {
+        inline: true,
+      }
+    );
     updates.agendaUrl = uploadResult.fileUrl;
   }
 
@@ -422,7 +465,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
           inputType: field.inputType,
           values:
             ["radio", "list"].includes(field.inputType) &&
-              Array.isArray(field.values)
+            Array.isArray(field.values)
               ? field.values
               : [],
           required: field.required === true,
@@ -555,7 +598,7 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
       if (m?.logoUrl) {
         try {
           await deleteFromS3(m.logoUrl);
-        } catch { }
+        } catch {}
       }
     }
   }
