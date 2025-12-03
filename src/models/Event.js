@@ -22,7 +22,18 @@ const EventSchema = new mongoose.Schema({
   venue: { type: String, required: true },
   description: { type: String },
   logoUrl: { type: String },
-  backgroundUrl: { type: String },
+  background: {
+    en: {
+      key: { type: String },
+      url: { type: String },
+      fileType: { type: String, enum: ["image", "video"] },
+    },
+    ar: {
+      key: { type: String },
+      url: { type: String },
+      fileType: { type: String, enum: ["image", "video"] },
+    },
+  },
   brandingMedia: [
     {
       name: { type: String },
