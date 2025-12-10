@@ -3,10 +3,11 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const Event = require("../../models/Event");
 const Business = require("../../models/Business");
 const Registration = require("../../models/Registration");
-const { uploadToS3, deleteFromS3 } = require("../../utils/s3Storage");
+const { deleteFromS3 } = require("../../utils/s3Storage");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
 const response = require("../../utils/response");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
+const env = require("../../config/env");
 
 // Get all events for a business
 exports.getEventDetails = asyncHandler(async (req, res) => {
@@ -91,6 +92,10 @@ exports.getEventsByBusinessSlug = asyncHandler(async (req, res) => {
 
 // CREATE event (only public)
 exports.createEvent = asyncHandler(async (req, res) => {
+  if (!req.body) {
+    return response(res, 400, "Request body is required");
+  }
+
   const {
     name,
     slug,
@@ -134,109 +139,37 @@ exports.createEvent = asyncHandler(async (req, res) => {
     capacity = 999;
   }
 
-  let logoUrl = null;
-  if (req.files?.logo) {
-    const uploadResult = await uploadToS3(
-      req.files.logo[0],
-      business.slug,
-      "EventReg",
-      {
-        inline: true,
-      }
-    );
-    logoUrl = uploadResult.fileUrl;
-  }
+  const { logoUrl, background, brandingMedia, agendaUrl } = req.body;
 
-  const background = {};
-  if (req.files?.backgroundEn) {
-    const file = req.files.backgroundEn[0];
-    const uploadResult = await uploadToS3(
-      file,
-      business.slug,
-      "EventReg",
-      {
-        inline: true,
-      }
-    );
-    background.en = {
-      key: uploadResult.key,
-      url: uploadResult.fileUrl,
-      fileType: file.mimetype.startsWith("video/") ? "video" : "image",
-    };
-  }
-  if (req.files?.backgroundAr) {
-    const file = req.files.backgroundAr[0];
-    const uploadResult = await uploadToS3(
-      file,
-      business.slug,
-      "EventReg",
-      {
-        inline: true,
-      }
-    );
-    background.ar = {
-      key: uploadResult.key,
-      url: uploadResult.fileUrl,
-      fileType: file.mimetype.startsWith("video/") ? "video" : "image",
-    };
-  }
 
-  // Build branding media array (files and/or direct URLs)
-  const brandingMediaFiles = req.files?.brandingMedia || [];
-  const brandingMediaMetaRaw = req.body.brandingMediaMeta;
-  const brandingMediaUrlsRaw = req.body.brandingMediaUrls;
-
-  function parseJsonArray(raw) {
-    if (!raw) return [];
-    if (Array.isArray(raw)) return raw;
+  let parsedBackground = {};
+  if (background) {
     try {
-      return JSON.parse(raw);
+      parsedBackground = typeof background === "string" ? JSON.parse(background) : background;
+
+      if (parsedBackground.en?.url) {
+        const url = parsedBackground.en.url;
+        const base = env.aws.cloudfrontUrl.endsWith("/") ? env.aws.cloudfrontUrl : env.aws.cloudfrontUrl + "/";
+        parsedBackground.en.key = decodeURIComponent(url.replace(base, ""));
+      }
+      if (parsedBackground.ar?.url) {
+        const url = parsedBackground.ar.url;
+        const base = env.aws.cloudfrontUrl.endsWith("/") ? env.aws.cloudfrontUrl : env.aws.cloudfrontUrl + "/";
+        parsedBackground.ar.key = decodeURIComponent(url.replace(base, ""));
+      }
     } catch {
-      return [];
+      parsedBackground = {};
     }
   }
-  function stitchFromFiles(files = [], meta = []) {
-    return files.map((_, i) => {
-      const m = meta[i] || {};
-      return { name: m.name || "", website: m.website || "" };
-    });
-  }
 
-  const brandingMediaMeta = parseJsonArray(brandingMediaMetaRaw);
-  const baseFromFiles = stitchFromFiles(brandingMediaFiles, brandingMediaMeta);
-  const uploadedBrandingUrls = [];
-  for (const f of brandingMediaFiles) {
-    const up = await uploadToS3(f, business.slug, "EventReg", { inline: true });
-    uploadedBrandingUrls.push(up.fileUrl);
-  }
-
-  const brandingMediaFromUrls = parseJsonArray(brandingMediaUrlsRaw)
-    .filter((x) => x && x.logoUrl)
-    .map((x) => ({
-      name: x.name || "",
-      website: x.website || "",
-      logoUrl: x.logoUrl,
-    }));
-
-  const brandingMedia = [
-    ...baseFromFiles.map((item, idx) => ({
-      ...item,
-      logoUrl: uploadedBrandingUrls[idx] || "",
-    })),
-    ...brandingMediaFromUrls,
-  ];
-
-  let agendaUrl = null;
-  if (req.files?.agenda) {
-    const uploadResult = await uploadToS3(
-      req.files.agenda[0],
-      business.slug,
-      "EventReg",
-      {
-        inline: true,
-      }
-    );
-    agendaUrl = uploadResult.fileUrl;
+  let parsedBrandingMedia = [];
+  if (brandingMedia) {
+    try {
+      parsedBrandingMedia = typeof brandingMedia === "string" ? JSON.parse(brandingMedia) : brandingMedia;
+      if (!Array.isArray(parsedBrandingMedia)) parsedBrandingMedia = [];
+    } catch {
+      parsedBrandingMedia = [];
+    }
   }
 
   // Parse and validate formFields
@@ -271,10 +204,10 @@ exports.createEvent = asyncHandler(async (req, res) => {
     endDate: parsedEndDate,
     venue,
     description,
-    logoUrl,
-    ...(Object.keys(background).length > 0 ? { background } : {}),
-    ...(brandingMedia.length ? { brandingMedia } : {}),
-    agendaUrl,
+    logoUrl: logoUrl || null,
+    ...(Object.keys(parsedBackground).length > 0 ? { background: parsedBackground } : {}),
+    ...(parsedBrandingMedia.length ? { brandingMedia: parsedBrandingMedia } : {}),
+    agendaUrl: agendaUrl || null,
     capacity,
     businessId,
     formFields: parsedFormFields,
@@ -294,6 +227,11 @@ exports.createEvent = asyncHandler(async (req, res) => {
 // UPDATE event (only public)
 exports.updateEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
+
+  if (!req.body) {
+    return response(res, 400, "Request body is required");
+  }
+
   const {
     name,
     slug,
@@ -349,69 +287,53 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     updates.slug = uniqueSlug;
   }
 
-  const business = await Business.findById(event.businessId);
-
-  if (req.files?.logo) {
-    if (event.logoUrl) await deleteFromS3(event.logoUrl);
-    const uploadResult = await uploadToS3(
-      req.files.logo[0],
-      business.slug,
-      "EventReg",
-      {
-        inline: true,
-      }
-    );
-    updates.logoUrl = uploadResult.fileUrl;
+  if (req.body.logoUrl !== undefined) {
+    if (event.logoUrl && event.logoUrl !== req.body.logoUrl) {
+      await deleteFromS3(event.logoUrl);
+    }
+    updates.logoUrl = req.body.logoUrl || null;
   }
 
-  if (req.files?.backgroundEn) {
-    const file = req.files.backgroundEn[0];
+  if (req.body.background !== undefined) {
+    let parsedBackground = {};
+    try {
+      parsedBackground = typeof req.body.background === "string"
+        ? JSON.parse(req.body.background)
+        : req.body.background;
+    } catch {
+      parsedBackground = {};
+    }
     if (event.background?.en?.key || event.background?.en?.url) {
-      try {
-        await deleteFromS3(event.background.en.key || event.background.en.url);
-      } catch { }
-    }
-    const uploadResult = await uploadToS3(
-      file,
-      business.slug,
-      "EventReg",
-      {
-        inline: true,
+      const newEnUrl = parsedBackground.en?.url;
+      if (!newEnUrl || newEnUrl !== (event.background.en.url || event.background.en.key)) {
+        try {
+          await deleteFromS3(event.background.en.key || event.background.en.url);
+        } catch { }
       }
-    );
-    updates.background = {
-      ...(updates.background || event.background || {}),
-      en: {
-        key: uploadResult.key,
-        url: uploadResult.fileUrl,
-        fileType: file.mimetype.startsWith("video/") ? "video" : "image",
-      },
-    };
-  }
-
-  if (req.files?.backgroundAr) {
-    const file = req.files.backgroundAr[0];
+    }
     if (event.background?.ar?.key || event.background?.ar?.url) {
-      try {
-        await deleteFromS3(event.background.ar.key || event.background.ar.url);
-      } catch { }
-    }
-    const uploadResult = await uploadToS3(
-      file,
-      business.slug,
-      "EventReg",
-      {
-        inline: true,
+      const newArUrl = parsedBackground.ar?.url;
+      if (!newArUrl || newArUrl !== (event.background.ar.url || event.background.ar.key)) {
+        try {
+          await deleteFromS3(event.background.ar.key || event.background.ar.url);
+        } catch { }
       }
-    );
-    updates.background = {
-      ...(updates.background || event.background || {}),
-      ar: {
-        key: uploadResult.key,
-        url: uploadResult.fileUrl,
-        fileType: file.mimetype.startsWith("video/") ? "video" : "image",
-      },
-    };
+    }
+
+    if (parsedBackground.en?.url && !parsedBackground.en.key) {
+      const url = parsedBackground.en.url;
+      const base = env.aws.cloudfrontUrl.endsWith("/") ? env.aws.cloudfrontUrl : env.aws.cloudfrontUrl + "/";
+      parsedBackground.en.key = decodeURIComponent(url.replace(base, ""));
+    }
+    if (parsedBackground.ar?.url && !parsedBackground.ar.key) {
+      const url = parsedBackground.ar.url;
+      const base = env.aws.cloudfrontUrl.endsWith("/") ? env.aws.cloudfrontUrl : env.aws.cloudfrontUrl + "/";
+      parsedBackground.ar.key = decodeURIComponent(url.replace(base, ""));
+    }
+
+    if (Object.keys(parsedBackground).length > 0) {
+      updates.background = parsedBackground;
+    }
   }
 
   if (removeLogo === "true") {
@@ -454,29 +376,24 @@ exports.updateEvent = asyncHandler(async (req, res) => {
       }
     }
     updates.brandingMedia = [];
-  } else if (
-    req.files?.brandingMedia ||
-    req.body.brandingMediaUrls ||
-    req.body.brandingMediaMeta ||
-    req.body.removeBrandingLogoIds
-  ) {
-    const brandingMediaFiles = req.files?.brandingMedia || [];
-    const parseJsonArray = (raw) => {
-      if (!raw) return [];
-      if (Array.isArray(raw)) return raw;
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return [];
-      }
-    };
-    const stitchFromFiles = (files = [], meta = []) =>
-      files.map((_, i) => {
-        const m = meta[i] || {};
-        return { name: m.name || "", website: m.website || "" };
-      });
+  } else if (req.body.brandingMedia !== undefined) {
+    let parsedBrandingMedia = [];
+    try {
+      parsedBrandingMedia = typeof req.body.brandingMedia === "string"
+        ? JSON.parse(req.body.brandingMedia)
+        : req.body.brandingMedia;
+      if (!Array.isArray(parsedBrandingMedia)) parsedBrandingMedia = [];
+    } catch {
+      parsedBrandingMedia = [];
+    }
 
-    const removeIds = parseJsonArray(req.body.removeBrandingLogoIds);
+
+    const removeIds = req.body.removeBrandingLogoIds
+      ? (typeof req.body.removeBrandingLogoIds === "string"
+        ? JSON.parse(req.body.removeBrandingLogoIds)
+        : req.body.removeBrandingLogoIds)
+      : [];
+
     if (removeIds.length && Array.isArray(event.brandingMedia)) {
       for (const media of event.brandingMedia) {
         if (removeIds.includes(media._id?.toString()) && media.logoUrl) {
@@ -487,48 +404,14 @@ exports.updateEvent = asyncHandler(async (req, res) => {
       }
     }
 
-    const brandingMediaMeta = parseJsonArray(req.body.brandingMediaMeta);
-    const baseFromFiles = stitchFromFiles(
-      brandingMediaFiles,
-      brandingMediaMeta
-    );
-
-    const uploadedBrandingUrls = [];
-    for (const f of brandingMediaFiles) {
-      const up = await uploadToS3(f, business.slug, "EventReg", {
-        inline: true,
-      });
-      uploadedBrandingUrls.push(up.fileUrl);
-    }
-
-    const fromUrls = parseJsonArray(req.body.brandingMediaUrls)
-      .filter((x) => x && x.logoUrl)
-      .map((x) => ({
-        name: x.name || "",
-        website: x.website || "",
-        logoUrl: x.logoUrl,
-      }));
-
-    updates.brandingMedia = [
-      ...fromUrls,
-      ...baseFromFiles.map((item, idx) => ({
-        ...item,
-        logoUrl: uploadedBrandingUrls[idx] || "",
-      })),
-    ];
+    updates.brandingMedia = parsedBrandingMedia;
   }
 
-  if (req.files?.agenda) {
-    if (event.agendaUrl) await deleteFromS3(event.agendaUrl);
-    const uploadResult = await uploadToS3(
-      req.files.agenda[0],
-      business.slug,
-      "EventReg",
-      {
-        inline: true,
-      }
-    );
-    updates.agendaUrl = uploadResult.fileUrl;
+  if (req.body.agendaUrl !== undefined) {
+    if (event.agendaUrl && event.agendaUrl !== req.body.agendaUrl) {
+      await deleteFromS3(event.agendaUrl);
+    }
+    updates.agendaUrl = req.body.agendaUrl || null;
   }
 
   // Handle updated formFields
