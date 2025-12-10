@@ -41,6 +41,25 @@ exports.uploadToS3 = async (file, businessSlug, moduleName, options = {}) => {
   return { key, fileUrl };
 };
 
+// Generate presigned URL for direct frontend upload
+exports.getPresignedUrl = (businessSlug, moduleName, fileName, fileType, options = {}) => {
+  const key = getFolderPath(businessSlug, moduleName, fileType, fileName);
+  const dispositionType = options.inline ? "inline" : "attachment";
+
+  const params = {
+    Bucket: env.aws.s3Bucket,
+    Key: key,
+    ContentType: fileType,
+    ContentDisposition: `${dispositionType}; filename="${fileName}"`,
+    Expires: 3600,
+  };
+
+  const uploadURL = s3.getSignedUrl("putObject", params);
+  const fileUrl = `${env.aws.cloudfrontUrl}/${key}`;
+
+  return { uploadURL, key, fileUrl };
+};
+
 // Delete (accepts URL or key)
 exports.deleteFromS3 = async (fileKeyOrUrl) => {
   if (!fileKeyOrUrl) return;
