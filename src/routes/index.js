@@ -6,6 +6,7 @@ const translateRoutes = require("./translateRoutes");
 const trashRoutes = require("./trashRoutes");
 const dashboardRoutes = require("./dashboardRoutes");
 const fileResourceRoutes = require("./fileResourceRoutes");
+const deleteMediaRoutes = require("./deleteMediaRoutes");
 const authRoutes = require("./authRoutes");
 const userRoutes = require("./userRoutes");
 const globalConfigRoutes = require("./globalConfigRoutes");
@@ -67,6 +68,7 @@ router.use("/global-config", globalConfigRoutes);
 router.use("/businesses", businessRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/files", fileResourceRoutes);
+router.use("/media", deleteMediaRoutes);
 
 // ------------------ QuizNest ------------------
 router.use("/quiznest/games", quizGameRoutes);
