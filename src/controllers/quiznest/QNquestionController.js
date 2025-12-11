@@ -125,7 +125,6 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
   game.questions = questions;
   await game.save();
 
-  // Fire background recompute
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
@@ -153,7 +152,11 @@ exports.getQuestions = asyncHandler(async (req, res) => {
 
 // Add a single question
 exports.addQuestion = asyncHandler(async (req, res) => {
-  const { question, answers, correctAnswerIndex, hint } = req.body;
+  if (!req.body) {
+    return response(res, 400, "Request body is required");
+  }
+
+  const { question, answers, correctAnswerIndex, hint, questionImage, answerImages } = req.body;
 
   if (!question || !answers || correctAnswerIndex === undefined) {
     return response(res, 400, "All fields are required");
@@ -178,38 +181,20 @@ exports.addQuestion = asyncHandler(async (req, res) => {
     );
   }
 
-  const business = await Business.findById(game.businessId);
-  if (!business) return response(res, 404, "Business not found");
-
-  let questionImage = null;
-  const answerImages = [];
-
-  if (req.files?.questionImage?.[0]) {
-    const upload = await uploadToS3(
-      req.files.questionImage[0],
-      business.slug,
-      "QuizNest",
-      {
-        inline: true,
+  const processedAnswerImages = Array(game.choicesCount).fill(null);
+  if (Array.isArray(answerImages)) {
+    answerImages.forEach((url, idx) => {
+      if (idx < processedAnswerImages.length && url) {
+        processedAnswerImages[idx] = url;
       }
-    );
-    questionImage = upload.fileUrl;
-  }
-
-  if (req.files?.answerImages) {
-    for (const file of req.files.answerImages) {
-      const upload = await uploadToS3(file, business.slug, "QuizNest", {
-        inline: true,
-      });
-      answerImages.push(upload.fileUrl);
-    }
+    });
   }
 
   game.questions.push({
     question,
-    questionImage,
+    questionImage: questionImage || null,
     answers: parsedAnswers,
-    answerImages,
+    answerImages: processedAnswerImages,
     correctAnswerIndex: parseInt(correctAnswerIndex),
     hint: hint || "",
   });
@@ -225,11 +210,17 @@ exports.addQuestion = asyncHandler(async (req, res) => {
 
 // Update a question
 exports.updateQuestion = asyncHandler(async (req, res) => {
+  if (!req.body) {
+    return response(res, 400, "Request body is required");
+  }
+
   const {
     question,
     answers,
     correctAnswerIndex,
     hint,
+    questionImage,
+    answerImages,
     removeQuestionImage,
     removeAnswerImages,
   } = req.body;
@@ -259,17 +250,18 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
     );
   }
 
-  const business = await Business.findById(game.businessId);
-  if (!business) return response(res, 404, "Business not found");
-
-  if (removeQuestionImage === "true" && q.questionImage) {
-    await deleteFromS3(q.questionImage);
+  if (removeQuestionImage === "true") {
+    if (q.questionImage) await deleteFromS3(q.questionImage);
     q.questionImage = null;
+  } else if (questionImage !== undefined) {
+    if (q.questionImage && q.questionImage !== questionImage) {
+      await deleteFromS3(q.questionImage);
+    }
+    q.questionImage = questionImage || null;
   }
 
-  if (removeAnswerImages) {
-    const indicesToRemove = JSON.parse(removeAnswerImages);
-    for (const index of indicesToRemove) {
+  if (removeAnswerImages && Array.isArray(removeAnswerImages)) {
+    for (const index of removeAnswerImages) {
       if (q.answerImages[index]) {
         await deleteFromS3(q.answerImages[index]);
         q.answerImages[index] = null;
@@ -277,41 +269,26 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
     }
   }
 
-  if (req.files?.questionImage?.[0]) {
-    if (q.questionImage) await deleteFromS3(q.questionImage);
-    const upload = await uploadToS3(
-      req.files.questionImage[0],
-      business.slug,
-      "QuizNest",
-      {
-        inline: true,
+  if (answerImages !== undefined && Array.isArray(answerImages)) {
+    const newAnswerImages = Array(game.choicesCount).fill(null);
+
+    if (q.answerImages && Array.isArray(q.answerImages)) {
+      for (let idx = 0; idx < q.answerImages.length; idx++) {
+        const img = q.answerImages[idx];
+        if (idx < newAnswerImages.length && img && !removeAnswerImages?.includes(idx)) {
+          newAnswerImages[idx] = img;
+        }
       }
-    );
-    q.questionImage = upload.fileUrl;
-  }
+    }
 
-  if (req.files?.answerImages && req.body.answerImageIndices) {
-    const indices = Array.isArray(req.body.answerImageIndices)
-      ? req.body.answerImageIndices.map(Number)
-      : [Number(req.body.answerImageIndices)];
-
-    const newAnswerImages = [
-      ...(q.answerImages || Array(game.choicesCount).fill(null)),
-    ];
-
-    for (let i = 0; i < req.files.answerImages.length; i++) {
-      const file = req.files.answerImages[i];
-      const targetIndex = indices[i];
-
-      const upload = await uploadToS3(file, business.slug, "QuizNest", {
-        inline: true,
-      });
-
-      if (newAnswerImages[targetIndex]) {
-        await deleteFromS3(newAnswerImages[targetIndex]).catch(console.error);
+    for (let idx = 0; idx < answerImages.length; idx++) {
+      const url = answerImages[idx];
+      if (idx < newAnswerImages.length && url) {
+        if (newAnswerImages[idx] && newAnswerImages[idx] !== url) {
+          await deleteFromS3(newAnswerImages[idx]).catch(console.error);
+        }
+        newAnswerImages[idx] = url;
       }
-
-      newAnswerImages[targetIndex] = upload.fileUrl;
     }
 
     q.answerImages = newAnswerImages;
@@ -383,7 +360,6 @@ exports.restoreQuestion = asyncHandler(async (req, res) => {
   await q.restore();
   await game.save();
 
-  // Fire background recompute
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
@@ -454,7 +430,6 @@ exports.restoreAllQuestions = asyncHandler(async (req, res) => {
     );
   }
 
-  // Fire background recompute
   recomputeAndEmit(null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
@@ -488,7 +463,6 @@ exports.permanentDeleteAllQuestions = asyncHandler(async (req, res) => {
     );
   }
 
-  // Fire background recompute
   recomputeAndEmit(null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );

@@ -84,6 +84,32 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
       }
     }
 
+    if (req.body.gameId && req.body.questionId && mediaType && mongoose.Types.ObjectId.isValid(req.body.gameId)) {
+      const Game = require("../../models/Game");
+      const game = await Game.findById(req.body.gameId);
+
+      if (!game) {
+        return response(res, 404, "Game not found");
+      }
+
+      const question = game.questions.id(req.body.questionId);
+      if (!question) {
+        return response(res, 404, "Question not found");
+      }
+
+      if (mediaType === "question") {
+        question.questionImage = null;
+      } else if (mediaType === "answer" && req.body.answerImageIndex !== undefined) {
+        const index = parseInt(req.body.answerImageIndex);
+        if (question.answerImages && question.answerImages[index]) {
+          question.answerImages[index] = null;
+        }
+      }
+
+      await game.save();
+      return response(res, 200, "Media deleted successfully", question);
+    }
+
     return response(res, 200, "Media deleted successfully");
   } catch (error) {
     console.error("Media deletion error:", error);
