@@ -10,6 +10,10 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // Create Game using businessSlug
 exports.createGame = asyncHandler(async (req, res) => {
+  if (!req.body) {
+    return response(res, 400, "Request body is required");
+  }
+
   const {
     businessSlug,
     title,
@@ -17,61 +21,38 @@ exports.createGame = asyncHandler(async (req, res) => {
     choicesCount,
     countdownTimer,
     gameSessionTimer,
+    coverImage,
+    nameImage,
+    backgroundImage,
+    memoryImages,
   } = req.body;
 
   if (!businessSlug || !title || !slug || !choicesCount || !gameSessionTimer) {
     return response(res, 400, "Missing required fields");
   }
 
+  const missingMedia = [];
+  if (!coverImage || coverImage.trim() === "") {
+    missingMedia.push("Cover Image");
+  }
+  if (!nameImage || nameImage.trim() === "") {
+    missingMedia.push("Name Image");
+  }
+  if (!backgroundImage || backgroundImage.trim() === "") {
+    missingMedia.push("Background Image");
+  }
+
+  if (missingMedia.length > 0) {
+    return response(res, 400, `Missing required media: ${missingMedia.join(", ")}`);
+  }
+
   const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
 
-  // Find business by slug
   const business = await Business.findOne({ slug: businessSlug }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
   const businessId = business._id;
 
-  let coverImage = "",
-    nameImage = "",
-    backgroundImage = "";
-
-  if (req.files?.cover) {
-    const uploaded = await uploadToS3(
-      req.files.cover[0],
-      business.slug,
-      "QuizNest",
-      {
-        inline: true,
-      }
-    );
-    coverImage = uploaded.fileUrl;
-  }
-
-  if (req.files?.name) {
-    const uploaded = await uploadToS3(
-      req.files.name[0],
-      business.slug,
-      "QuizNest",
-      {
-        inline: true,
-      }
-    );
-    nameImage = uploaded.fileUrl;
-  }
-
-  if (req.files?.background) {
-    const uploaded = await uploadToS3(
-      req.files.background[0],
-      business.slug,
-      "QuizNest",
-      {
-        inline: true,
-      }
-    );
-    backgroundImage = uploaded.fileUrl;
-  }
-
-  // Save game with resolved businessId
   const game = await Game.create({
     businessId,
     title,
@@ -79,6 +60,7 @@ exports.createGame = asyncHandler(async (req, res) => {
     coverImage,
     nameImage,
     backgroundImage,
+    memoryImages: memoryImages || [],
     choicesCount,
     countdownTimer: countdownTimer || 3,
     gameSessionTimer,
@@ -86,7 +68,6 @@ exports.createGame = asyncHandler(async (req, res) => {
     type: "quiz",
   });
 
-  // Fire background recompute
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
@@ -96,6 +77,10 @@ exports.createGame = asyncHandler(async (req, res) => {
 
 // Update Game
 exports.updateGame = asyncHandler(async (req, res) => {
+  if (!req.body) {
+    return response(res, 400, "Request body is required");
+  }
+
   const game = await Game.findOne({
     _id: req.params.id,
     mode: "solo",
@@ -103,8 +88,17 @@ exports.updateGame = asyncHandler(async (req, res) => {
   });
   if (!game) return response(res, 404, "Game not found");
 
-  const { title, slug, choicesCount, countdownTimer, gameSessionTimer } =
-    req.body;
+  const {
+    title,
+    slug,
+    choicesCount,
+    countdownTimer,
+    gameSessionTimer,
+    coverImage,
+    nameImage,
+    backgroundImage,
+    memoryImages,
+  } = req.body;
 
   if (slug && slug !== game.slug) {
     const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
@@ -116,51 +110,42 @@ exports.updateGame = asyncHandler(async (req, res) => {
   game.countdownTimer = countdownTimer || game.countdownTimer;
   game.gameSessionTimer = gameSessionTimer || game.gameSessionTimer;
 
-  const business = await Business.findById(game.businessId);
-  if (!business) return response(res, 404, "Business not found");
-
-  if (req.files?.cover) {
-    if (game.coverImage) await deleteFromS3(game.coverImage);
-    const uploaded = await uploadToS3(
-      req.files.cover[0],
-      business.slug,
-      "QuizNest",
-      {
-        inline: true,
-      }
-    );
-    game.coverImage = uploaded.fileUrl;
+  if (coverImage !== undefined && coverImage) {
+    if (game.coverImage && game.coverImage !== coverImage) {
+      await deleteFromS3(game.coverImage);
+    }
+    game.coverImage = coverImage;
   }
 
-  if (req.files?.name) {
-    if (game.nameImage) await deleteFromS3(game.nameImage);
-    const uploaded = await uploadToS3(
-      req.files.name[0],
-      business.slug,
-      "QuizNest",
-      {
-        inline: true,
-      }
-    );
-    game.nameImage = uploaded.fileUrl;
+  if (nameImage !== undefined && nameImage) {
+    if (game.nameImage && game.nameImage !== nameImage) {
+      await deleteFromS3(game.nameImage);
+    }
+    game.nameImage = nameImage;
   }
 
-  if (req.files?.background) {
-    if (game.backgroundImage) await deleteFromS3(game.backgroundImage);
-    const uploaded = await uploadToS3(
-      req.files.background[0],
-      business.slug,
-      "QuizNest",
-      {
-        inline: true,
+  if (backgroundImage !== undefined && backgroundImage) {
+    if (game.backgroundImage && game.backgroundImage !== backgroundImage) {
+      await deleteFromS3(game.backgroundImage);
+    }
+    game.backgroundImage = backgroundImage;
+  }
+
+  if (memoryImages !== undefined) {
+    if (game.memoryImages && game.memoryImages.length > 0) {
+      for (const img of game.memoryImages) {
+        if (img && img.url) {
+          await deleteFromS3(img.url).catch(console.error);
+        }
       }
-    );
-    game.backgroundImage = uploaded.fileUrl;
+    }
+    game.memoryImages = Array.isArray(memoryImages)
+      ? memoryImages.map((url) => ({ url }))
+      : [];
   }
 
   await game.save();
 
-  // Fire background recompute
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
@@ -210,7 +195,9 @@ exports.getGameById = asyncHandler(async (req, res) => {
     _id: req.params.id,
     type: "quiz",
     mode: "solo",
-  }).notDeleted();
+  })
+    .notDeleted()
+    .populate("businessId", "name slug");
 
   if (!game) return response(res, 404, "Game not found");
 
@@ -223,7 +210,9 @@ exports.getGameBySlug = asyncHandler(async (req, res) => {
     slug: req.params.slug,
     type: "quiz",
     mode: "solo",
-  }).notDeleted();
+  })
+    .notDeleted()
+    .populate("businessId", "name slug");
 
   if (!game) return response(res, 404, "Game not found");
 
