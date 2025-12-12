@@ -21,24 +21,8 @@ router.post("/upload/:gameId", eventduelAccess, upload.single("file"), uploadQue
 
 // Manual CRUD
 router.get("/:gameId", eventduelAccess, getQuestions);
-router.post(
-  "/:gameId",
-  eventduelAccess,
-  upload.fields([
-    { name: "questionImage", maxCount: 1 },
-    { name: "answerImages" }
-  ]),
-  addQuestion
-);
-router.put(
-  "/:gameId/:questionId",
-  eventduelAccess,
-  upload.fields([
-    { name: "questionImage", maxCount: 1 },
-    { name: "answerImages"}
-  ]),
-  updateQuestion
-);
+router.post("/:gameId", eventduelAccess, addQuestion);
+router.put("/:gameId/:questionId", eventduelAccess, updateQuestion);
 router.delete("/:gameId/:questionId", eventduelAccess, deleteQuestion);
 
 module.exports = router;
