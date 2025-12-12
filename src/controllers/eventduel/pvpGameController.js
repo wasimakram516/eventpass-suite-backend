@@ -2,7 +2,7 @@ const Game = require("../../models/Game");
 const Business = require("../../models/Business");
 const Player = require("../../models/Player");
 const Team = require("../../models/Team");
-const { uploadToS3, deleteFromS3 } = require("../../utils/s3Storage");
+const { deleteFromS3 } = require("../../utils/s3Storage");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
@@ -11,6 +11,10 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // CREATE GAME (PvP / Team Mode)
 exports.createGame = asyncHandler(async (req, res) => {
+  if (!req.body) {
+    return response(res, 400, "Request body is required");
+  }
+
   const {
     businessSlug,
     title,
@@ -22,13 +26,31 @@ exports.createGame = asyncHandler(async (req, res) => {
     maxTeams,
     playersPerTeam,
     teamNames,
+    coverImage,
+    nameImage,
+    backgroundImage,
   } = req.body;
 
   if (!businessSlug || !title || !slug || !choicesCount || !gameSessionTimer) {
     return response(res, 400, "Missing required fields");
   }
 
-  const business = await Business.findOne({ slug: businessSlug });
+  const missingMedia = [];
+  if (!coverImage || coverImage.trim() === "") {
+    missingMedia.push("Cover Image");
+  }
+  if (!nameImage || nameImage.trim() === "") {
+    missingMedia.push("Name Image");
+  }
+  if (!backgroundImage || backgroundImage.trim() === "") {
+    missingMedia.push("Background Image");
+  }
+
+  if (missingMedia.length > 0) {
+    return response(res, 400, `Missing required media: ${missingMedia.join(", ")}`);
+  }
+
+  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
 
   const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
@@ -37,29 +59,6 @@ exports.createGame = asyncHandler(async (req, res) => {
   const teamMode = isTeamMode === "true" || isTeamMode === true;
   const parsedMaxTeams = parseInt(maxTeams, 10) || 2;
   const parsedPlayersPerTeam = parseInt(playersPerTeam, 10) || 2;
-
-  let coverImage = "",
-    nameImage = "",
-    backgroundImage = "";
-
-  if (req.files?.cover) {
-    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "EventDuel", {
-      inline: true,
-    });
-    coverImage = uploaded.fileUrl;
-  }
-  if (req.files?.name) {
-    const uploaded = await uploadToS3(req.files.name[0], business.slug, "EventDuel", {
-      inline: true,
-    });
-    nameImage = uploaded.fileUrl;
-  }
-  if (req.files?.background) {
-    const uploaded = await uploadToS3(req.files.background[0], business.slug, "EventDuel", {
-      inline: true,
-    });
-    backgroundImage = uploaded.fileUrl;
-  }
 
   const game = await Game.create({
     businessId,
@@ -114,6 +113,10 @@ exports.createGame = asyncHandler(async (req, res) => {
 
 // UPDATE GAME (PvP / Team Mode)
 exports.updateGame = asyncHandler(async (req, res) => {
+  if (!req.body) {
+    return response(res, 400, "Request body is required");
+  }
+
   const game = await Game.findOne({
     _id: req.params.id,
     mode: "pvp",
@@ -131,6 +134,9 @@ exports.updateGame = asyncHandler(async (req, res) => {
     maxTeams,
     playersPerTeam,
     teamNames,
+    coverImage,
+    nameImage,
+    backgroundImage,
   } = req.body;
 
   const teamMode = isTeamMode === "true" || isTeamMode === true;
@@ -189,31 +195,25 @@ exports.updateGame = asyncHandler(async (req, res) => {
     }
   }
 
-  const business = await Business.findById(game.businessId);
-  if (!business) return response(res, 404, "Business not found");
-
-  if (req.files?.cover) {
-    if (game.coverImage) await deleteFromS3(game.coverImage);
-    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "EventDuel", {
-      inline: true,
-    });
-    game.coverImage = uploaded.fileUrl;
+  if (coverImage !== undefined && coverImage) {
+    if (game.coverImage && game.coverImage !== coverImage) {
+      await deleteFromS3(game.coverImage);
+    }
+    game.coverImage = coverImage;
   }
 
-  if (req.files?.name) {
-    if (game.nameImage) await deleteFromS3(game.nameImage);
-    const uploaded = await uploadToS3(req.files.name[0], business.slug, "EventDuel", {
-      inline: true,
-    });
-    game.nameImage = uploaded.fileUrl;
+  if (nameImage !== undefined && nameImage) {
+    if (game.nameImage && game.nameImage !== nameImage) {
+      await deleteFromS3(game.nameImage);
+    }
+    game.nameImage = nameImage;
   }
 
-  if (req.files?.background) {
-    if (game.backgroundImage) await deleteFromS3(game.backgroundImage);
-    const uploaded = await uploadToS3(req.files.background[0], business.slug, "EventDuel", {
-      inline: true,
-    });
-    game.backgroundImage = uploaded.fileUrl;
+  if (backgroundImage !== undefined && backgroundImage) {
+    if (game.backgroundImage && game.backgroundImage !== backgroundImage) {
+      await deleteFromS3(game.backgroundImage);
+    }
+    game.backgroundImage = backgroundImage;
   }
 
   await game.save();
@@ -263,6 +263,7 @@ exports.getGameById = asyncHandler(async (req, res) => {
     type: "quiz",
   })
     .populate("teams", "name")
+    .populate("businessId", "name slug")
     .notDeleted();
 
   if (!game) return response(res, 404, "Game not found");
@@ -277,6 +278,7 @@ exports.getGameBySlug = asyncHandler(async (req, res) => {
     type: "quiz",
   })
     .populate("teams", "name")
+    .populate("businessId", "name slug")
     .notDeleted();
 
   if (!game) return response(res, 404, "Game not found");
