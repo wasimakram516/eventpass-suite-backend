@@ -23,30 +23,8 @@ const parseJson = (v) => {
 };
 
 // accept fieldnames like optionImage[0][1] OR optionImage_0_1
-const OPTION_IMG_RX_A = /^optionImage\[(\d+)\]\[(\d+)\]$/;
-const OPTION_IMG_RX_B = /^optionImage_(\d+)_(\d+)$/;
 
-async function attachOptionImages(questions = [], files = [], prevForm = null, businessSlug = null) {
-  if (!businessSlug && prevForm) {
-    const business = await Business.findById(prevForm.businessId);
-    if (business) businessSlug = business.slug;
-  }
-  if (!businessSlug) {
-    throw new Error("Business slug is required for image uploads");
-  }
-
-  // Build lookup from fieldname -> {qi, oi}
-  const fileMap = new Map();
-  for (const f of files || []) {
-    let m =
-      f.fieldname.match(OPTION_IMG_RX_A) || f.fieldname.match(OPTION_IMG_RX_B);
-    if (!m) continue;
-    const qi = Number(m[1]);
-    const oi = Number(m[2]);
-    fileMap.set(`${qi}:${oi}`, f);
-  }
-
-  // Previous image urls for update flow (to support delete/replace)
+async function processOptionImages(questions = [], prevForm = null) {
   const prevImg = {};
   if (prevForm) {
     (prevForm.questions || []).forEach((q, qi) => {
@@ -56,7 +34,6 @@ async function attachOptionImages(questions = [], files = [], prevForm = null, b
     });
   }
 
-  // Iterate questions/options and upload any provided file
   for (let qi = 0; qi < (questions || []).length; qi++) {
     const q = questions[qi] || {};
     q.options = q.options || [];
@@ -65,25 +42,17 @@ async function attachOptionImages(questions = [], files = [], prevForm = null, b
       const opt = q.options[oi] || {};
       const incomingRemoveFlag = !!opt.imageRemove;
 
-      if (fileMap.has(key)) {
-        const file = fileMap.get(key);
-        const uploaded = await uploadToS3(file, businessSlug, "SurveyGuru", { inline: true });
-        const newUrl = uploaded.fileUrl;
-
-        if (prevForm && prevImg[key]) {
-          await deleteFromS3(prevImg[key]);
-        }
-        opt.imageUrl = newUrl;
-        delete opt.imageRemove;
-      } else if (incomingRemoveFlag) {
-        // explicit remove request (no file uploaded but user cleared image)
+      if (incomingRemoveFlag) {
         if (prevForm && prevImg[key]) {
           await deleteFromS3(prevImg[key]);
         }
         opt.imageUrl = null;
         delete opt.imageRemove;
+      } else if (opt.imageUrl && prevForm && prevImg[key] && opt.imageUrl !== prevImg[key]) {
+        if (prevImg[key]) {
+          await deleteFromS3(prevImg[key]);
+        }
       } else if (!opt.imageUrl && prevForm && prevImg[key]) {
-        // preserve previous image if not replaced/removed
         opt.imageUrl = prevImg[key];
       }
 
@@ -96,7 +65,6 @@ async function attachOptionImages(questions = [], files = [], prevForm = null, b
 
 // ---------- controllers ----------
 
-// CREATE FORM  (multipart/form-data)
 exports.createForm = asyncHandler(async (req, res) => {
   const body = {
     businessId: req.body.businessId,
@@ -106,7 +74,7 @@ exports.createForm = asyncHandler(async (req, res) => {
     description: req.body.description || "",
     isActive: String(req.body.isActive ?? "true") === "true",
     isAnonymous: String(req.body.isAnonymous ?? "false") === "true",
-    questions: parseJson(req.body.questions) || [],
+    questions: Array.isArray(req.body.questions) ? req.body.questions : parseJson(req.body.questions) || [],
     defaultLanguage: req.body.defaultLanguage || "en",
   };
 
@@ -114,12 +82,10 @@ exports.createForm = asyncHandler(async (req, res) => {
   if (!body.eventId) return response(res, 400, "eventId is required");
   if (!body.title) return response(res, 400, "title is required");
 
-  // Sanitize or auto-generate slug
   let baseSlug = body.slug?.trim()
     ? slugify(body.slug)
     : slugify(body.title || "form");
 
-  // Ensure slug is unique per business
   const existing = await SurveyForm.findOne({
     businessId: body.businessId,
     slug: baseSlug,
@@ -135,21 +101,10 @@ exports.createForm = asyncHandler(async (req, res) => {
 
   body.slug = baseSlug;
 
-  const business = await Business.findById(body.businessId);
-  if (!business) return response(res, 404, "Business not found");
-  const businessSlug = business.slug;
-
-  // Attach option images from uploaded files
-  body.questions = await attachOptionImages(
-    body.questions,
-    req.files || [],
-    null,
-    businessSlug
-  );
+  body.questions = await processOptionImages(body.questions, null);
 
   const form = await SurveyForm.create(body);
 
-  // Fire background recompute
   recomputeAndEmit(body.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
@@ -217,7 +172,6 @@ exports.getFormBySlug = asyncHandler(async (req, res) => {
   return response(res, 200, "Survey form fetched", form);
 });
 
-// UPDATE FORM  (multipart/form-data)
 exports.updateForm = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id))
@@ -240,28 +194,17 @@ exports.updateForm = asyncHandler(async (req, res) => {
       typeof req.body.isAnonymous === "undefined"
         ? prev.isAnonymous
         : String(req.body.isAnonymous) === "true",
-    questions: parseJson(req.body.questions) ?? prev.questions,
+    questions: Array.isArray(req.body.questions) ? req.body.questions : (parseJson(req.body.questions) ?? prev.questions),
     defaultLanguage:
       typeof req.body.defaultLanguage === "undefined"
         ? prev.defaultLanguage
         : req.body.defaultLanguage,
   };
 
-  const business = await Business.findById(patch.businessId || prev.businessId);
-  if (!business) return response(res, 404, "Business not found");
-  const businessSlug = business.slug;
-
-  // attach/replace/remove option images based on uploaded files + flags
-  patch.questions = await attachOptionImages(
-    patch.questions,
-    req.files || [],
-    prev,
-    businessSlug
-  );
+  patch.questions = await processOptionImages(patch.questions, prev);
 
   const updated = await SurveyForm.findByIdAndUpdate(id, patch, { new: true });
 
-  // Fire background recompute
   recomputeAndEmit(updated.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
