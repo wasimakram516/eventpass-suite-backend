@@ -12,11 +12,40 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 // Create TapMatch Game
 // ---------------------------------------------------------
 exports.createGame = asyncHandler(async (req, res) => {
-  const { businessSlug, title, slug, countdownTimer, gameSessionTimer } =
-    req.body;
+  if (!req.body) {
+    return response(res, 400, "Request body is required");
+  }
 
-  if (!businessSlug || !title || !slug || !gameSessionTimer)
+  const {
+    businessSlug,
+    title,
+    slug,
+    countdownTimer,
+    gameSessionTimer,
+    coverImage,
+    nameImage,
+    backgroundImage,
+    memoryImages,
+  } = req.body;
+
+  if (!businessSlug || !title || !slug || !gameSessionTimer) {
     return response(res, 400, "Missing required fields");
+  }
+
+  const missingMedia = [];
+  if (!coverImage || coverImage.trim() === "") {
+    missingMedia.push("Cover Image");
+  }
+  if (!nameImage || nameImage.trim() === "") {
+    missingMedia.push("Name Image");
+  }
+  if (!backgroundImage || backgroundImage.trim() === "") {
+    missingMedia.push("Background Image");
+  }
+
+  if (missingMedia.length > 0) {
+    return response(res, 400, `Missing required media: ${missingMedia.join(", ")}`);
+  }
 
   const business = await Business.findOne({ slug: businessSlug }).notDeleted();
   if (!business) return response(res, 404, "Business not found");
@@ -24,42 +53,33 @@ exports.createGame = asyncHandler(async (req, res) => {
   const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
   const businessId = business._id;
 
-  // Upload main images
-  let coverImage = {},
-    nameImage = {},
-    backgroundImage = {};
-
-  if (req.files?.cover?.[0])
-    coverImage = await uploadToS3(req.files.cover[0], business.slug, "TapMatch", {
-      inline: true,
-    });
-  if (req.files?.name?.[0])
-    nameImage = await uploadToS3(req.files.name[0], business.slug, "TapMatch", {
-      inline: true,
-    });
-  if (req.files?.background?.[0])
-    backgroundImage = await uploadToS3(req.files.background[0], business.slug, "TapMatch", {
-      inline: true,
-    });
-
-  // Upload all memory images
-  const memoryImages = [];
-  if (req.files?.memoryImages?.length) {
-    for (const file of req.files.memoryImages) {
-      const uploaded = await uploadToS3(file, business.slug, "TapMatch", { inline: true });
-      memoryImages.push({ key: uploaded.key, url: uploaded.fileUrl });
-    }
-  }
+  const processedMemoryImages = Array.isArray(memoryImages)
+    ? memoryImages.map((url) => {
+        let key = url;
+        if (url && url.startsWith("http")) {
+          try {
+            const env = require("../../config/env");
+            const base = env.aws.cloudfrontUrl.endsWith("/")
+              ? env.aws.cloudfrontUrl
+              : env.aws.cloudfrontUrl + "/";
+            key = decodeURIComponent(url.replace(base, ""));
+          } catch (err) {
+            console.warn("Failed to extract S3 key from URL:", url);
+          }
+        }
+        return { key, url };
+      })
+    : [];
 
   const game = await Game.create({
     businessId,
     title,
     slug: sanitizedSlug,
     type: "memory",
-    coverImage: coverImage.fileUrl,
-    nameImage: nameImage.fileUrl,
-    backgroundImage: backgroundImage.fileUrl,
-    memoryImages,
+    coverImage,
+    nameImage,
+    backgroundImage,
+    memoryImages: processedMemoryImages,
     countdownTimer: countdownTimer || 3,
     gameSessionTimer,
     mode: "solo",
@@ -76,6 +96,10 @@ exports.createGame = asyncHandler(async (req, res) => {
 // Update TapMatch Game
 // ---------------------------------------------------------
 exports.updateGame = asyncHandler(async (req, res) => {
+  if (!req.body) {
+    return response(res, 400, "Request body is required");
+  }
+
   const game = await Game.findOne({
     _id: req.params.id,
     type: "memory",
@@ -83,7 +107,16 @@ exports.updateGame = asyncHandler(async (req, res) => {
   }).notDeleted();
   if (!game) return response(res, 404, "TapMatch game not found");
 
-  const { title, slug, countdownTimer, gameSessionTimer } = req.body;
+  const {
+    title,
+    slug,
+    countdownTimer,
+    gameSessionTimer,
+    coverImage,
+    nameImage,
+    backgroundImage,
+    memoryImages,
+  } = req.body;
 
   if (slug && slug !== game.slug) {
     const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
@@ -94,46 +127,54 @@ exports.updateGame = asyncHandler(async (req, res) => {
   if (countdownTimer) game.countdownTimer = countdownTimer;
   if (gameSessionTimer) game.gameSessionTimer = gameSessionTimer;
 
-  const business = await Business.findById(game.businessId);
-
-  // Replace images if new ones provided
-  if (req.files?.cover?.[0]) {
-    await deleteFromS3(game.coverImage);
-    const uploaded = await uploadToS3(req.files.cover[0], business.slug, "TapMatch", {
-      inline: true,
-    });
-    game.coverImage = uploaded.fileUrl;
+  if (coverImage !== undefined) {
+    if (game.coverImage && game.coverImage !== coverImage) {
+      await deleteFromS3(game.coverImage);
+    }
+    game.coverImage = coverImage || null;
   }
 
-  if (req.files?.name?.[0]) {
-    await deleteFromS3(game.nameImage);
-    const uploaded = await uploadToS3(req.files.name[0], business.slug, "TapMatch", {
-      inline: true,
-    });
-    game.nameImage = uploaded.fileUrl;
+  if (nameImage !== undefined) {
+    if (game.nameImage && game.nameImage !== nameImage) {
+      await deleteFromS3(game.nameImage);
+    }
+    game.nameImage = nameImage || null;
   }
 
-  if (req.files?.background?.[0]) {
-    await deleteFromS3(game.backgroundImage);
-    const uploaded = await uploadToS3(req.files.background[0], business.slug, "TapMatch", {
-      inline: true,
-    });
-    game.backgroundImage = uploaded.fileUrl;
+  if (backgroundImage !== undefined) {
+    if (game.backgroundImage && game.backgroundImage !== backgroundImage) {
+      await deleteFromS3(game.backgroundImage);
+    }
+    game.backgroundImage = backgroundImage || null;
   }
 
-  // Replace all memory images
-  if (req.files?.memoryImages?.length) {
-    for (const img of game.memoryImages) {
-      await deleteFromS3(img.key || img.url);
+  if (memoryImages !== undefined) {
+    if (Array.isArray(game.memoryImages) && game.memoryImages.length > 0) {
+      for (const img of game.memoryImages) {
+        if (img && (img.key || img.url)) {
+          await deleteFromS3(img.key || img.url);
+        }
+      }
     }
 
-    // Upload new ones
-    const newMemoryImages = [];
-    for (const file of req.files.memoryImages) {
-      const uploaded = await uploadToS3(file, business.slug, "TapMatch", { inline: true });
-      newMemoryImages.push({ key: uploaded.key, url: uploaded.fileUrl });
-    }
-    game.memoryImages = newMemoryImages;
+    const processedMemoryImages = Array.isArray(memoryImages)
+      ? memoryImages.map((url) => {
+          let key = url;
+          if (url && url.startsWith("http")) {
+            try {
+              const env = require("../../config/env");
+              const base = env.aws.cloudfrontUrl.endsWith("/")
+                ? env.aws.cloudfrontUrl
+                : env.aws.cloudfrontUrl + "/";
+              key = decodeURIComponent(url.replace(base, ""));
+            } catch (err) {
+              console.warn("Failed to extract S3 key from URL:", url);
+            }
+          }
+          return { key, url };
+        })
+      : [];
+    game.memoryImages = processedMemoryImages;
   }
 
   await game.save();
