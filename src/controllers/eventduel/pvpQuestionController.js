@@ -4,7 +4,7 @@ const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const XLSX = require("xlsx");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
-const { uploadToS3, deleteFromS3 } = require("../../utils/s3Storage");
+const { deleteFromS3 } = require("../../utils/s3Storage");
 
 // Download sample Excel template
 exports.downloadSampleTemplate = asyncHandler(async (req, res) => {
@@ -128,7 +128,11 @@ exports.getQuestions = asyncHandler(async (req, res) => {
 
 // Add a single question
 exports.addQuestion = asyncHandler(async (req, res) => {
-  const { question, answers, correctAnswerIndex, hint } = req.body;
+  if (!req.body) {
+    return response(res, 400, "Request body is required");
+  }
+
+  const { question, answers, correctAnswerIndex, hint, questionImage, answerImages } = req.body;
 
   if (!question || !answers || correctAnswerIndex === undefined) {
     return response(res, 400, "All fields are required");
@@ -147,33 +151,20 @@ exports.addQuestion = asyncHandler(async (req, res) => {
     return response(res, 400, `This quiz requires exactly ${game.choicesCount} options`);
   }
 
-  const business = await Business.findById(game.businessId);
-  if (!business) return response(res, 404, "Business not found");
-
-  let questionImage = null;
-  const answerImages = [];
-
-  if (req.files?.questionImage?.[0]) {
-    const upload = await uploadToS3(req.files.questionImage[0], business.slug, "EventDuel", {
-      inline: true,
+  const processedAnswerImages = Array(game.choicesCount).fill(null);
+  if (Array.isArray(answerImages)) {
+    answerImages.forEach((url, idx) => {
+      if (idx < processedAnswerImages.length && url) {
+        processedAnswerImages[idx] = url;
+      }
     });
-    questionImage = upload.fileUrl;
-  }
-
-  if (req.files?.answerImages) {
-    for (const file of req.files.answerImages) {
-      const upload = await uploadToS3(file, business.slug, "EventDuel", {
-        inline: true,
-      });
-      answerImages.push(upload.fileUrl);
-    }
   }
 
   game.questions.push({
     question,
-    questionImage,
+    questionImage: questionImage || null,
     answers: parsedAnswers,
-    answerImages,
+    answerImages: processedAnswerImages,
     correctAnswerIndex: parseInt(correctAnswerIndex),
     hint: hint || "",
   });
@@ -190,7 +181,20 @@ exports.addQuestion = asyncHandler(async (req, res) => {
 
 // Update a question
 exports.updateQuestion = asyncHandler(async (req, res) => {
-  const { question, answers, correctAnswerIndex, hint, removeQuestionImage, removeAnswerImages } = req.body;
+  if (!req.body) {
+    return response(res, 400, "Request body is required");
+  }
+
+  const {
+    question,
+    answers,
+    correctAnswerIndex,
+    hint,
+    questionImage,
+    answerImages,
+    removeQuestionImage,
+    removeAnswerImages,
+  } = req.body;
 
   const game = await Game.findOne({
     _id: req.params.gameId,
@@ -208,17 +212,18 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
     return response(res, 400, `This quiz requires exactly ${game.choicesCount} options`);
   }
 
-  const business = await Business.findById(game.businessId);
-  if (!business) return response(res, 404, "Business not found");
-
-  if (removeQuestionImage === 'true' && q.questionImage) {
-    await deleteFromS3(q.questionImage);
+  if (removeQuestionImage === "true") {
+    if (q.questionImage) await deleteFromS3(q.questionImage);
     q.questionImage = null;
+  } else if (questionImage !== undefined) {
+    if (q.questionImage && q.questionImage !== questionImage) {
+      await deleteFromS3(q.questionImage);
+    }
+    q.questionImage = questionImage || null;
   }
 
-  if (removeAnswerImages) {
-    const indicesToRemove = JSON.parse(removeAnswerImages);
-    for (const index of indicesToRemove) {
+  if (removeAnswerImages && Array.isArray(removeAnswerImages)) {
+    for (const index of removeAnswerImages) {
       if (q.answerImages[index]) {
         await deleteFromS3(q.answerImages[index]);
         q.answerImages[index] = null;
@@ -226,34 +231,26 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
     }
   }
 
-  if (req.files?.questionImage?.[0]) {
-    if (q.questionImage) await deleteFromS3(q.questionImage);
-    const upload = await uploadToS3(req.files.questionImage[0], business.slug, "EventDuel", {
-      inline: true,
-    });
-    q.questionImage = upload.fileUrl;
-  }
+  if (answerImages !== undefined && Array.isArray(answerImages)) {
+    const newAnswerImages = Array(game.choicesCount).fill(null);
 
-  if (req.files?.answerImages && req.body.answerImageIndices) {
-    const indices = Array.isArray(req.body.answerImageIndices)
-      ? req.body.answerImageIndices.map(Number)
-      : [Number(req.body.answerImageIndices)];
-
-    const newAnswerImages = [...(q.answerImages || Array(game.choicesCount).fill(null))];
-
-    for (let i = 0; i < req.files.answerImages.length; i++) {
-      const file = req.files.answerImages[i];
-      const targetIndex = indices[i];
-
-      const upload = await uploadToS3(file, business.slug, "EventDuel", {
-        inline: true,
-      });
-
-      if (newAnswerImages[targetIndex]) {
-        await deleteFromS3(newAnswerImages[targetIndex]).catch(console.error);
+    if (q.answerImages && Array.isArray(q.answerImages)) {
+      for (let idx = 0; idx < q.answerImages.length; idx++) {
+        const img = q.answerImages[idx];
+        if (idx < newAnswerImages.length && img && !removeAnswerImages?.includes(idx)) {
+          newAnswerImages[idx] = img;
+        }
       }
+    }
 
-      newAnswerImages[targetIndex] = upload.fileUrl;
+    for (let idx = 0; idx < answerImages.length; idx++) {
+      const url = answerImages[idx];
+      if (idx < newAnswerImages.length && url) {
+        if (newAnswerImages[idx] && newAnswerImages[idx] !== url) {
+          await deleteFromS3(newAnswerImages[idx]).catch(console.error);
+        }
+        newAnswerImages[idx] = url;
+      }
     }
 
     q.answerImages = newAnswerImages;
