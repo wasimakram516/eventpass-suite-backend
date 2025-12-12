@@ -110,6 +110,29 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
       return response(res, 200, "Media deleted successfully", question);
     }
 
+    if (req.body.formId && mediaType === "optionImage" && mongoose.Types.ObjectId.isValid(req.body.formId)) {
+      const SurveyForm = require("../../models/SurveyForm");
+      const form = await SurveyForm.findById(req.body.formId);
+
+      if (!form) {
+        return response(res, 404, "Survey form not found");
+      }
+
+      const questionIndex = parseInt(req.body.questionIndex);
+      const optionIndex = parseInt(req.body.optionIndex);
+
+      if (form.questions && form.questions[questionIndex] && form.questions[questionIndex].options) {
+        const option = form.questions[questionIndex].options[optionIndex];
+        if (option) {
+          option.imageUrl = null;
+          await form.save();
+          return response(res, 200, "Media deleted successfully", form);
+        }
+      }
+
+      return response(res, 404, "Option not found");
+    }
+
     return response(res, 200, "Media deleted successfully");
   } catch (error) {
     console.error("Media deletion error:", error);
