@@ -14,7 +14,6 @@ router.get("/", votecastAccess, pollController.getPolls);
 router.post(
   "/",
   votecastAccess,
-  upload.array("images", 10), 
   pollController.createPoll
 );
 
@@ -22,7 +21,6 @@ router.post(
 router.put(
   "/:id",
   votecastAccess,
-  upload.array("images", 10), 
   pollController.updatePoll
 );
 
