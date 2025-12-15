@@ -152,6 +152,30 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
       return response(res, 404, "Option not found");
     }
 
+    if (req.body.spinWheelId && mediaType && mongoose.Types.ObjectId.isValid(req.body.spinWheelId)) {
+      const SpinWheel = require("../../models/SpinWheel");
+      const wheel = await SpinWheel.findById(req.body.spinWheelId);
+
+      if (!wheel) {
+        return response(res, 404, "Spin wheel not found");
+      }
+
+      const updates = {};
+
+      if (mediaType === "logo") {
+        updates.logoUrl = null;
+      } else if (mediaType === "background") {
+        updates.backgroundUrl = null;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const updatedWheel = await SpinWheel.findByIdAndUpdate(req.body.spinWheelId, updates, {
+          new: true,
+        });
+        return response(res, 200, "Media deleted successfully", updatedWheel);
+      }
+    }
+
     return response(res, 200, "Media deleted successfully");
   } catch (error) {
     console.error("Media deletion error:", error);
