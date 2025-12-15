@@ -9,7 +9,7 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // Create SpinWheel
 exports.createSpinWheel = asyncHandler(async (req, res) => {
-  const { business, title, slug, type } = req.body;
+  const { business, title, slug, type, logoUrl, backgroundUrl } = req.body;
 
   if (!business || !title || !type) {
     return response(res, 400, "Missing required fields");
@@ -22,36 +22,13 @@ exports.createSpinWheel = asyncHandler(async (req, res) => {
 
   const finalSlug = await generateUniqueSlug(SpinWheel, "slug", slug);
 
-  let logoUrl = "",
-    backgroundUrl = "";
-
-  if (req.files?.logo) {
-    const uploaded = await uploadToS3(
-      req.files.logo[0],
-      existingBusiness.slug,
-      "EventWheel",
-      { inline: true }
-    );
-    logoUrl = uploaded.fileUrl;
-  }
-
-  if (req.files?.background) {
-    const uploaded = await uploadToS3(
-      req.files.background[0],
-      existingBusiness.slug,
-      "EventWheel",
-      { inline: true }
-    );
-    backgroundUrl = uploaded.fileUrl;
-  }
-
   const spinWheel = await SpinWheel.create({
     business,
     title,
     slug: finalSlug,
     type,
-    logoUrl,
-    backgroundUrl,
+    logoUrl: logoUrl || null,
+    backgroundUrl: backgroundUrl || null,
   });
 
   // Fire background recompute
@@ -95,7 +72,7 @@ exports.updateSpinWheel = asyncHandler(async (req, res) => {
   const wheel = await SpinWheel.findById(req.params.id);
   if (!wheel) return response(res, 404, "SpinWheel not found");
 
-  const { title, slug, type } = req.body;
+  const { title, slug, type, logoUrl, backgroundUrl } = req.body;
 
   if (slug && slug !== wheel.slug) {
     wheel.slug = await generateUniqueSlug(SpinWheel, "slug", slug);
@@ -107,26 +84,27 @@ exports.updateSpinWheel = asyncHandler(async (req, res) => {
   const business = await Business.findById(wheel.business);
   if (!business) return response(res, 404, "Business not found");
 
-  if (req.files?.logo) {
-    if (wheel.logoUrl) await deleteFromS3(wheel.logoUrl);
-    const uploaded = await uploadToS3(
-      req.files.logo[0],
-      business.slug,
-      "EventWheel",
-      { inline: true }
-    );
-    wheel.logoUrl = uploaded.fileUrl;
+  if (logoUrl !== undefined) {
+    if (wheel.logoUrl && wheel.logoUrl !== logoUrl) {
+      try {
+        await deleteFromS3(wheel.logoUrl);
+      } catch (err) {
+        console.error("Failed to delete old logo from S3:", err);
+      }
+    }
+    wheel.logoUrl = logoUrl || null;
   }
 
-  if (req.files?.background) {
-    if (wheel.backgroundUrl) await deleteFromS3(wheel.backgroundUrl);
-    const uploaded = await uploadToS3(
-      req.files.background[0],
-      business.slug,
-      "EventWheel",
-      { inline: true }
-    );
-    wheel.backgroundUrl = uploaded.fileUrl;
+  if (backgroundUrl !== undefined) {
+
+    if (wheel.backgroundUrl && wheel.backgroundUrl !== backgroundUrl) {
+      try {
+        await deleteFromS3(wheel.backgroundUrl);
+      } catch (err) {
+        console.error("Failed to delete old background from S3:", err);
+      }
+    }
+    wheel.backgroundUrl = backgroundUrl || null;
   }
 
   await wheel.save();
