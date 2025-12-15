@@ -133,6 +133,25 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
       return response(res, 404, "Option not found");
     }
 
+    if (req.body.pollId && mediaType === "optionImage" && mongoose.Types.ObjectId.isValid(req.body.pollId)) {
+      const Poll = require("../../models/Poll");
+      const poll = await Poll.findById(req.body.pollId);
+
+      if (!poll) {
+        return response(res, 404, "Poll not found");
+      }
+
+      const optionIndex = parseInt(req.body.optionIndex);
+
+      if (poll.options && poll.options[optionIndex]) {
+        poll.options[optionIndex].imageUrl = null;
+        await poll.save();
+        return response(res, 200, "Media deleted successfully", poll);
+      }
+
+      return response(res, 404, "Option not found");
+    }
+
     return response(res, 200, "Media deleted successfully");
   } catch (error) {
     console.error("Media deletion error:", error);
