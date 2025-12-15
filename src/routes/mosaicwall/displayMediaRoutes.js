@@ -12,11 +12,11 @@ const upload = require("../../middlewares/uploadMiddleware");
 const mosaicwallAccess = [protect, checkPermission.mosaicwall];
 
 // Protected Routes
-router.put("/:id", mosaicwallAccess, upload.single("image"), updateDisplayMedia);
+router.put("/:id", mosaicwallAccess, updateDisplayMedia);
 router.delete("/:id", mosaicwallAccess, deleteDisplayMedia);
 
 // Public Routes
-router.post("/upload/:slug", upload.single("image"), createDisplayMedia);
+router.post("/upload/:slug", createDisplayMedia);
 router.get("/", getDisplayMedia);
 router.get("/:id", getMediaById);
 
