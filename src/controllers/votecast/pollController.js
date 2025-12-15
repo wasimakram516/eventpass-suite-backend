@@ -65,30 +65,19 @@ exports.createPoll = asyncHandler(async (req, res) => {
     if (!business) return response(res, 404, "Business not found");
   }
 
-  const files = req.files || [];
 
-  const enrichedOptions = await Promise.all(
-    parsedOptions.map(async (opt, idx) => {
-      if (!opt.text) throw new Error("Each option must have text");
+  const enrichedOptions = parsedOptions.map((opt) => {
+    if (!opt.text) throw new Error("Each option must have text");
 
-      let imageUrl = "";
-      if (files[idx]) {
-        const uploaded = await uploadToS3(
-          files[idx],
-          business.slug,
-          "VoteCast",
-          { inline: true }
-        );
-        imageUrl = uploaded.fileUrl;
-      }
 
-      return {
-        text: opt.text,
-        imageUrl,
-        votes: 0,
-      };
-    })
-  );
+    const imageUrl = opt.imageUrl && opt.imageUrl.trim() !== "" ? opt.imageUrl : null;
+
+    return {
+      text: opt.text,
+      imageUrl: imageUrl,
+      votes: 0,
+    };
+  });
 
   const poll = await Poll.create({
     question,
@@ -141,30 +130,34 @@ exports.updatePoll = asyncHandler(async (req, res) => {
       return response(res, 400, "At least 2 options are required");
     }
 
-    const files = req.files || [];
 
     poll.options = await Promise.all(
       parsedOptions.map(async (opt, idx) => {
-        let imageUrl = opt.imageUrl || "";
+        const existingOption = poll.options[idx];
 
-        if (files[idx]) {
-          const existingOption = poll.options[idx];
-          if (existingOption?.imageUrl) {
+        let imageUrl = opt.imageUrl && opt.imageUrl.trim() !== "" ? opt.imageUrl : null;
+
+
+        if (!imageUrl && existingOption?.imageUrl) {
+          try {
             await deleteFromS3(existingOption.imageUrl);
+          } catch (err) {
+            console.error("Failed to delete old image from S3:", err);
           }
-          const uploaded = await uploadToS3(
-            files[idx],
-            poll.business.slug,
-            "VoteCast",
-            { inline: true }
-          );
-          imageUrl = uploaded.fileUrl;
+        }
+
+        else if (imageUrl && existingOption?.imageUrl && imageUrl !== existingOption.imageUrl) {
+          try {
+            await deleteFromS3(existingOption.imageUrl);
+          } catch (err) {
+            console.error("Failed to delete old image from S3:", err);
+          }
         }
 
         return {
           text: opt.text,
-          imageUrl,
-          votes: typeof opt.votes === "number" ? opt.votes : 0,
+          imageUrl: imageUrl,
+          votes: typeof opt.votes === "number" ? opt.votes : (existingOption?.votes || 0),
         };
       })
     );

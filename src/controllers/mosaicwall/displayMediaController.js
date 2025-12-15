@@ -33,9 +33,9 @@ exports.getMediaById = asyncHandler(async (req, res) => {
 // Create new media (linked to wall config via slug)
 exports.createDisplayMedia = asyncHandler(async (req, res) => {
   const wallSlug = req.params.slug;
-  const { text = "" } = req.body;
+  const { imageUrl, text = "" } = req.body;
 
-  if (!req.file) return response(res, 400, "Image file is required.");
+  if (!imageUrl) return response(res, 400, "Image URL is required.");
   if (!wallSlug) return response(res, 400, "Wall slug is required.");
 
   const wall = await WallConfig.findOne({ slug: wallSlug }).populate("business", "slug");
@@ -44,10 +44,8 @@ exports.createDisplayMedia = asyncHandler(async (req, res) => {
   const business = await Business.findById(wall.business);
   if (!business) return response(res, 404, "Business not found.");
 
-  const uploaded = await uploadToS3(req.file, business.slug, "MosaicWall", { inline: true });
-
   const media = await DisplayMedia.create({
-    imageUrl: uploaded.fileUrl,
+    imageUrl,
     text: wall.mode === "card" ? text : "",
     wall: wall._id,
   });
@@ -72,16 +70,19 @@ exports.updateDisplayMedia = asyncHandler(async (req, res) => {
 
   if (req.body.text !== undefined) item.text = req.body.text;
 
-  if (req.file) {
+  if (req.body.imageUrl) {
     const wall = await WallConfig.findById(item.wall).populate("business", "slug");
     if (!wall) return response(res, 404, "Wall not found.");
 
-    const business = await Business.findById(wall.business);
-    if (!business) return response(res, 404, "Business not found.");
 
-    await deleteFromS3(item.imageUrl);
-    const uploaded = await uploadToS3(req.file, business.slug, "MosaicWall", { inline: true });
-    item.imageUrl = uploaded.fileUrl;
+    if (item.imageUrl && item.imageUrl !== req.body.imageUrl) {
+      try {
+        await deleteFromS3(item.imageUrl);
+      } catch (err) {
+        console.error("Failed to delete old image from S3:", err);
+      }
+    }
+    item.imageUrl = req.body.imageUrl;
   }
 
   await item.save();
@@ -103,6 +104,14 @@ exports.updateDisplayMedia = asyncHandler(async (req, res) => {
 exports.deleteDisplayMedia = asyncHandler(async (req, res) => {
   const item = await DisplayMedia.findById(req.params.id);
   if (!item) return response(res, 404, "Media not found.");
+
+  if (item.imageUrl) {
+    try {
+      await deleteFromS3(item.imageUrl);
+    } catch (err) {
+      console.error("Failed to delete image from S3:", err);
+    }
+  }
 
   await item.softDelete(req.user.id);
 

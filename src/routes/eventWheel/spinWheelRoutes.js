@@ -10,7 +10,6 @@ const {
 } = require("../../controllers/EventWheel/spinWheelController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
-const upload = require("../../middlewares/uploadMiddleware");
 
 const eventWheelAccess = [protect, checkPermission.eventwheel];
 
@@ -27,10 +26,6 @@ router.get("/:id", getSpinWheelById);
 router.post(
   "/",
   eventWheelAccess,
-  upload.fields([
-    { name: "logo", maxCount: 1 },
-    { name: "background", maxCount: 1 },
-  ]),
   createSpinWheel
 );
 
@@ -38,10 +33,6 @@ router.post(
 router.put(
   "/:id",
   eventWheelAccess,
-  upload.fields([
-    { name: "logo", maxCount: 1 },
-    { name: "background", maxCount: 1 },
-  ]),
   updateSpinWheel
 );
 
