@@ -6,6 +6,7 @@ const Business = require("../../models/Business");
 const Registration = require("../../models/Registration");
 const WalkIn = require("../../models/WalkIn");
 const Event = require("../../models/Event");
+const User = require("../../models/User");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const recountEventRegistrations = require("../../utils/recountEventRegistrations");
@@ -172,11 +173,9 @@ function validateAllRows(event, rows) {
     const rowNumbersText = formatRowNumbers(invalidRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Row${
-        invalidRowNumbers.length > 1 ? "s" : ""
-      } ${rowNumbersText} ${
-        invalidRowNumbers.length > 1 ? "have" : "has"
-      } missing required fields: ${allRequiredFields.join(", ")}.`,
+      error: `Cannot upload file. Row${invalidRowNumbers.length > 1 ? "s" : ""
+        } ${rowNumbersText} ${invalidRowNumbers.length > 1 ? "have" : "has"
+        } missing required fields: ${allRequiredFields.join(", ")}.`,
     };
   }
 
@@ -184,11 +183,9 @@ function validateAllRows(event, rows) {
     const rowNumbersText = formatRowNumbers(invalidEmailRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Row${
-        invalidEmailRowNumbers.length > 1 ? "s" : ""
-      } ${rowNumbersText} ${
-        invalidEmailRowNumbers.length > 1 ? "have" : "has"
-      } invalid email format.`,
+      error: `Cannot upload file. Row${invalidEmailRowNumbers.length > 1 ? "s" : ""
+        } ${rowNumbersText} ${invalidEmailRowNumbers.length > 1 ? "have" : "has"
+        } invalid email format.`,
     };
   }
 
@@ -196,9 +193,8 @@ function validateAllRows(event, rows) {
     const rowNumbersText = formatRowNumbers(duplicateEmailRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Duplicate email(s) found at row${
-        duplicateEmailRowNumbers.length > 1 ? "s" : ""
-      } ${rowNumbersText}. Each email must be unique.`,
+      error: `Cannot upload file. Duplicate email(s) found at row${duplicateEmailRowNumbers.length > 1 ? "s" : ""
+        } ${rowNumbersText}. Each email must be unique.`,
     };
   }
 
@@ -210,8 +206,8 @@ function formatRowNumbers(arr) {
   return arr.length === 1
     ? arr[0].toString()
     : arr.length === 2
-    ? `${arr[0]} and ${arr[1]}`
-    : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
+      ? `${arr[0]} and ${arr[1]}`
+      : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
 }
 
 // DOWNLOAD sample Excel template
@@ -619,25 +615,28 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   }
 
   // Build duplicate filter
-  const duplicateFilter = { eventId };
-  const or = [];
+  // Only check for duplicates if we have email or phone to match against
+  if (extractedEmail || extractedPhone) {
+    const duplicateFilter = { eventId };
+    const or = [];
 
-  if (extractedEmail) {
-    or.push({ "customFields.Email": extractedEmail });
-    or.push({ email: extractedEmail }); // for classic-mode events
-  }
+    if (extractedEmail) {
+      or.push({ "customFields.Email": extractedEmail });
+      or.push({ email: extractedEmail }); // for classic-mode events
+    }
 
-  if (extractedPhone) {
-    or.push({ "customFields.Phone": extractedPhone });
-    or.push({ phone: extractedPhone });
-  }
+    if (extractedPhone) {
+      or.push({ "customFields.Phone": extractedPhone });
+      or.push({ phone: extractedPhone });
+    }
 
-  if (or.length > 0) duplicateFilter.$or = or;
+    if (or.length > 0) duplicateFilter.$or = or;
 
-  // Check DB
-  const dup = await Registration.findOne(duplicateFilter);
-  if (dup) {
-    return response(res, 409, "Already registered with this email or phone");
+    // Check DB
+    const dup = await Registration.findOne(duplicateFilter);
+    if (dup) {
+      return response(res, 409, "Already registered with this email or phone");
+    }
   }
 
   // --- Create registration ---
@@ -663,7 +662,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   const displayNameForEmail =
     formFields.length > 0
       ? pickFullName(customFields) ||
-        (event.defaultLanguage === "ar" ? "ضيف" : "Guest")
+      (event.defaultLanguage === "ar" ? "ضيف" : "Guest")
       : fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
   const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
@@ -744,32 +743,32 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
       "Full Name" in fields
         ? fields["Full Name"]
         : "fullName" in fields
-        ? fields["fullName"]
-        : "Name" in fields
-        ? fields["Name"]
-        : reg.fullName;
+          ? fields["fullName"]
+          : "Name" in fields
+            ? fields["Name"]
+            : reg.fullName;
     const email =
       "Email" in fields
         ? fields["Email"]
         : "email" in fields
-        ? fields["email"]
-        : reg.email;
+          ? fields["email"]
+          : reg.email;
     const phone =
       "Phone" in fields
         ? fields["Phone"]
         : "phone" in fields
-        ? fields["phone"]
-        : reg.phone;
+          ? fields["phone"]
+          : reg.phone;
     const company =
       "Company" in fields
         ? fields["Company"]
         : "Institution" in fields
-        ? fields["Institution"]
-        : "Organization" in fields
-        ? fields["Organization"]
-        : "company" in fields
-        ? fields["company"]
-        : reg.company;
+          ? fields["Institution"]
+          : "Organization" in fields
+            ? fields["Organization"]
+            : "company" in fields
+              ? fields["company"]
+              : reg.company;
 
     reg.customFields = {};
     reg.fullName = fullName;
@@ -1146,6 +1145,67 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     scannedAt: walkin.scannedAt,
     scannedBy: { name: staffUser.name || staffUser.email },
     zpl,
+  });
+});
+
+// Create walkin record for a registration (Admin use)
+exports.createWalkIn = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const adminUser = req.user;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return response(res, 400, "Invalid registration ID");
+  }
+
+  if (!adminUser?.id) {
+    return response(res, 401, "Unauthorized – no admin info");
+  }
+
+  const userDoc = await User.findById(adminUser.id).notDeleted();
+  if (!userDoc) {
+    return response(res, 404, "User not found");
+  }
+
+  if (userDoc.role !== "admin") {
+    return response(
+      res,
+      403,
+      `Only admin users can create walk-in records. Your role: ${userDoc.role}`
+    );
+  }
+
+  const registration = await Registration.findById(id)
+    .populate("eventId")
+    .notDeleted();
+
+  if (!registration) {
+    return response(res, 404, "Registration not found");
+  }
+
+  if (registration.eventId?.requiresApproval) {
+    if (registration.approvalStatus !== "approved") {
+      return response(res, 400, "This registration is not approved");
+    }
+  }
+
+  const walkin = new WalkIn({
+    registrationId: registration._id,
+    eventId: registration.eventId?._id,
+    scannedBy: adminUser.id,
+  });
+  await walkin.save();
+
+  recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(res, 200, "Walk-in record created successfully", {
+    walkinId: walkin._id,
+    scannedAt: walkin.scannedAt,
+    scannedBy: {
+      name: adminUser.name || adminUser.email,
+      id: adminUser.id
+    },
   });
 });
 

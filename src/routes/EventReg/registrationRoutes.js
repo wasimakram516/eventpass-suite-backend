@@ -16,6 +16,7 @@ const {
   updateRegistration,
   updateRegistrationApproval,
   exportRegistrations,
+  createWalkIn,
 } = require("../../controllers/EventReg/registrationController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
@@ -28,6 +29,9 @@ router.put("/:id", eventRegAccess, updateRegistration);
 
 // Update registration approval status
 router.patch("/:id/approval", eventRegAccess, updateRegistrationApproval);
+
+// Create walkin record for a registration (protected)
+router.post("/:id/walkin", eventRegAccess, createWalkIn);
 
 // GET count of unemailed registrations for an event (protected)
 router.get("/event/:slug/unsent-count", eventRegAccess, unsentCount);
