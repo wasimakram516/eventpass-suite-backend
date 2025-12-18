@@ -307,6 +307,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   if (!event) return response(res, 404, "Event not found");
 
   const eventId = event._id;
+  const hasCustomFields = event.formFields && event.formFields.length > 0;
 
   // -------------------------
   // PREPARE DB QUERY FILTERS
@@ -319,11 +320,28 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   if (token) mongoQuery.token = new RegExp(token, "i");
 
   // Dynamic field filters
+  const classicFieldsMap = {
+    "Full Name": "fullName",
+    "Email": "email",
+    "Phone": "phone",
+    "Company": "company",
+    "fullName": "fullName",
+    "email": "email",
+    "phone": "phone",
+    "company": "company",
+  };
+
   const dynamicFilters = Object.entries(dynamicFiltersRaw)
     .filter(([key]) => key.startsWith("field_"))
     .reduce((acc, [key, val]) => {
       const fieldName = key.replace("field_", "");
-      acc[`customFields.${fieldName}`] = new RegExp(val, "i");
+
+      if (hasCustomFields) {
+        acc[`customFields.${fieldName}`] = new RegExp(val, "i");
+      } else {
+        const camelCaseName = classicFieldsMap[fieldName] || fieldName;
+        acc[camelCaseName] = new RegExp(val, "i");
+      }
       return acc;
     }, {});
   Object.assign(mongoQuery, dynamicFilters);
