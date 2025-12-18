@@ -1273,11 +1273,12 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
     return response(res, 404, "User not found");
   }
 
-  if (userDoc.role !== "admin") {
+  const allowedRoles = ["admin", "business"];
+  if (!allowedRoles.includes(userDoc.role)) {
     return response(
       res,
       403,
-      `Only admin users can create walk-in records. Your role: ${userDoc.role}`
+      `Only admin or business users can create walk-in records. Your role: ${userDoc.role}`
     );
   }
 
