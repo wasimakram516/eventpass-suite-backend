@@ -29,7 +29,7 @@ const RegistrationSchema = new mongoose.Schema(
     token: { type: String, required: true }, // For QR
     approvalStatus: {
       type: String,
-      enum: ["pending", "approved", "rejected"],
+      enum: ["pending", "approved", "rejected", "confirmed"],
       default: "pending",
     },
   },
