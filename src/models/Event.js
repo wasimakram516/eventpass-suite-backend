@@ -73,16 +73,6 @@ const EventSchema = new mongoose.Schema({
       visible: { type: Boolean, default: true },
     },
   ],
-
-  /** ===== Employee Data (for employee events) ===== */
-  employeeData: [
-    {
-      employeeId: { type: String, required: true },
-      employeeName: { type: String },
-      tableNumber: { type: String, required: true },
-      tableImage: { type: String, required: true },
-    },
-  ],
 });
 
 EventSchema.index({ businessId: 1, isDeleted: 1 });

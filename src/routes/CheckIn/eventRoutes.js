@@ -13,7 +13,6 @@ const {
 } = require("../../controllers/common/downloadController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
-const upload = require("../../middlewares/uploadMiddleware");
 
 const checkInAccess = [protect, checkPermission.checkin];
 
@@ -33,12 +32,6 @@ router.get("/:id", getEventById);
 router.post(
   "/",
   checkInAccess,
-  upload.fields([
-    { name: "logo", maxCount: 1 },
-    { name: "employeeData", maxCount: 1 },
-    { name: "tableImages", maxCount: 500 },
-     { name: "brandingMedia", maxCount: 1 },
-  ]),
   createEvent
 );
 
@@ -46,12 +39,6 @@ router.post(
 router.put(
   "/:id",
   checkInAccess,
-  upload.fields([
-    { name: "logo", maxCount: 1 },
-    { name: "employeeData", maxCount: 1 },
-    { name: "tableImages", maxCount: 500 },
-     { name: "brandingMedia", maxCount: 1 },
-  ]),
   updateEvent
 );
 

@@ -3,9 +3,8 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const Event = require("../../models/Event");
 const Business = require("../../models/Business");
 const Registration = require("../../models/Registration");
-const { processEmployeeData } = require("../../utils/eventUtils");
-const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
-const { deleteImage } = require("../../config/cloudinary");
+const env = require("../../config/env");
+const { deleteFromS3 } = require("../../utils/s3Storage");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
 const response = require("../../utils/response");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
@@ -77,6 +76,14 @@ exports.createEvent = asyncHandler(async (req, res) => {
     description,
     businessSlug,
     showQrAfterRegistration,
+    showQrOnBadge,
+    requiresApproval,
+    defaultLanguage,
+    logoUrl,
+    background,
+    brandingMedia,
+    agendaUrl,
+    formFields,
   } = req.body;
   let { capacity } = req.body;
 
@@ -109,27 +116,66 @@ exports.createEvent = asyncHandler(async (req, res) => {
     capacity = 999;
   }
 
-  let logoUrl = null;
-  if (req.files?.logo) {
-    const uploadResult = await uploadToCloudinary(
-      req.files.logo[0].buffer,
-      req.files.logo[0].mimetype
-    );
-    logoUrl = uploadResult.secure_url;
+  let parsedBackground = {};
+  if (background) {
+    try {
+      parsedBackground =
+        typeof background === "string" ? JSON.parse(background) : background;
+
+      if (parsedBackground.en?.url) {
+        const url = parsedBackground.en.url;
+        const base = env.aws.cloudfrontUrl.endsWith("/")
+          ? env.aws.cloudfrontUrl
+          : env.aws.cloudfrontUrl + "/";
+        parsedBackground.en.key = decodeURIComponent(url.replace(base, ""));
+      }
+      if (parsedBackground.ar?.url) {
+        const url = parsedBackground.ar.url;
+        const base = env.aws.cloudfrontUrl.endsWith("/")
+          ? env.aws.cloudfrontUrl
+          : env.aws.cloudfrontUrl + "/";
+        parsedBackground.ar.key = decodeURIComponent(url.replace(base, ""));
+      }
+    } catch {
+      parsedBackground = {};
+    }
   }
 
-  let employeeData = [];
-  if (!req.files?.employeeData?.[0]) {
-    return response(res, 400, "Employee data file is required");
+  let parsedBrandingMedia = [];
+  if (brandingMedia) {
+    try {
+      parsedBrandingMedia =
+        typeof brandingMedia === "string"
+          ? JSON.parse(brandingMedia)
+          : brandingMedia;
+      if (!Array.isArray(parsedBrandingMedia)) parsedBrandingMedia = [];
+    } catch {
+      parsedBrandingMedia = [];
+    }
   }
 
-  try {
-    employeeData = await processEmployeeData(
-      req.files.employeeData[0].buffer,
-      req.files.tableImages || []
-    );
-  } catch (err) {
-    return response(res, 500, err.message);
+  let parsedFormFields = [];
+  if (formFields) {
+    try {
+      const rawFields =
+        typeof formFields === "string" ? JSON.parse(formFields) : formFields;
+      if (Array.isArray(rawFields)) {
+        parsedFormFields = rawFields.map((field) => ({
+          inputName: field.inputName,
+          inputType: field.inputType,
+          values:
+            ["radio", "list"].includes(field.inputType) &&
+              Array.isArray(field.values)
+              ? field.values
+              : [],
+          required: field.required === true,
+          visible: field.visible !== false,
+        }));
+      }
+    } catch (err) {
+      console.error("Invalid formFields:", err);
+      return response(res, 400, "Invalid format for formFields");
+    }
   }
 
   const newEvent = await Event.create({
@@ -139,12 +185,20 @@ exports.createEvent = asyncHandler(async (req, res) => {
     endDate: parsedEndDate,
     venue,
     description,
-    logoUrl,
+    logoUrl: logoUrl || null,
+    ...(Object.keys(parsedBackground).length > 0
+      ? { background: parsedBackground }
+      : {}),
+    ...(parsedBrandingMedia.length ? { brandingMedia: parsedBrandingMedia } : {}),
+    agendaUrl: agendaUrl || null,
     capacity,
     businessId,
     eventType: "employee",
-    employeeData,
+    formFields: parsedFormFields,
     showQrAfterRegistration,
+    showQrOnBadge,
+    requiresApproval: requiresApproval === "true" || requiresApproval === true,
+    defaultLanguage: defaultLanguage || "en",
   });
 
   // Fire background recompute
@@ -167,6 +221,19 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     description,
     capacity,
     showQrAfterRegistration,
+    showQrOnBadge,
+    requiresApproval,
+    defaultLanguage,
+    logoUrl,
+    background,
+    brandingMedia,
+    agendaUrl,
+    removeLogo,
+    removeBackgroundEn,
+    removeBackgroundAr,
+    formFields,
+    clearAllBrandingLogos,
+    removeBrandingLogoIds,
   } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -208,25 +275,176 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     updates.slug = uniqueSlug;
   }
 
-  if (req.files?.logo) {
-    if (event.logoUrl) await deleteImage(event.logoUrl);
-    const uploadResult = await uploadToCloudinary(
-      req.files.logo[0].buffer,
-      req.files.logo[0].mimetype
-    );
-    updates.logoUrl = uploadResult.secure_url;
+  if (logoUrl !== undefined) {
+    if (event.logoUrl && event.logoUrl !== logoUrl) {
+      try {
+        await deleteFromS3(event.logoUrl);
+      } catch { }
+    }
+    updates.logoUrl = logoUrl || null;
   }
 
-  if (req.files?.employeeData?.[0]) {
+  if (background !== undefined) {
+    let parsedBackground = {};
     try {
-      updates.employeeData = await processEmployeeData(
-        req.files.employeeData[0].buffer,
-        req.files.tableImages || []
-      );
-    } catch (err) {
-      return response(res, 500, err.message);
+      parsedBackground =
+        typeof background === "string" ? JSON.parse(background) : background;
+    } catch {
+      parsedBackground = {};
+    }
+
+    if (event.background?.en?.key || event.background?.en?.url) {
+      const newEnUrl = parsedBackground.en?.url;
+      if (
+        !newEnUrl ||
+        newEnUrl !== (event.background.en.url || event.background.en.key)
+      ) {
+        try {
+          await deleteFromS3(event.background.en.key || event.background.en.url);
+        } catch { }
+      }
+    }
+
+    if (event.background?.ar?.key || event.background?.ar?.url) {
+      const newArUrl = parsedBackground.ar?.url;
+      if (
+        !newArUrl ||
+        newArUrl !== (event.background.ar.url || event.background.ar.key)
+      ) {
+        try {
+          await deleteFromS3(event.background.ar.key || event.background.ar.url);
+        } catch { }
+      }
+    }
+
+    if (parsedBackground.en?.url && !parsedBackground.en.key) {
+      const url = parsedBackground.en.url;
+      const base = env.aws.cloudfrontUrl.endsWith("/")
+        ? env.aws.cloudfrontUrl
+        : env.aws.cloudfrontUrl + "/";
+      parsedBackground.en.key = decodeURIComponent(url.replace(base, ""));
+    }
+    if (parsedBackground.ar?.url && !parsedBackground.ar.key) {
+      const url = parsedBackground.ar.url;
+      const base = env.aws.cloudfrontUrl.endsWith("/")
+        ? env.aws.cloudfrontUrl
+        : env.aws.cloudfrontUrl + "/";
+      parsedBackground.ar.key = decodeURIComponent(url.replace(base, ""));
+    }
+
+    if (Object.keys(parsedBackground).length > 0) {
+      updates.background = parsedBackground;
     }
   }
+
+  if (removeLogo === "true") {
+    if (event.logoUrl) {
+      try {
+        await deleteFromS3(event.logoUrl);
+      } catch { }
+    }
+    updates.logoUrl = null;
+  }
+
+  if (removeBackgroundEn === "true") {
+    if (event.background?.en?.key || event.background?.en?.url) {
+      try {
+        await deleteFromS3(event.background.en.key || event.background.en.url);
+      } catch { }
+    }
+    updates.background = {
+      ...(updates.background || event.background || {}),
+      en: null,
+    };
+  }
+
+  if (removeBackgroundAr === "true") {
+    if (event.background?.ar?.key || event.background?.ar?.url) {
+      try {
+        await deleteFromS3(event.background.ar.key || event.background.ar.url);
+      } catch { }
+    }
+    updates.background = {
+      ...(updates.background || event.background || {}),
+      ar: null,
+    };
+  }
+
+  if (clearAllBrandingLogos === "true") {
+    if (Array.isArray(event.brandingMedia) && event.brandingMedia.length) {
+      for (const media of event.brandingMedia) {
+        if (media?.logoUrl) {
+          try {
+            await deleteFromS3(media.logoUrl);
+          } catch { }
+        }
+      }
+    }
+    updates.brandingMedia = [];
+  } else if (brandingMedia !== undefined) {
+    let parsedBrandingMedia = [];
+    try {
+      parsedBrandingMedia =
+        typeof brandingMedia === "string"
+          ? JSON.parse(brandingMedia)
+          : brandingMedia;
+      if (!Array.isArray(parsedBrandingMedia)) parsedBrandingMedia = [];
+    } catch {
+      parsedBrandingMedia = [];
+    }
+
+    const removeIds = removeBrandingLogoIds
+      ? typeof removeBrandingLogoIds === "string"
+        ? JSON.parse(removeBrandingLogoIds)
+        : removeBrandingLogoIds
+      : [];
+
+    if (removeIds.length && Array.isArray(event.brandingMedia)) {
+      for (const media of event.brandingMedia) {
+        if (removeIds.includes(media._id?.toString()) && media.logoUrl) {
+          try {
+            await deleteFromS3(media.logoUrl);
+          } catch { }
+        }
+      }
+    }
+
+    updates.brandingMedia = parsedBrandingMedia;
+  }
+
+  if (agendaUrl !== undefined) {
+    if (event.agendaUrl && event.agendaUrl !== agendaUrl) {
+      try {
+        await deleteFromS3(event.agendaUrl);
+      } catch { }
+    }
+    updates.agendaUrl = agendaUrl || null;
+  }
+
+  let parsedFormFields = [];
+  if (formFields) {
+    try {
+      const rawFields =
+        typeof formFields === "string" ? JSON.parse(formFields) : formFields;
+      if (Array.isArray(rawFields)) {
+        parsedFormFields = rawFields.map((field) => ({
+          inputName: field.inputName,
+          inputType: field.inputType,
+          values:
+            ["radio", "list"].includes(field.inputType) &&
+              Array.isArray(field.values)
+              ? field.values
+              : [],
+          required: field.required === true,
+          visible: field.visible !== false,
+        }));
+      }
+    } catch (err) {
+      console.error("Invalid formFields format:", err);
+      return response(res, 400, "Invalid format for formFields");
+    }
+  }
+  updates.formFields = parsedFormFields;
 
   if (
     typeof showQrAfterRegistration === "boolean" ||
@@ -235,6 +453,28 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   ) {
     updates.showQrAfterRegistration =
       showQrAfterRegistration === "true" || showQrAfterRegistration === true;
+  }
+
+  if (
+    typeof showQrOnBadge === "boolean" ||
+    showQrOnBadge === "true" ||
+    showQrOnBadge === "false"
+  ) {
+    updates.showQrOnBadge =
+      showQrOnBadge === "true" || showQrOnBadge === true;
+  }
+
+  if (
+    typeof requiresApproval === "boolean" ||
+    requiresApproval === "true" ||
+    requiresApproval === "false"
+  ) {
+    updates.requiresApproval =
+      requiresApproval === "true" || requiresApproval === true;
+  }
+
+  if (defaultLanguage && ["en", "ar"].includes(defaultLanguage)) {
+    updates.defaultLanguage = defaultLanguage;
   }
 
   const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
