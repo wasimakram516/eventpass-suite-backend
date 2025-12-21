@@ -5,6 +5,7 @@ async function buildRegistrationEmail({
   event,
   registration,
   displayName,
+  isReminder = false,
   customFields = {},
 }) {
   const targetLang = event.defaultLanguage || "en";
@@ -74,7 +75,9 @@ async function buildRegistrationEmail({
   // --- Build custom fields section (translate only labels) ---
   let customFieldHtml = "";
   if (Object.keys(customFields).length && Array.isArray(event.formFields)) {
-    const filledFields = event.formFields.filter((f) => customFields[f.inputName]);
+    const filledFields = event.formFields.filter(
+      (f) => customFields[f.inputName]
+    );
     const items = filledFields
       .map((f) => {
         const v = customFields[f.inputName]; // user-entered value — not translated
@@ -85,7 +88,8 @@ async function buildRegistrationEmail({
 
     if (items) {
       const sectionLabel = tr("Here are your submitted details:");
-      const pad = targetLang === "ar" ? "padding-right:20px;" : "padding-left:20px;";
+      const pad =
+        targetLang === "ar" ? "padding-right:20px;" : "padding-left:20px;";
       customFieldHtml = `<p style="font-size:16px;">${sectionLabel}</p>
       <ul style="font-size:15px;line-height:1.6;${pad}">${items}</ul>`;
     }
@@ -112,12 +116,16 @@ async function buildRegistrationEmail({
       <div style="text-align:center;margin:20px auto;width:100%;">{{qrImage}}</div>
       <p>${tr("Your Token:")} <strong>${registration.token}</strong></p>
       <p>${tr("Event Details:")}</p>
-      <ul style="${targetLang === "ar" ? "padding-right:20px;" : "padding-left:20px;"}">
+      <ul style="${
+        targetLang === "ar" ? "padding-right:20px;" : "padding-left:20px;"
+      }">
         <li><strong>${tr("Date:")}</strong> ${tr(dateRange)}</li>
         <li><strong>${tr("Venue:")}</strong> ${tr(event.venue)}</li>
         ${
           event.description
-            ? `<li><strong>${tr("About:")}</strong> ${tr(event.description)}</li>`
+            ? `<li><strong>${tr("About:")}</strong> ${tr(
+                event.description
+              )}</li>`
             : ""
         }
       </ul>
@@ -129,7 +137,8 @@ async function buildRegistrationEmail({
   </div>
 </div>`;
 
-  const subject = `${tr("Registration Confirmed:")} ${tr(event.name)}`;
+  const baseSubject = `${tr("Registration Confirmed:")} ${tr(event.name)}`;
+  const subject = isReminder ? `Reminder: ${baseSubject}` : baseSubject;
 
   return { subject, html, qrCodeDataUrl };
 }

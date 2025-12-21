@@ -972,34 +972,21 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
   const event = await Event.findOne({ slug }).lean();
   if (!event) return response(res, 404, "Event not found");
 
-  const pending = await Registration.find({
+  const regs = await Registration.find({
     eventId: event._id,
     isDeleted: { $ne: true },
-    $or: [{ emailSent: false }, { emailSent: { $exists: false } }],
   })
-    .select("fullName email company customFields token")
+    .select("fullName email company customFields token emailSent createdAt")
     .lean();
-
-  if (!pending.length) {
-    // Send completion signal
-    emitEmailProgress(event._id.toString(), {
-      sent: 0,
-      failed: 0,
-      processed: 0,
-      total: 0,
-    });
-
-    return response(res, 200, "All emails already sent.");
-  }
 
   // Early response immediately
   response(res, 200, "Bulk email job started", {
-    total: pending.length,
+    total: regs.length,
   });
 
   // Background processor
   setImmediate(() => {
-    emailProcessor(event, pending).catch((err) =>
+    emailProcessor(event, regs).catch((err) =>
       console.error("EMAIL PROCESSOR FAILED:", err)
     );
   });

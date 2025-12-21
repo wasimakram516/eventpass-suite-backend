@@ -8,7 +8,9 @@ const {
   pickCompany,
 } = require("../../utils/customFieldUtils");
 
-const { emitEmailProgress } = require("../../socket/modules/eventreg/eventRegSocket");
+const {
+  emitEmailProgress,
+} = require("../../socket/modules/eventreg/eventRegSocket");
 
 module.exports = async function emailProcessor(event, recipients) {
   const eventId = event._id.toString();
@@ -36,23 +38,12 @@ module.exports = async function emailProcessor(event, recipients) {
           }
         }
 
-        const email =
-          r.email ||
-          reg?.email ||
-          pickEmail(cf) ||
-          null;
+        const email = r.email || reg?.email || pickEmail(cf) || null;
 
         const fullName =
-          r.fullName ||
-          reg?.fullName ||
-          pickFullName(cf) ||
-          null;
+          r.fullName || reg?.fullName || pickFullName(cf) || null;
 
-        const company =
-          r.company ||
-          reg?.company ||
-          pickCompany(cf) ||
-          "";
+        const company = r.company || reg?.company || pickCompany(cf) || "";
 
         if (!email) {
           failed++;
@@ -62,25 +53,29 @@ module.exports = async function emailProcessor(event, recipients) {
         const displayName =
           fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
+        const isReminder = r.emailSent === true;
 
-        const { subject, html, qrCodeDataUrl } =
-          await buildRegistrationEmail({
-            event,
-            registration: {
-              ...reg,
-              customFields: cf,
-              fullName,
-              email,
-              company,
-            },
+        const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
+          event,
+          registration: {
+            ...reg,
             customFields: cf,
-            displayName,
-          });
+            fullName,
+            email,
+            company,
+          },
+          customFields: cf,
+          displayName,
+          isReminder,
+        });
 
         const result = await sendEmail(email, subject, html, qrCodeDataUrl);
 
         if (result.success) {
-          await Registration.updateOne({ _id: r._id }, { emailSent: true });
+          if (!isReminder) {
+            await Registration.updateOne({ _id: r._id }, { emailSent: true });
+          }
+
           sent++;
         } else {
           failed++;
