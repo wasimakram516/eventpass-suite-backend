@@ -31,10 +31,18 @@ function emitNewRegistration(eventId, registrationData) {
     });
 }
 
+function emitPresenceConfirmed(eventId, registrationData) {
+    emitUpdate("checkinRegistrationPresenceConfirmed", {
+        eventId,
+        registration: registrationData,
+    });
+}
+
 module.exports = {
     emitUploadProgress,
     emitEmailProgress,
     emitLoadingProgress,
     emitNewRegistration,
+    emitPresenceConfirmed,
 };
 
