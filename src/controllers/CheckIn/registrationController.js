@@ -25,6 +25,7 @@ const {
   emitUploadProgress,
   emitLoadingProgress,
   emitNewRegistration,
+  emitPresenceConfirmed,
 } = require("../../socket/modules/checkin/checkInSocket");
 const uploadProcessor = require("../../processors/checkin/uploadProcessor");
 const { formatLocalDateTime } = require("../../utils/dateUtils");
@@ -532,7 +533,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
   lines.push("=== Registrations ===");
 
-  const regHeaders = [...dynamicFields, "Token", "Registered At"];
+  const regHeaders = [...dynamicFields, "Token", "Status", "Registered At", "Confirmed At"];
   lines.push(regHeaders.join(","));
 
   regs.forEach((reg) => {
@@ -545,7 +546,9 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     );
 
     row.push(`"${reg.token}"`);
+    row.push(`"${reg.approvalStatus || "pending"}"`);
     row.push(`"${formatLocalDateTime(reg.createdAt)}"`);
+    row.push(`"${reg.confirmedAt ? formatLocalDateTime(reg.confirmedAt) : "N/A"}"`);
 
     lines.push(row.join(","));
   });
@@ -561,7 +564,9 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     const wiHeaders = [
       ...dynamicFields,
       "Token",
+      "Status",
       "Registered At",
+      "Confirmed At",
       "Scanned At",
       "Scanned By",
       "Staff Type",
@@ -582,7 +587,9 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
       );
 
       row.push(`"${reg.token}"`);
+      row.push(`"${reg?.approvalStatus || "pending"}"`);
       row.push(`"${formatLocalDateTime(reg.createdAt)}"`);
+      row.push(`"${reg?.confirmedAt ? formatLocalDateTime(reg.confirmedAt) : "N/A"}"`);
       row.push(`"${formatLocalDateTime(w.scannedAt)}"`);
       row.push(`"${w.scannedBy?.name || w.scannedBy?.email || ""}"`);
       row.push(`"${w.scannedBy?.staffType || ""}"`);
@@ -916,6 +923,11 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
   if (!reg) return response(res, 404, "Registration not found");
 
   reg.approvalStatus = status;
+
+  if (status === "confirmed" && !reg.confirmedAt) {
+    reg.confirmedAt = new Date();
+  }
+
   await reg.save();
 
   return response(res, 200, "Status updated", reg);
@@ -1177,7 +1189,25 @@ exports.confirmPresence = asyncHandler(async (req, res) => {
   }
 
   registration.approvalStatus = "confirmed";
+  if (!registration.confirmedAt) {
+    registration.confirmedAt = new Date();
+  }
   await registration.save();
+
+  const eventId = registration.eventId?._id || registration.eventId;
+
+  emitPresenceConfirmed(eventId?.toString(), {
+    _id: registration._id,
+    token: registration.token,
+    approvalStatus: registration.approvalStatus,
+    fullName: registration.fullName,
+    email: registration.email,
+    phone: registration.phone,
+    company: registration.company,
+    customFields: registration.customFields || {},
+    createdAt: registration.createdAt,
+    confirmedAt: registration.confirmedAt,
+  });
 
   return response(res, 200, "Presence confirmed successfully", {
     registration: {
