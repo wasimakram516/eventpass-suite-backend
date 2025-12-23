@@ -106,6 +106,10 @@ exports.joinGame = asyncHandler(async (req, res) => {
   }).notDeleted();
   if (!game) return response(res, 404, "TapMatch game not found");
 
+  if (!game.memoryImages || game.memoryImages.length === 0) {
+    return response(res, 400, "Wait for admin to add memory matching images to proceed.");
+  }
+
   const player = await Player.create({ name, company, phone });
 
   const session = await GameSession.create({
