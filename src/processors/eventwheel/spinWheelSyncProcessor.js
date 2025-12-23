@@ -1,7 +1,7 @@
 const SpinWheel = require("../../models/SpinWheel");
 const SpinWheelParticipant = require("../../models/SpinWheelParticipant");
 const Registration = require("../../models/Registration");
-const { pickFullName } = require("../../utils/customFieldUtils");
+const { pickFullName, pickCompany, pickPhone } = require("../../utils/customFieldUtils");
 const { emitSpinWheelSync } = require("../../socket/modules/eventwheel/spinWheelSocket");
 
 const WalkIn = require("../../models/WalkIn");
@@ -22,7 +22,7 @@ async function runSpinWheelSync(spinWheelId, filters = {}) {
       isDeleted: { $ne: true },
     }).select("registrationId");
 
-    registrationIds = walkins.map(w => w.registrationId);
+    registrationIds = walkins.map((w) => w.registrationId);
   }
 
   // BUILD REGISTRATION QUERY
@@ -59,8 +59,20 @@ async function runSpinWheelSync(spinWheelId, filters = {}) {
         pickFullName(r.customFields) ||
         "Guest";
 
+      const phone =
+        r.phone ||
+        pickPhone(r.customFields) ||
+        "";
+
+      const company =
+        r.company ||
+        pickCompany(r.customFields) ||
+        "";
+
       return {
         name,
+        phone,
+        company,
         spinWheel: spinWheelId,
       };
     });
