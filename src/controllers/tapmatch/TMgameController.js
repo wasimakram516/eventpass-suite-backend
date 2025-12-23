@@ -55,20 +55,20 @@ exports.createGame = asyncHandler(async (req, res) => {
 
   const processedMemoryImages = Array.isArray(memoryImages)
     ? memoryImages.map((url) => {
-        let key = url;
-        if (url && url.startsWith("http")) {
-          try {
-            const env = require("../../config/env");
-            const base = env.aws.cloudfrontUrl.endsWith("/")
-              ? env.aws.cloudfrontUrl
-              : env.aws.cloudfrontUrl + "/";
-            key = decodeURIComponent(url.replace(base, ""));
-          } catch (err) {
-            console.warn("Failed to extract S3 key from URL:", url);
-          }
+      let key = url;
+      if (url && url.startsWith("http")) {
+        try {
+          const env = require("../../config/env");
+          const base = env.aws.cloudfrontUrl.endsWith("/")
+            ? env.aws.cloudfrontUrl
+            : env.aws.cloudfrontUrl + "/";
+          key = decodeURIComponent(url.replace(base, ""));
+        } catch (err) {
+          console.warn("Failed to extract S3 key from URL:", url);
         }
-        return { key, url };
-      })
+      }
+      return { key, url };
+    })
     : [];
 
   const game = await Game.create({
@@ -149,16 +149,21 @@ exports.updateGame = asyncHandler(async (req, res) => {
   }
 
   if (memoryImages !== undefined) {
-    if (Array.isArray(game.memoryImages) && game.memoryImages.length > 0) {
-      for (const img of game.memoryImages) {
-        if (img && (img.key || img.url)) {
-          await deleteFromS3(img.key || img.url);
+    const newUrls = Array.isArray(memoryImages) ? memoryImages : [];
+
+    if (newUrls.length > 0) {
+      const existingUrlsSet = new Set();
+      if (Array.isArray(game.memoryImages)) {
+        for (const img of game.memoryImages) {
+          if (img && img.url) {
+            existingUrlsSet.add(img.url);
+          }
         }
       }
-    }
 
-    const processedMemoryImages = Array.isArray(memoryImages)
-      ? memoryImages.map((url) => {
+      const processedNewImages = [];
+      for (const url of newUrls) {
+        if (!existingUrlsSet.has(url)) {
           let key = url;
           if (url && url.startsWith("http")) {
             try {
@@ -171,10 +176,16 @@ exports.updateGame = asyncHandler(async (req, res) => {
               console.warn("Failed to extract S3 key from URL:", url);
             }
           }
-          return { key, url };
-        })
-      : [];
-    game.memoryImages = processedMemoryImages;
+          processedNewImages.push({ key, url });
+        }
+      }
+
+      if (Array.isArray(game.memoryImages)) {
+        game.memoryImages = [...game.memoryImages, ...processedNewImages];
+      } else {
+        game.memoryImages = processedNewImages;
+      }
+    }
   }
 
   await game.save();

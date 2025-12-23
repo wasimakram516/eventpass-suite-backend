@@ -15,19 +15,26 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
     mediaType,
     eventType = "public",
     removeBrandingLogoIds,
+    gameId,
+    memoryImageId,
+    deleteAllMemoryImages,
   } = req.body;
 
-  if (!fileUrl) {
+  const isMemoryImageOperation = mediaType === "memoryImage" && gameId;
+
+  if (!fileUrl && !isMemoryImageOperation) {
     return response(res, 400, "File URL is required");
   }
 
   try {
-    if (storageType === "s3") {
-      await deleteFromS3(fileUrl);
-    } else if (storageType === "cloudinary") {
-      await deleteImage(fileUrl);
-    } else {
-      return response(res, 400, "Invalid storage type. Use 's3' or 'cloudinary'");
+    if (fileUrl) {
+      if (storageType === "s3") {
+        await deleteFromS3(fileUrl);
+      } else if (storageType === "cloudinary") {
+        await deleteImage(fileUrl);
+      } else {
+        return response(res, 400, "Invalid storage type. Use 's3' or 'cloudinary'");
+      }
     }
 
     if (eventId && mediaType && mongoose.Types.ObjectId.isValid(eventId)) {
@@ -84,30 +91,73 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
       }
     }
 
-    if (req.body.gameId && req.body.questionId && mediaType && mongoose.Types.ObjectId.isValid(req.body.gameId)) {
+    if (gameId && mediaType && mongoose.Types.ObjectId.isValid(gameId)) {
       const Game = require("../../models/Game");
-      const game = await Game.findById(req.body.gameId);
+      const game = await Game.findById(gameId);
 
       if (!game) {
         return response(res, 404, "Game not found");
       }
 
-      const question = game.questions.id(req.body.questionId);
-      if (!question) {
-        return response(res, 404, "Question not found");
-      }
+      if (mediaType === "memoryImage") {
+        if (deleteAllMemoryImages === true) {
+          if (Array.isArray(game.memoryImages) && game.memoryImages.length > 0) {
+            for (const img of game.memoryImages) {
+              if (img && (img.key || img.url)) {
+                try {
+                  await deleteFromS3(img.key || img.url);
+                } catch (err) {
+                  console.warn("Failed to delete memory image from S3:", err);
+                }
+              }
+            }
+            game.memoryImages = [];
+            await game.save();
+            return response(res, 200, "All memory images deleted successfully", game);
+          }
+          return response(res, 200, "No memory images to delete", game);
+        } else if (memoryImageId) {
+          if (Array.isArray(game.memoryImages) && game.memoryImages.length > 0) {
+            const imageIndex = game.memoryImages.findIndex(
+              (img) => img._id && img._id.toString() === memoryImageId.toString()
+            );
 
-      if (mediaType === "question") {
-        question.questionImage = null;
-      } else if (mediaType === "answer" && req.body.answerImageIndex !== undefined) {
-        const index = parseInt(req.body.answerImageIndex);
-        if (question.answerImages && question.answerImages[index]) {
-          question.answerImages[index] = null;
+            if (imageIndex !== -1) {
+              const img = game.memoryImages[imageIndex];
+              if (img && (img.key || img.url)) {
+                try {
+                  await deleteFromS3(img.key || img.url);
+                } catch (err) {
+                  console.warn("Failed to delete memory image from S3:", err);
+                }
+              }
+              game.memoryImages.splice(imageIndex, 1);
+              await game.save();
+              return response(res, 200, "Memory image deleted successfully", game);
+            }
+          }
+          return response(res, 404, "Memory image not found");
         }
       }
 
-      await game.save();
-      return response(res, 200, "Media deleted successfully", question);
+      if (req.body.questionId) {
+        const question = game.questions.id(req.body.questionId);
+        if (!question) {
+          return response(res, 404, "Question not found");
+        }
+
+        if (mediaType === "question") {
+          question.questionImage = null;
+        } else if (mediaType === "answer" && req.body.answerImageIndex !== undefined) {
+          const index = parseInt(req.body.answerImageIndex);
+          if (question.answerImages && question.answerImages[index]) {
+            question.answerImages[index] = null;
+          }
+        }
+
+        await game.save();
+        return response(res, 200, "Media deleted successfully", question);
+      }
     }
 
     if (req.body.formId && mediaType === "optionImage" && mongoose.Types.ObjectId.isValid(req.body.formId)) {
