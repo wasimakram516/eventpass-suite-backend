@@ -1,14 +1,14 @@
+const XLSX = require("xlsx");
 const SpinWheelParticipant = require("../../models/SpinWheelParticipant");
 const WalkIn = require("../../models/WalkIn");
 const SpinWheel = require("../../models/SpinWheel");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
-const { recomputeAndEmit } = require("../../socket/dashboardSocket");
-const { pickFullName } = require("../../utils/customFieldUtils");
-const {
-  runSpinWheelSync,
-} = require("../../processors/eventwheel/spinWheelSyncProcessor");
 const User = require("../../models/User");
+const Event = require("../../models/Event");
+const Registration = require("../../models/Registration");
+const { recomputeAndEmit } = require("../../socket/dashboardSocket");
+const { runSpinWheelSync } = require("../../processors/eventwheel/spinWheelSyncProcessor");
 
 // Add Participant (Only Admin for "admin" SpinWheels)
 exports.addParticipant = asyncHandler(async (req, res) => {
@@ -311,4 +311,187 @@ exports.permanentDeleteAllParticipants = asyncHandler(async (req, res) => {
     200,
     `${deletedParticipants.length} participants permanently deleted.`
   );
+});
+
+exports.exportSpinWheelParticipantsXlsx = asyncHandler(async (req, res) => {
+  const { spinWheelId } = req.params;
+
+  const wheel = await SpinWheel.findById(spinWheelId).lean();
+  if (!wheel) return response(res, 404, "SpinWheel not found");
+
+  const participants = await SpinWheelParticipant.find({
+    spinWheel: wheel._id,
+  })
+    .notDeleted()
+    .lean();
+
+  /* ===============================
+     BASE WORKSHEET DATA
+  =============================== */
+
+  const rows = [];
+
+  // Header
+  rows.push([`Wheel: ${wheel.title}`]);
+
+  if (wheel.type === "synced" && wheel.eventSource?.eventId) {
+    const event = await Event.findById(wheel.eventSource.eventId).lean();
+    rows.push([`Event: ${event?.name || "N/A"}`]);
+    rows.push(["Type: Synced"]);
+
+    const scannedByIds = wheel.eventSource.filters?.scannedBy || [];
+
+    if (scannedByIds.length) {
+      const scanners = await User.find(
+        { _id: { $in: scannedByIds } },
+        { name: 1 }
+      ).lean();
+
+      rows.push([
+        `Filters → Scanned By: ${scanners.map((u) => u.name).join(", ")}`,
+      ]);
+    }
+  } else {
+    rows.push([`Type: ${wheel.type}`]);
+  }
+
+  rows.push([]); // spacer
+
+  /* ===============================
+     PARTICIPANT TABLE
+  =============================== */
+
+  let tableHeaders = ["Name", "Phone", "Company"];
+  let tableRows = [];
+
+  // ===============================
+  // SYNCED WHEEL EXPORT
+  // ===============================
+  if (wheel.type === "synced" && wheel.eventSource?.eventId) {
+    const eventId = wheel.eventSource.eventId;
+    const scannedByIds = wheel.eventSource.filters?.scannedBy || [];
+
+    // If no scanners selected → fallback
+    if (!scannedByIds.length) {
+      tableRows = participants.map((p) => [
+        p.name,
+        p.phone || "",
+        p.company || "",
+      ]);
+    } else {
+      // 1. Load scanners
+      const scanners = await User.find(
+        { _id: { $in: scannedByIds } },
+        { _id: 1, name: 1 }
+      ).lean();
+
+      // 2. Load walk-ins (source of truth)
+      const walkIns = await WalkIn.find({
+        eventId,
+        scannedBy: { $in: scannedByIds },
+        isDeleted: { $ne: true },
+      })
+        .select("registrationId scannedBy")
+        .lean();
+
+      // 3. Build registrationId → Set(scannerIds)
+      const registrationScanMap = {};
+      walkIns.forEach((w) => {
+        const regId = w.registrationId.toString();
+        if (!registrationScanMap[regId]) {
+          registrationScanMap[regId] = new Set();
+        }
+        registrationScanMap[regId].add(w.scannedBy.toString());
+      });
+
+      // 4. Load registrations IN SAME ORDER AS SYNC
+      const registrationIds = Object.keys(registrationScanMap);
+
+      const registrations = await Registration.find({
+        _id: { $in: registrationIds },
+        eventId,
+        isDeleted: { $ne: true },
+      })
+        .select("_id fullName phone company")
+        .lean();
+
+      // 5. Headers
+      scanners.forEach((u) =>
+        tableHeaders.push(`Scanned by ${u.name}`)
+      );
+
+      // 6. Rows (index-based match → stable)
+      tableRows = participants.map((p, index) => {
+        const reg = registrations[index];
+        const scannedSet = reg
+          ? registrationScanMap[reg._id.toString()]
+          : null;
+
+        const row = [
+          p.name,
+          reg?.phone || "",
+          reg?.company || "",
+        ];
+
+        scanners.forEach((u) => {
+          row.push(
+            scannedSet?.has(u._id.toString()) ? "✔" : ""
+          );
+        });
+
+        return row;
+      });
+    }
+  } else {
+    // ===============================
+    // NON-SYNCED WHEEL EXPORT
+    // ===============================
+    tableRows = participants.map((p) => [
+      p.name,
+      p.phone || "",
+      p.company || "",
+    ]);
+  }
+
+  rows.push(tableHeaders);
+  rows.push(...tableRows);
+
+  /* ===============================
+     CREATE XLSX
+  =============================== */
+
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+
+  // Bold table header row
+  const headerRowIndex = rows.findIndex(
+    (r) => r.length && r[0] === tableHeaders[0]
+  );
+
+  if (headerRowIndex !== -1) {
+    const range = XLSX.utils.decode_range(worksheet["!ref"]);
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell =
+        worksheet[XLSX.utils.encode_cell({ r: headerRowIndex, c })];
+      if (cell) cell.s = { font: { bold: true } };
+    }
+  }
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Participants");
+
+  const buffer = XLSX.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+  });
+
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=spinwheel_${wheel.slug}_participants.xlsx`
+  );
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+
+  return res.send(buffer);
 });

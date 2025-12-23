@@ -15,6 +15,9 @@ router.get("/single/:id", spinWheelAccess, participantController.getParticipantB
 // Get SpinWheel filters
 router.get("/sync/filters/:spinWheelId", spinWheelAccess, participantController.getSpinWheelSyncFilters);
 
+// Export Participants to XLSX
+router.get("/export/:spinWheelId/xlsx", spinWheelAccess, participantController.exportSpinWheelParticipantsXlsx);
+
 // Admin/Business Adds Participant (Only for "admin" SpinWheels)
 router.post("/", spinWheelAccess, participantController.addParticipant);
 
