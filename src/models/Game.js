@@ -44,8 +44,8 @@ const gameSchema = new mongoose.Schema(
 
     memoryImages: [
       {
-        key: { type: String, required: true },
-        url: { type: String, required: true },
+        key: { type: String, default: null },
+        url: { type: String, default: null },
         label: { type: String },
       },
     ],
