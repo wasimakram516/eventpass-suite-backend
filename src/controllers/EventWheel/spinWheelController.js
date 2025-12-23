@@ -9,10 +9,16 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // Create SpinWheel
 exports.createSpinWheel = asyncHandler(async (req, res) => {
-  const { business, title, slug, type, logoUrl, backgroundUrl } = req.body;
+  const { business, title, slug, type, logoUrl, backgroundUrl, eventSource } = req.body;
 
   if (!business || !title || !type) {
     return response(res, 400, "Missing required fields");
+  }
+
+  if (type === "synced") {
+    if (!eventSource?.enabled || !eventSource?.eventId) {
+      return response(res, 400, "eventSource is required for synced wheels");
+    }
   }
 
   const existingBusiness = await Business.findById(business);
@@ -29,6 +35,7 @@ exports.createSpinWheel = asyncHandler(async (req, res) => {
     type,
     logoUrl: logoUrl || null,
     backgroundUrl: backgroundUrl || null,
+    eventSource: type === "synced" ? eventSource : undefined,
   });
 
   // Fire background recompute
@@ -72,7 +79,7 @@ exports.updateSpinWheel = asyncHandler(async (req, res) => {
   const wheel = await SpinWheel.findById(req.params.id);
   if (!wheel) return response(res, 404, "SpinWheel not found");
 
-  const { title, slug, type, logoUrl, backgroundUrl } = req.body;
+  const { title, slug, type, logoUrl, backgroundUrl, eventSource } = req.body;
 
   if (slug && slug !== wheel.slug) {
     wheel.slug = await generateUniqueSlug(SpinWheel, "slug", slug);
@@ -80,6 +87,14 @@ exports.updateSpinWheel = asyncHandler(async (req, res) => {
 
   wheel.title = title || wheel.title;
   wheel.type = type || wheel.type;
+
+  if (eventSource !== undefined) {
+    wheel.eventSource = eventSource;
+  }
+
+  if (type === "synced" && !wheel.eventSource?.enabled) {
+    return response(res, 400, "Synced wheel must have eventSource enabled");
+  }
 
   const business = await Business.findById(wheel.business);
   if (!business) return response(res, 404, "Business not found");

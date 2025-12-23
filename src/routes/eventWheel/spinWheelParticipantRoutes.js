@@ -6,26 +6,23 @@ const { protect, checkPermission } = require("../../middlewares/auth");
 
 const spinWheelAccess = [protect, checkPermission.eventwheel];
 
-// Public Route for SpinWheel Details
-router.get("/public/spinwheel/:id", participantController.getPublicSpinWheel);
-
-// Admin/Business Adds Participant (Only for "collect_info" SpinWheels)
-router.post("/", spinWheelAccess, participantController.addParticipant);
-
-// Add or Replace Participants in Bulk (for enter_names type)
-router.post("/bulk", participantController.addOrUpdateParticipantsInBulk);
-
-// Get Participants names (bulk) by Slug
-router.get("/bulk/:slug", participantController.getBulkParticipantsForSpinWheel);
-
-// Get All Participants for a SpinWheel by ID
-router.get("/:spinWheelId", spinWheelAccess, participantController.getParticipants);
-
 // Get Participants for a SpinWheel by Slug
 router.get("/slug/:slug", participantController.getParticipantsBySlug);
 
 // Get Single Participant by ID
 router.get("/single/:id", spinWheelAccess, participantController.getParticipantById);
+
+// Get SpinWheel filters
+router.get("/sync/filters/:spinWheelId", spinWheelAccess, participantController.getSpinWheelSyncFilters);
+
+// Admin/Business Adds Participant (Only for "admin" SpinWheels)
+router.post("/", spinWheelAccess, participantController.addParticipant);
+
+// Add Participants on the Spot (for onspot type)
+router.post("/onspot", participantController.addParticipantsOnSpot);
+
+// Sync Participants from Event Registrations (for synced type)
+router.post("/sync/:spinWheelId", spinWheelAccess, participantController.syncSpinWheelParticipants);
 
 // Update Participant
 router.put("/:id", spinWheelAccess, participantController.updateParticipant);
