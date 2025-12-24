@@ -23,11 +23,13 @@ const { buildBadgeZpl } = require("../../utils/zebraZpl");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const {
   emitUploadProgress,
+  emitEmailProgress,
   emitLoadingProgress,
   emitNewRegistration,
   emitPresenceConfirmed,
 } = require("../../socket/modules/checkin/checkInSocket");
 const uploadProcessor = require("../../processors/checkin/uploadProcessor");
+const emailProcessor = require("../../processors/checkin/emailProcessor");
 const { formatLocalDateTime } = require("../../utils/dateUtils");
 
 const ALLOWED_EVENT_TYPE = "employee";
@@ -1215,6 +1217,46 @@ exports.confirmPresence = asyncHandler(async (req, res) => {
       token: registration.token,
       approvalStatus: registration.approvalStatus,
     },
+  });
+});
+
+// -------------------------------------------
+// BULK EMAIL SEND (Early Response + Background Job)
+// -------------------------------------------
+exports.sendBulkEmails = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+  const { subject, body, statusFilter } = req.body;
+
+  const event = await Event.findOne({ slug }).lean();
+  if (!event) return response(res, 404, "Event not found");
+
+  let filterQuery = {
+    eventId: event._id,
+    isDeleted: { $ne: true },
+  };
+
+  // Apply status filter
+  if (statusFilter === "confirmed") {
+    filterQuery.approvalStatus = "confirmed";
+  } else if (statusFilter === "notConfirmed") {
+    filterQuery.$or = [
+      { approvalStatus: { $ne: "confirmed" } },
+      { approvalStatus: { $exists: false } },
+    ];
+  }
+
+  const regs = await Registration.find(filterQuery)
+    .select("fullName email company customFields token emailSent createdAt approvalStatus")
+    .lean();
+
+  response(res, 200, "Bulk email job started", {
+    total: regs.length,
+  });
+
+  setImmediate(() => {
+    emailProcessor(event, regs, { subject, body }).catch((err) =>
+      console.error("CHECKIN EMAIL PROCESSOR FAILED:", err)
+    );
   });
 });
 
