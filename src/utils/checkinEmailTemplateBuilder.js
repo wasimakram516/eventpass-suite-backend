@@ -3,29 +3,28 @@ const { translateText } = require("../services/translationService");
 const { pickPhone } = require("../utils/customFieldUtils");
 
 async function buildCheckInInvitationEmail({
-    event,
-    registration = {},
-    customSubject = null,
-    customBody = null,
+  event,
+  registration = {},
+  customSubject = null,
+  customBody = null,
 }) {
-    const targetLang = event.defaultLanguage || "en";
-    const emailDir = targetLang === "ar" ? "rtl" : "ltr";
+  const targetLang = event.defaultLanguage || "en";
+  const emailDir = targetLang === "ar" ? "rtl" : "ltr";
 
-    // If custom email, use simpler template with same header
-    if (customSubject && customBody) {
-        // Get translation for header text
-        const headerText = targetLang === "ar" ? "تأكيد الفعالية" : "Confirmation for the Event";
+  // If custom email, use simpler template with same header
+  if (customSubject && customBody) {
+    const headerText = targetLang === "ar" ? "تأكيد الفعالية" : "Confirmation for the Event";
 
-        const html = `
+    const html = `
   <div dir="${emailDir}" style="font-family:'Segoe UI',Arial,sans-serif;background:#f6f8fa;padding:20px;">
     <div style="max-width:640px;margin:auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);">
       
       <!-- HEADER -->
       <div style="background:#004aad;padding:24px;text-align:center;">
         ${event.logoUrl
-                ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;" />`
-                : ""
-            }
+        ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;" />`
+        : ""
+      }
         <h2 style="color:#fff;font-size:22px;margin:0;">${headerText}</h2>
       </div>
 
@@ -36,131 +35,131 @@ async function buildCheckInInvitationEmail({
     </div>
   </div>`;
 
-        return { subject: customSubject, html };
+    return { subject: customSubject, html };
+  }
+
+  // ---------------------------------------
+  // Arabic / English date formatter helper
+  // ---------------------------------------
+  const formatDate = (date) => {
+    if (!date) return "";
+    const d = new Date(date);
+    if (targetLang === "ar") {
+      return new Intl.DateTimeFormat("ar-EG", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }).format(d);
     }
+    return d.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
 
-    // ---------------------------------------
-    // Arabic / English date formatter helper
-    // ---------------------------------------
-    const formatDate = (date) => {
-        if (!date) return "";
-        const d = new Date(date);
-        if (targetLang === "ar") {
-            return new Intl.DateTimeFormat("ar-EG", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-            }).format(d);
-        }
-        return d.toLocaleDateString("en-US", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-        });
-    };
+  // Format date range (from start to end)
+  const s = new Date(event.startDate);
+  const e = event.endDate && new Date(event.endDate);
+  const startStr = formatDate(s);
+  const endStr = e && e.getTime() !== s.getTime() ? formatDate(e) : null;
+  const dateRange = endStr
+    ? (targetLang === "ar" ? `${startStr} إلى ${endStr}` : `${startStr} to ${endStr}`)
+    : startStr;
 
-    // Format date range (from start to end)
-    const s = new Date(event.startDate);
-    const e = event.endDate && new Date(event.endDate);
-    const startStr = formatDate(s);
-    const endStr = e && e.getTime() !== s.getTime() ? formatDate(e) : null;
-    const dateRange = endStr
-        ? (targetLang === "ar" ? `${startStr} إلى ${endStr}` : `${startStr} to ${endStr}`)
-        : startStr;
+  // ---------------------------------------
+  // CheckIn confirmation link with token
+  // ---------------------------------------
+  const confirmationLink = registration.token
+    ? `${env.client.url}/checkin/event/${event.slug}?token=${encodeURIComponent(registration.token)}`
+    : `${env.client.url}/checkin/event/${event.slug}`;
 
-    // ---------------------------------------
-    // CheckIn confirmation link with token
-    // ---------------------------------------
-    const confirmationLink = registration.token
-        ? `${env.client.url}/checkin/event/${event.slug}?token=${encodeURIComponent(registration.token)}`
-        : `${env.client.url}/checkin/event/${event.slug}`;
+  // ---------------------------------------
+  // Participant Fields
+  // ---------------------------------------
+  let participantFields = [];
 
-    // ---------------------------------------
-    // Participant Fields
-    // ---------------------------------------
-    let participantFields = [];
+  const customFields =
+    registration.customFields && typeof registration.customFields === "object"
+      ? registration.customFields
+      : {};
 
-    const customFields =
-        registration.customFields && typeof registration.customFields === "object"
-            ? registration.customFields
-            : {};
-
-    // Event custom fields
-    if (
-        Array.isArray(event.formFields) &&
-        Object.keys(customFields).length > 0
-    ) {
-        for (const f of event.formFields) {
-            const val = customFields[f.inputName];
-            if (val) {
-                participantFields.push({ label: f.inputName, value: val });
-            }
-        }
-    } else {
-        // fallback
-        if (registration.fullName)
-            participantFields.push({
-                label: "Full Name",
-                value: registration.fullName,
-            });
-        if (registration.email)
-            participantFields.push({ label: "Email", value: registration.email });
-        if (registration.company)
-            participantFields.push({ label: "Company", value: registration.company });
-
-        const phone =
-            registration.phone || pickPhone?.(registration.customFields) || null;
-        if (phone) participantFields.push({ label: "Phone", value: phone });
+  // Event custom fields
+  if (
+    Array.isArray(event.formFields) &&
+    Object.keys(customFields).length > 0
+  ) {
+    for (const f of event.formFields) {
+      const val = customFields[f.inputName];
+      if (val) {
+        participantFields.push({ label: f.inputName, value: val });
+      }
     }
+  } else {
+    // fallback
+    if (registration.fullName)
+      participantFields.push({
+        label: "Full Name",
+        value: registration.fullName,
+      });
+    if (registration.email)
+      participantFields.push({ label: "Email", value: registration.email });
+    if (registration.company)
+      participantFields.push({ label: "Company", value: registration.company });
 
-    // ---------------------------------------
-    // TRANSLATION LIST (everything goes here)
-    // ---------------------------------------
-    const texts = [
-        "Confirmation for the Event",
-        "Hello",
-        "This email is regarding your invitation to",
-        "Kindly confirm your availability to attend using the button below.",
-        "Event Details",
-        "Participant Details",
-        "Date",
-        "Venue",
-        "About",
-        "Confirm your presence !",
-        "Guest",
+    const phone =
+      registration.phone || pickPhone?.(registration.customFields) || null;
+    if (phone) participantFields.push({ label: "Phone", value: phone });
+  }
 
-        // dynamic event content
-        event.name,
-        event.venue,
-        event.description || "",
+  // ---------------------------------------
+  // TRANSLATION LIST (everything goes here)
+  // ---------------------------------------
+  const texts = [
+    "Confirmation for the Event",
+    "Hello",
+    "This email is regarding your invitation to",
+    "Kindly confirm your availability to attend using the button below.",
+    "Event Details",
+    "Participant Details",
+    "Date",
+    "Venue",
+    "About",
+    "Confirm your presence !",
+    "Guest",
 
-        // participant label translations
-        ...participantFields.map((f) => f.label),
-    ].filter(Boolean);
+    // dynamic event content
+    event.name,
+    event.venue,
+    event.description || "",
 
-    const results = await translateText(texts, targetLang);
-    const map = {};
-    texts.forEach((t, i) => (map[t] = results[i] || t));
-    const tr = (t) => map[t] || t;
+    // participant label translations
+    ...participantFields.map((f) => f.label),
+  ].filter(Boolean);
 
-    // ---------------------------------------
-    // HTML TEMPLATE (same as surveyEmailTemplateBuilder)
-    // ---------------------------------------
-    const html = `
+  const results = await translateText(texts, targetLang);
+  const map = {};
+  texts.forEach((t, i) => (map[t] = results[i] || t));
+  const tr = (t) => map[t] || t;
+
+  // ---------------------------------------
+  // HTML TEMPLATE (same as surveyEmailTemplateBuilder)
+  // ---------------------------------------
+  const html = `
   <div dir="${emailDir}" style="font-family:'Segoe UI',Arial,sans-serif;background:#f6f8fa;padding:20px;">
     <div style="max-width:640px;margin:auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);">
       
       <!-- HEADER -->
       <div style="background:#004aad;padding:24px;text-align:center;">
         ${event.logoUrl
-            ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;" />`
-            : ""
-        }
+      ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;" />`
+      : ""
+    }
         <h2 style="color:#fff;font-size:22px;margin:0;">${tr(
-            "Confirmation for the Event"
-        )}</h2>
+      "Confirmation for the Event"
+    )}</h2>
       </div>
 
       <!-- CONTENT BODY -->
@@ -210,8 +209,8 @@ async function buildCheckInInvitationEmail({
 
         <!-- Event Details -->
         <h3 style="margin-top:24px;font-size:17px;color:#004aad;">${tr(
-            "Event Details"
-        )}</h3>
+      "Event Details"
+    )}</h3>
         <table style="width:100%;font-size:14px;color:#333;">
           <tr>
             <td><strong>${tr("Date")}:</strong></td>
@@ -222,30 +221,30 @@ async function buildCheckInInvitationEmail({
             <td>${tr(event.venue || "-")}</td>
           </tr>
           ${event.description
-            ? `<tr><td><strong>${tr("About")}:</strong></td><td>${tr(
-                event.description
-            )}</td></tr>`
-            : ""
-        }
+      ? `<tr><td><strong>${tr("About")}:</strong></td><td>${tr(
+        event.description
+      )}</td></tr>`
+      : ""
+    }
         </table>
 
         <!-- Participant Details -->
         ${participantFields.length
-            ? `
+      ? `
         <h3 style="margin-top:24px;font-size:17px;color:#004aad;">${tr(
-                "Participant Details"
-            )}</h3>
+        "Participant Details"
+      )}</h3>
         <table style="width:100%;font-size:14px;color:#333;">
           ${participantFields
-                .map(
-                    (f) =>
-                        `<tr><td><strong>${tr(f.label)}:</strong></td><td>${f.value
-                        }</td></tr>`
-                )
-                .join("")}
+        .map(
+          (f) =>
+            `<tr><td><strong>${tr(f.label)}:</strong></td><td>${f.value
+            }</td></tr>`
+        )
+        .join("")}
         </table>`
-            : ""
-        }
+      : ""
+    }
 
         <!-- FOOTER -->
         <p style="text-align:center;font-size:14px;color:#777;margin-top:24px;">
@@ -255,8 +254,8 @@ async function buildCheckInInvitationEmail({
     </div>
   </div>`;
 
-    const subject = `Confirmation for the Event - ${tr(event.name)}`;
-    return { subject, html };
+  const subject = `Confirmation for the Event - ${tr(event.name)}`;
+  return { subject, html };
 }
 
 module.exports = { buildCheckInInvitationEmail };
