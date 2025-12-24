@@ -41,6 +41,7 @@ async function buildRegistrationEmail({
 
   // --- Collect static phrases + event text for translation ---
   const textsToTranslate = [
+    "Reminder: ",
     "Welcome to",
     "Hi",
     "You're confirmed for",
@@ -138,7 +139,7 @@ async function buildRegistrationEmail({
 </div>`;
 
   const baseSubject = `${tr("Registration Confirmed:")} ${tr(event.name)}`;
-  const subject = isReminder ? `Reminder: ${baseSubject}` : baseSubject;
+  const subject = isReminder ? `${tr("Reminder: ")}${baseSubject}` : baseSubject;
 
   return { subject, html, qrCodeDataUrl };
 }

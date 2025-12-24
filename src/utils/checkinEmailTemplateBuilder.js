@@ -7,13 +7,15 @@ async function buildCheckInInvitationEmail({
   registration = {},
   customSubject = null,
   customBody = null,
+  displayName,
+  isReminder = false,
 }) {
   const targetLang = event.defaultLanguage || "en";
   const emailDir = targetLang === "ar" ? "rtl" : "ltr";
 
   // If custom email, use simpler template with same header
   if (customSubject && customBody) {
-    const headerText = targetLang === "ar" ? "تأكيد الفعالية" : "Confirmation for the Event";
+    const headerText = event.name;
 
     const html = `
   <div dir="${emailDir}" style="font-family:'Segoe UI',Arial,sans-serif;background:#f6f8fa;padding:20px;">
@@ -118,6 +120,7 @@ async function buildCheckInInvitationEmail({
   // TRANSLATION LIST (everything goes here)
   // ---------------------------------------
   const texts = [
+    "Reminder: ",
     "Confirmation for the Event",
     "Hello",
     "This email is regarding your invitation to",
@@ -166,7 +169,7 @@ async function buildCheckInInvitationEmail({
       <div style="padding:24px 28px 28px;">
         
         <p style="font-size:15px;color:#333;margin-top:28px;">
-          ${tr("Hello")} <strong>${registration.fullName || tr("Guest")}</strong>,
+          ${tr("Hello")} <strong>${displayName}</strong>,</p>
         </p>
 
         <p style="font-size:15px;color:#333;line-height:1.6;">
@@ -254,7 +257,9 @@ async function buildCheckInInvitationEmail({
     </div>
   </div>`;
 
-  const subject = `Confirmation for the Event - ${tr(event.name)}`;
+  const baseSubject = `${tr("Confirmation for the Event - ")} ${tr(event.name)}`;
+  const subject = isReminder ? `${tr("Reminder - ")}${baseSubject}` : baseSubject;
+
   return { subject, html };
 }
 

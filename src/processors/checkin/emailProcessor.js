@@ -66,6 +66,7 @@ module.exports = async function emailProcessor(event, recipients, customEmail = 
 
         const displayName =
           fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
+        const isReminder = r.emailSent === true;
 
         const { subject, html } = await buildCheckInInvitationEmail({
           event,
@@ -79,6 +80,8 @@ module.exports = async function emailProcessor(event, recipients, customEmail = 
           },
           customSubject: customEmail?.subject || null,
           customBody: customEmail?.body || null,
+          displayName,
+          isReminder,
         });
 
         const result = await sendEmail(email, subject, html);
