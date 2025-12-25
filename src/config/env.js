@@ -41,6 +41,14 @@ const env = {
       pass: validateEnv("EMAIL_PASS"),
       from: validateEnv("EMAIL_FROM"),
     },
+    whatsapp: {
+      baseUrl: validateEnv("WHATSAPP_BASE_URL"),
+      accountSSID: validateEnv("WHATSAPP_ACCOUNT_SSID"),
+      username: validateEnv("WHATSAPP_USERNAME"),
+      password: validateEnv("WHATSAPP_PASSWORD"),
+      from: validateEnv("WHATSAPP_FROM"),
+      contentSSID: validateEnv("WHATSAPP_CONTENT_SSID"),
+    },
   },
   cloudinary: {
     cloudName: validateEnv("CLOUDINARY_CLOUD_NAME"),
