@@ -17,6 +17,7 @@ const {
   getRegistrationByToken,
   confirmPresence,
   sendBulkEmails,
+  sendBulkWhatsApp,
 } = require("../../controllers/CheckIn/registrationController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
@@ -40,6 +41,9 @@ router.post("/:id/walkin", CheckInAccess, createWalkIn);
 
 // SEND bulk emails to all registrations for an event (protected)
 router.post("/event/:slug/bulk-email", CheckInAccess, sendBulkEmails);
+
+// SEND bulk WhatsApp messages to all registrations for an event (protected)
+router.post("/event/:slug/bulk-whatsapp", CheckInAccess, sendBulkWhatsApp);
 
 // Verify registration via QR token (protected)
 router.get("/verify", CheckInAccess, verifyRegistrationByToken);
