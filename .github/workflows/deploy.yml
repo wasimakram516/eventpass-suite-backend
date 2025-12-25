@@ -51,6 +51,12 @@ jobs:
           echo "GOOGLE_TRANSLATE_API_KEY='${{ secrets.GOOGLE_TRANSLATE_API_KEY }}'" | sudo tee -a .env
           echo "FRONTEND_BASE_URL='${{ secrets.FRONTEND_BASE_URL }}'" | sudo tee -a .env
           echo "SURVEYGURU_PUBLIC_PATH='${{ secrets.SURVEYGURU_PUBLIC_PATH }}'" | sudo tee -a .env
+          echo "WHATSAPP_BASE_URL='${{ secrets.WHATSAPP_BASE_URL }}'" | sudo tee -a .env
+          echo "WHATSAPP_ACCOUNT_SSID='${{ secrets.WHATSAPP_ACCOUNT_SSID }}'" | sudo tee -a .env
+          echo "WHATSAPP_USERNAME='${{ secrets.WHATSAPP_USERNAME }}'" | sudo tee -a .env
+          echo "WHATSAPP_PASSWORD='${{ secrets.WHATSAPP_PASSWORD }}'" | sudo tee -a .env
+          echo "WHATSAPP_FROM='${{ secrets.WHATSAPP_FROM }}'" | sudo tee -a .env
+          echo "WHATSAPP_CONTENT_SSID='${{ secrets.WHATSAPP_CONTENT_SSID }}'" | sudo tee -a .env
           echo "NODE_ENV='production'" | sudo tee -a .env
           echo "PORT='8080'" | sudo tee -a .env
           echo ".env file created successfully"
