@@ -30,6 +30,7 @@ const {
 } = require("../../socket/modules/checkin/checkInSocket");
 const uploadProcessor = require("../../processors/checkin/uploadProcessor");
 const emailProcessor = require("../../processors/checkin/emailProcessor");
+const whatsappProcessor = require("../../processors/checkin/whatsappProcessor");
 const { formatLocalDateTime } = require("../../utils/dateUtils");
 
 const ALLOWED_EVENT_TYPE = "employee";
@@ -1256,6 +1257,33 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
   setImmediate(() => {
     emailProcessor(event, regs, { subject, body }).catch((err) =>
       console.error("CHECKIN EMAIL PROCESSOR FAILED:", err)
+    );
+  });
+});
+
+// Send bulk WhatsApp messages
+exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+
+  const event = await Event.findOne({ slug }).lean();
+  if (!event) return response(res, 404, "Event not found");
+
+  const filterQuery = {
+    eventId: event._id,
+    isDeleted: { $ne: true },
+  };
+
+  const regs = await Registration.find(filterQuery)
+    .select("fullName email phone company customFields token emailSent createdAt approvalStatus")
+    .lean();
+
+  response(res, 200, "Bulk WhatsApp job started", {
+    total: regs.length,
+  });
+
+  setImmediate(() => {
+    whatsappProcessor(event, regs).catch((err) =>
+      console.error("CHECKIN WHATSAPP PROCESSOR FAILED:", err)
     );
   });
 });
