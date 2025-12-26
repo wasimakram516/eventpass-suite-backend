@@ -61,19 +61,26 @@ const validatePhoneNumber = (phone, countryCode) => {
 const formatPhoneForWhatsApp = (phone, countryCode) => {
     if (!phone) return { formatted: null, error: "Phone number is required" };
 
-    const digits = phone.toString().trim().replace(/\D/g, "");
+    let digits = phone.replace(/\D/g, "");
 
-    if (digits.length === 0) {
-        return { formatted: null, error: "Invalid phone number" };
+    if (countryCode === "+968") {
+        if (digits.startsWith("0")) digits = digits.slice(1);
+        if (digits.length !== 8) {
+            return { formatted: null, error: "Invalid Oman phone number" };
+        }
     }
 
-    const validation = validatePhoneNumber(digits, countryCode);
-    if (!validation.valid) {
-        return { formatted: null, error: validation.error };
+    if (countryCode === "+92") {
+        if (digits.startsWith("0")) digits = digits.slice(1);
+        if (digits.length !== 10) {
+            return { formatted: null, error: "Invalid Pakistan phone number" };
+        }
     }
 
-    const formatted = `whatsapp:${countryCode}${digits}`;
-    return { formatted, error: null };
+    return {
+        formatted: `whatsapp:${countryCode}${digits}`,
+        error: null,
+    };
 };
 
 module.exports = async function whatsappProcessor(
