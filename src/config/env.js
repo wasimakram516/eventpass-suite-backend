@@ -48,6 +48,7 @@ const env = {
       password: validateEnv("WHATSAPP_PASSWORD"),
       from: validateEnv("WHATSAPP_FROM"),
       contentSSID: validateEnv("WHATSAPP_CONTENT_SSID"),
+      countryCode: validateEnv("WHATSAPP_COUNTRY_CODE"),
     },
   },
   cloudinary: {
