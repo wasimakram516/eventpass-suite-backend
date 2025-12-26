@@ -33,19 +33,47 @@ const formatDateForWhatsApp = (date, lang = "en") => {
 };
 
 /**
- * Format phone number to WhatsApp format
+ * Validate phone number based on country code
  */
-const formatPhoneForWhatsApp = (phone) => {
-    if (!phone) return null;
-    let cleaned = phone.trim();
-    if (!cleaned.startsWith("+")) {
-        const digits = cleaned.replace(/\D/g, "");
-        if (digits.length === 0) return null;
-        return `whatsapp:+${digits}`;
+const validatePhoneNumber = (phone, countryCode) => {
+    if (!phone) return { valid: false, error: "Phone number is required" };
+
+    const digits = phone.replace(/\D/g, "");
+
+    if (countryCode === "+968") {
+        if (digits.length !== 8) {
+            return { valid: false, error: "Phone number must be 8 digits" };
+        }
+    } else if (countryCode === "+92") {
+        if (digits.length !== 10) {
+            return { valid: false, error: "Phone number must be 10 digits" };
+        }
+    } else {
+        return { valid: false, error: "Unsupported country code" };
     }
-    cleaned = cleaned.replace(/[^\d+]/g, "");
-    if (cleaned.length <= 1) return null;
-    return `whatsapp:${cleaned}`;
+
+    return { valid: true };
+};
+
+/**
+ * Format phone number to WhatsApp format 
+ */
+const formatPhoneForWhatsApp = (phone, countryCode) => {
+    if (!phone) return { formatted: null, error: "Phone number is required" };
+
+    const digits = phone.toString().trim().replace(/\D/g, "");
+
+    if (digits.length === 0) {
+        return { formatted: null, error: "Invalid phone number" };
+    }
+
+    const validation = validatePhoneNumber(digits, countryCode);
+    if (!validation.valid) {
+        return { formatted: null, error: validation.error };
+    }
+
+    const formatted = `whatsapp:${countryCode}${digits}`;
+    return { formatted, error: null };
 };
 
 module.exports = async function whatsappProcessor(
@@ -75,6 +103,7 @@ module.exports = async function whatsappProcessor(
 
         const targetLang = event.defaultLanguage || "en";
         const env = require("../../config/env");
+        const countryCode = env.notifications.whatsapp.countryCode;
 
         const s = new Date(event.startDate);
         const e = event.endDate && new Date(event.endDate);
@@ -112,11 +141,13 @@ module.exports = async function whatsappProcessor(
                 const displayName =
                     fullName || (targetLang === "ar" ? "ضيف" : "Guest");
 
-                const formattedPhone = formatPhoneForWhatsApp(phone);
-                if (!formattedPhone) {
+                const phoneResult = formatPhoneForWhatsApp(phone, countryCode);
+                if (!phoneResult.formatted) {
+                    console.error(`Invalid phone number for registration ${reg._id}: ${phoneResult.error}`);
                     failed++;
                     continue;
                 }
+                const formattedPhone = phoneResult.formatted;
 
                 const confirmationLink = reg.token
                     ? `${env.client.url}/checkin/event/${event.slug}?token=${encodeURIComponent(reg.token)}`
@@ -134,6 +165,7 @@ module.exports = async function whatsappProcessor(
                 const result = await sendWhatsApp(formattedPhone, contentVariables);
 
                 if (result.success) {
+                    await Registration.updateOne({ _id: r._id }, { emailSent: true });
                     sent++;
                 } else {
                     failed++;
