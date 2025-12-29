@@ -33,52 +33,60 @@ const formatDateForWhatsApp = (date, lang = "en") => {
 };
 
 /**
- * Validate phone number based on country code
+ * Validate phone number
  */
-const validatePhoneNumber = (phone, countryCode) => {
+const validatePhoneNumber = (phone) => {
     if (!phone) return { valid: false, error: "Phone number is required" };
 
-    const digits = phone.replace(/\D/g, "");
+    const phoneStr = String(phone).trim();
 
-    if (countryCode === "+968") {
-        if (digits.length !== 8) {
-            return { valid: false, error: "Phone number must be 8 digits" };
+    if (!phoneStr.startsWith("+")) {
+        return { valid: false, error: "Phone number must start with country code (e.g., +92, +968, +1)" };
+    }
+
+    const digits = phoneStr.replace(/\D/g, "");
+
+    if (phoneStr.startsWith("+92")) {
+        const localDigits = digits.replace(/^92/, "");
+        if (localDigits.length !== 10) {
+            return { valid: false, error: "Pakistan phone number must be 10 digits (excluding country code +92)" };
         }
-    } else if (countryCode === "+92") {
-        if (digits.length !== 10) {
-            return { valid: false, error: "Phone number must be 10 digits" };
+        return { valid: true };
+    }
+
+    if (phoneStr.startsWith("+968")) {
+        const localDigits = digits.replace(/^968/, "");
+        if (localDigits.length !== 8) {
+            return { valid: false, error: "Oman phone number must be 8 digits (excluding country code +968)" };
         }
-    } else {
-        return { valid: false, error: "Unsupported country code" };
+        return { valid: true };
+    }
+
+    if (digits.length < 8) {
+        return { valid: false, error: "Phone number is too short" };
+    }
+    if (digits.length > 15) {
+        return { valid: false, error: "Phone number is too long" };
     }
 
     return { valid: true };
 };
 
 /**
- * Format phone number to WhatsApp format 
+ * Format phone number to WhatsApp format
  */
-const formatPhoneForWhatsApp = (phone, countryCode) => {
+const formatPhoneForWhatsApp = (phone) => {
     if (!phone) return { formatted: null, error: "Phone number is required" };
 
-    let digits = phone.replace(/\D/g, "");
+    let phoneStr = String(phone).trim();
 
-    if (countryCode === "+968") {
-        if (digits.startsWith("0")) digits = digits.slice(1);
-        if (digits.length !== 8) {
-            return { formatted: null, error: "Invalid Oman phone number" };
-        }
-    }
-
-    if (countryCode === "+92") {
-        if (digits.startsWith("0")) digits = digits.slice(1);
-        if (digits.length !== 10) {
-            return { formatted: null, error: "Invalid Pakistan phone number" };
-        }
+    const validation = validatePhoneNumber(phoneStr);
+    if (!validation.valid) {
+        return { formatted: null, error: validation.error };
     }
 
     return {
-        formatted: `whatsapp:${countryCode}${digits}`,
+        formatted: `whatsapp:${phoneStr}`,
         error: null,
     };
 };
@@ -110,7 +118,6 @@ module.exports = async function whatsappProcessor(
 
         const targetLang = event.defaultLanguage || "en";
         const env = require("../../config/env");
-        const countryCode = env.notifications.whatsapp.countryCode;
 
         const s = new Date(event.startDate);
         const e = event.endDate && new Date(event.endDate);
@@ -148,7 +155,7 @@ module.exports = async function whatsappProcessor(
                 const displayName =
                     fullName || (targetLang === "ar" ? "ضيف" : "Guest");
 
-                const phoneResult = formatPhoneForWhatsApp(phone, countryCode);
+                const phoneResult = formatPhoneForWhatsApp(phone);
                 if (!phoneResult.formatted) {
                     console.error(`Invalid phone number for registration ${reg._id}: ${phoneResult.error}`);
                     failed++;
