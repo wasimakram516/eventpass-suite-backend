@@ -918,7 +918,7 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  if (!["confirmed", "pending"].includes(status)) {
+  if (!["confirmed", "pending", "not_confirmed"].includes(status)) {
     return response(res, 400, "Invalid status");
   }
 
@@ -1213,6 +1213,59 @@ exports.confirmPresence = asyncHandler(async (req, res) => {
   });
 
   return response(res, 200, "Presence confirmed successfully", {
+    registration: {
+      _id: registration._id,
+      token: registration.token,
+      approvalStatus: registration.approvalStatus,
+    },
+  });
+});
+
+// Update attendance status by token
+exports.updateAttendanceStatus = asyncHandler(async (req, res) => {
+  const { token, status } = req.body;
+  if (!token) {
+    return response(res, 400, "Token is required");
+  }
+
+  if (!["confirmed", "not_confirmed"].includes(status)) {
+    return response(res, 400, "Status must be 'confirmed' or 'not_confirmed'");
+  }
+
+  const registration = await Registration.findOne({ token })
+    .populate("eventId")
+    .notDeleted();
+
+  if (!registration) {
+    return response(res, 404, "Registration not found");
+  }
+
+  if (registration.eventId?.eventType !== ALLOWED_EVENT_TYPE) {
+    return response(res, 400, "Invalid event type");
+  }
+
+  registration.approvalStatus = status;
+  if (status === "confirmed" && !registration.confirmedAt) {
+    registration.confirmedAt = new Date();
+  }
+  await registration.save();
+
+  const eventId = registration.eventId?._id || registration.eventId;
+
+  emitPresenceConfirmed(eventId?.toString(), {
+    _id: registration._id,
+    token: registration.token,
+    approvalStatus: registration.approvalStatus,
+    fullName: registration.fullName,
+    email: registration.email,
+    phone: registration.phone,
+    company: registration.company,
+    customFields: registration.customFields || {},
+    createdAt: registration.createdAt,
+    confirmedAt: registration.confirmedAt,
+  });
+
+  return response(res, 200, "Attendance status updated successfully", {
     registration: {
       _id: registration._id,
       token: registration.token,
