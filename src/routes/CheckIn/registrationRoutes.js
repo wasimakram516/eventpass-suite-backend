@@ -16,6 +16,7 @@ const {
   createWalkIn,
   getRegistrationByToken,
   confirmPresence,
+  updateAttendanceStatus,
   sendBulkEmails,
   sendBulkWhatsApp,
 } = require("../../controllers/CheckIn/registrationController");
@@ -29,6 +30,7 @@ router.post("/", createRegistration);
 // Public endpoints for token-based confirmation
 router.get("/by-token", getRegistrationByToken);
 router.post("/confirm-presence", confirmPresence);
+router.post("/update-attendance-status", updateAttendanceStatus);
 
 // Update registration
 router.put("/:id", CheckInAccess, updateRegistration);
