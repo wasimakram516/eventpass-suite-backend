@@ -68,7 +68,7 @@ module.exports = async function emailProcessor(event, recipients, customEmail = 
           fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
         const isReminder = r.emailSent === true;
 
-        const { subject, html } = await buildCheckInInvitationEmail({
+        const { subject, html, qrCodeDataUrl } = await buildCheckInInvitationEmail({
           event,
           registration: {
             ...reg,
@@ -84,7 +84,19 @@ module.exports = async function emailProcessor(event, recipients, customEmail = 
           isReminder,
         });
 
-        const result = await sendEmail(email, subject, html);
+        const attachments = [];
+        if (event.agendaUrl) {
+          attachments.push({ filename: "Agenda.pdf", path: event.agendaUrl });
+        }
+        if (customEmail?.mediaUrl) {
+          const filename = customEmail.originalFilename || (() => {
+            const urlParts = customEmail.mediaUrl.split("/");
+            return urlParts[urlParts.length - 1] || "attachment";
+          })();
+          attachments.push({ filename, path: customEmail.mediaUrl });
+        }
+
+        const result = await sendEmail(email, subject, html, qrCodeDataUrl, attachments);
 
         if (result.success) {
           await Registration.updateOne({ _id: r._id }, { emailSent: true });
