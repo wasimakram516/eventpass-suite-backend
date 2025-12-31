@@ -1,6 +1,17 @@
 const Registration = require("../../models/Registration");
 const Event = require("../../models/Event");
-const { emitUploadProgress } = require("../../socket/modules/checkin/checkInSocket");
+const { emitUploadProgress, emitUploadComplete } = require("../../socket/modules/checkin/checkInSocket");
+const {
+  pickEmail,
+  pickPhone,
+} = require("../../utils/customFieldUtils");
+
+function formatRowNumbers(arr) {
+  if (arr.length === 0) return "";
+  if (arr.length === 1) return arr[0].toString();
+  if (arr.length === 2) return `${arr[0]} and ${arr[1]}`;
+  return `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
+}
 
 module.exports = async function uploadProcessor(event, rows) {
   const eventId = event._id.toString();
@@ -8,6 +19,7 @@ module.exports = async function uploadProcessor(event, rows) {
   let processed = 0;
   let imported = 0;
   let skipped = 0;
+  const duplicateRowNumbers = [];
 
   const CHUNK_SIZE = 100;
 
@@ -15,16 +27,21 @@ module.exports = async function uploadProcessor(event, rows) {
     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
       const chunk = rows.slice(i, i + CHUNK_SIZE);
 
-      for (const row of chunk) {
+      for (let chunkIndex = 0; chunkIndex < chunk.length; chunkIndex++) {
+        const row = chunk[chunkIndex];
         processed++;
+        const rowNumber = i + chunkIndex + 2;
 
         try {
           const hasCustomFields = event.formFields && event.formFields.length > 0;
           let registrationData = {
             eventId,
             token: row["Token"] || undefined,
-            approvalStatus: "pending", // For checkin module, always create with pending status
+            approvalStatus: "pending",
           };
+
+          let extractedEmail = null;
+          let extractedPhone = null;
 
           if (hasCustomFields) {
             const customFields = {};
@@ -45,6 +62,15 @@ module.exports = async function uploadProcessor(event, rows) {
             }
 
             registrationData.customFields = customFields;
+
+            const formFields = event.formFields || [];
+            const emailField = formFields.find((f) => f.inputType === "email");
+            if (emailField && customFields[emailField.inputName]) {
+              extractedEmail = customFields[emailField.inputName];
+            } else {
+              extractedEmail = pickEmail(customFields);
+            }
+            extractedPhone = pickPhone(customFields);
           } else {
             const fullName = row["Full Name"];
             const email = row["Email"];
@@ -60,6 +86,45 @@ module.exports = async function uploadProcessor(event, rows) {
             registrationData.phone = phone;
             registrationData.company = company;
             registrationData.customFields = {};
+
+            extractedEmail = email;
+            extractedPhone = phone;
+          }
+
+          const duplicateFilter = { eventId, isDeleted: { $ne: true } };
+          const or = [];
+
+          if (extractedEmail) {
+            if (hasCustomFields) {
+              const emailField = event.formFields.find((f) => f.inputType === "email");
+              if (emailField) {
+                or.push({ [`customFields.${emailField.inputName}`]: extractedEmail });
+              }
+            }
+            or.push({ email: extractedEmail });
+          }
+
+          if (extractedPhone) {
+            if (hasCustomFields) {
+              const phoneField = event.formFields.find((f) =>
+                f.inputType === "phone" ||
+                f.inputName?.toLowerCase().includes("phone")
+              );
+              if (phoneField) {
+                or.push({ [`customFields.${phoneField.inputName}`]: extractedPhone });
+              }
+            }
+            or.push({ phone: extractedPhone });
+          }
+
+          if (or.length > 0) {
+            duplicateFilter.$or = or;
+            const existing = await Registration.findOne(duplicateFilter);
+            if (existing) {
+              duplicateRowNumbers.push(rowNumber);
+              skipped++;
+              continue;
+            }
           }
 
           await Registration.create(registrationData);
@@ -80,9 +145,25 @@ module.exports = async function uploadProcessor(event, rows) {
       $inc: { registrations: imported },
     });
 
-    console.log(
-      `CheckIn upload finished: Imported=${imported}, Skipped=${skipped}, Total=${total}`
-    );
+    let duplicateMessage = null;
+    if (duplicateRowNumbers.length > 0) {
+      const rowNumbersText = formatRowNumbers(duplicateRowNumbers);
+      duplicateMessage = `Row${duplicateRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${duplicateRowNumbers.length > 1 ? "are" : "is"} already existing and ${duplicateRowNumbers.length > 1 ? "were" : "was"} skipped.`;
+    }
+
+    emitUploadComplete(eventId, {
+      imported,
+      skipped,
+      total,
+      duplicateRowNumbers: duplicateRowNumbers.length > 0 ? duplicateRowNumbers : null,
+      duplicateMessage,
+    });
+
+    let message = `CheckIn upload finished: Imported=${imported}, Skipped=${skipped}, Total=${total}`;
+    if (duplicateMessage) {
+      message += ` ${duplicateMessage}`;
+    }
+
   } catch (err) {
     console.error("CHECKIN UPLOAD PROCESSOR ERROR:", err);
   }
