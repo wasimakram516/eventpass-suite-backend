@@ -1285,6 +1285,15 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const { subject, body, statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
 
+  let mediaUrl = null;
+  let originalFilename = null;
+  if (req.file) {
+    const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
+    const uploadResult = await uploadToCloudinary(req.file.buffer, req.file.mimetype, "Checkin/custom-attachments");
+    mediaUrl = uploadResult.secure_url;
+    originalFilename = req.file.originalname;
+  }
+
   const event = await Event.findOne({ slug }).lean();
   if (!event) return response(res, 404, "Event not found");
 
@@ -1298,10 +1307,7 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
     if (statusFilter === "confirmed") {
       filterQuery.approvalStatus = "confirmed";
     } else if (statusFilter === "notConfirmed") {
-      filterQuery.$or = [
-        { approvalStatus: { $ne: "confirmed" } },
-        { approvalStatus: { $exists: false } },
-      ];
+      filterQuery.approvalStatus = "not_confirmed";
     }
   }
 
@@ -1334,7 +1340,7 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
   });
 
   setImmediate(() => {
-    emailProcessor(event, regs, { subject, body }).catch((err) =>
+    emailProcessor(event, regs, { subject, body, mediaUrl, originalFilename }).catch((err) =>
       console.error("CHECKIN EMAIL PROCESSOR FAILED:", err)
     );
   });
@@ -1343,7 +1349,14 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
 // Send bulk WhatsApp messages
 exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const { statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
+  const { type, subject, body, statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
+
+  let mediaUrl = null;
+  if (req.file) {
+    const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
+    const uploadResult = await uploadToCloudinary(req.file.buffer, req.file.mimetype, "Checkin/custom-attachments");
+    mediaUrl = uploadResult.secure_url;
+  }
 
   const event = await Event.findOne({ slug }).lean();
   if (!event) return response(res, 404, "Event not found");
@@ -1358,10 +1371,7 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
     if (statusFilter === "confirmed") {
       filterQuery.approvalStatus = "confirmed";
     } else if (statusFilter === "notConfirmed") {
-      filterQuery.$or = [
-        { approvalStatus: { $ne: "confirmed" } },
-        { approvalStatus: { $exists: false } },
-      ];
+      filterQuery.approvalStatus = "not_confirmed";
     }
   }
 
@@ -1394,9 +1404,16 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
   });
 
   setImmediate(() => {
-    whatsappProcessor(event, regs).catch((err) =>
-      console.error("CHECKIN WHATSAPP PROCESSOR FAILED:", err)
-    );
+    if (type === "custom") {
+      const customWhatsAppProcessor = require("../../processors/checkin/customWhatsAppProcessor");
+      customWhatsAppProcessor(event, regs, { subject, body, mediaUrl }).catch((err) =>
+        console.error("CHECKIN CUSTOM WHATSAPP PROCESSOR FAILED:", err)
+      );
+    } else {
+      whatsappProcessor(event, regs).catch((err) =>
+        console.error("CHECKIN WHATSAPP PROCESSOR FAILED:", err)
+      );
+    }
   });
 });
 
