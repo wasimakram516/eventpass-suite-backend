@@ -300,6 +300,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     createdTo,
     scannedFrom,
     scannedTo,
+    timezone,
     ...dynamicFiltersRaw
   } = req.query;
 
@@ -443,7 +444,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
   const business = await Business.findById(event.businessId).lean();
 
-  const exportedAt = formatLocalDateTime(Date.now());
+  const exportedAt = formatLocalDateTime(Date.now(), timezone || null);
 
   // HEADER SECTION (RESTORED)
   lines.push(`Event Name,${event.name || "N/A"}`);
@@ -473,7 +474,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     );
 
     row.push(`"${reg.token}"`);
-    row.push(`"${formatLocalDateTime(reg.createdAt)}"`);
+    row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
 
     lines.push(row.join(","));
   });
@@ -513,8 +514,8 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
       );
 
       row.push(`"${reg.token}"`);
-      row.push(`"${formatLocalDateTime(reg.createdAt)}"`);
-      row.push(`"${formatLocalDateTime(w.scannedAt)}"`);
+      row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
+      row.push(`"${formatLocalDateTime(w.scannedAt, timezone || null)}"`);
       row.push(`"${w.scannedBy?.name || w.scannedBy?.email || ""}"`);
       row.push(`"${w.scannedBy?.staffType || ""}"`);
 
