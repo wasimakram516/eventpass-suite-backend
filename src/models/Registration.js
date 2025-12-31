@@ -26,6 +26,7 @@ const RegistrationSchema = new mongoose.Schema(
     },
 
     emailSent: { type: Boolean, default: false },
+    whatsappSent: { type: Boolean, default: false },
     token: { type: String, required: true }, // For QR
     approvalStatus: {
       type: String,
