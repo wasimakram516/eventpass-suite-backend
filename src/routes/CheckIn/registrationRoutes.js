@@ -42,10 +42,10 @@ router.patch("/:id/approval", CheckInAccess, updateRegistrationApproval);
 router.post("/:id/walkin", CheckInAccess, createWalkIn);
 
 // SEND bulk emails to all registrations for an event (protected)
-router.post("/event/:slug/bulk-email", CheckInAccess, sendBulkEmails);
+router.post("/event/:slug/bulk-email", CheckInAccess, upload.single("file"), sendBulkEmails);
 
 // SEND bulk WhatsApp messages to all registrations for an event (protected)
-router.post("/event/:slug/bulk-whatsapp", CheckInAccess, sendBulkWhatsApp);
+router.post("/event/:slug/bulk-whatsapp", CheckInAccess, upload.single("file"), sendBulkWhatsApp);
 
 // Verify registration via QR token (protected)
 router.get("/verify", CheckInAccess, verifyRegistrationByToken);
