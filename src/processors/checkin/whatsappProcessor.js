@@ -1,6 +1,10 @@
 const Registration = require("../../models/Registration");
+const Business = require("../../models/Business");
 const sendWhatsApp = require("../../services/whatsappService");
+const { sendWhatsAppWithMedia } = require("../../services/whatsappService");
 const { pickPhone, pickFullName } = require("../../utils/customFieldUtils");
+const QRCode = require("qrcode");
+const { uploadToS3 } = require("../../utils/s3Storage");
 
 const {
     emitEmailProgress,
@@ -119,6 +123,12 @@ module.exports = async function whatsappProcessor(
         const targetLang = event.defaultLanguage || "en";
         const env = require("../../config/env");
 
+        const business = await Business.findById(event.businessId).lean();
+        if (!business) {
+            console.error("Business not found for event:", eventId);
+            return;
+        }
+
         const s = new Date(event.startDate);
         const e = event.endDate && new Date(event.endDate);
         const startStr = formatDateForWhatsApp(s, targetLang);
@@ -178,10 +188,39 @@ module.exports = async function whatsappProcessor(
 
                 const result = await sendWhatsApp(formattedPhone, contentVariables);
 
-                if (result.success) {
-                    await Registration.updateOne({ _id: r._id }, { whatsappSent: true });
-                    sent++;
-                } else {
+                if (!result.success) {
+                    failed++;
+                    continue;
+                }
+
+                await new Promise((r) => setTimeout(r, 500));
+
+                try {
+                    const qrCodeDataUrl = await QRCode.toDataURL(reg.token);
+                    const base64Data = qrCodeDataUrl.replace(/^data:image\/png;base64,/, "");
+                    const qrCodeBuffer = Buffer.from(base64Data, "base64");
+
+                    const fileObject = {
+                        buffer: qrCodeBuffer,
+                        mimetype: "image/png",
+                        originalname: `qrcode_${reg.token}.png`,
+                    };
+
+                    const { fileUrl } = await uploadToS3(fileObject, business.slug, "Checkin", { inline: true });
+
+                    const bodyText = targetLang === "ar"
+                        ? `يرجى تقديم رمز QR أدناه عند مدخل الحدث للتحقق.\n\nرمز الوصول الخاص بك هو *${reg.token}*.`
+                        : `Kindly present the QR code below at the event entrance for verification.\n\nYour access token is *${reg.token}*.`;
+
+                    const mediaResult = await sendWhatsAppWithMedia(formattedPhone, fileUrl, bodyText);
+
+                    if (mediaResult.success) {
+                        await Registration.updateOne({ _id: r._id }, { whatsappSent: true });
+                        sent++;
+                    } else {
+                        failed++;
+                    }
+                } catch (mediaErr) {
                     failed++;
                 }
             } catch (err) {
