@@ -398,6 +398,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     createdTo,
     scannedFrom,
     scannedTo,
+    timezone,
     ...dynamicFiltersRaw
   } = req.query;
 
@@ -523,7 +524,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
   const business = await Business.findById(event.businessId).lean();
 
-  const exportedAt = formatLocalDateTime(Date.now());
+  const exportedAt = formatLocalDateTime(Date.now(), timezone || null);
 
   lines.push(`Event Name,${event.name || "N/A"}`);
   lines.push(`Business Name,${business?.name || "N/A"}`);
@@ -550,8 +551,8 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
     row.push(`"${reg.token}"`);
     row.push(`"${reg.approvalStatus || "pending"}"`);
-    row.push(`"${formatLocalDateTime(reg.createdAt)}"`);
-    row.push(`"${reg.confirmedAt ? formatLocalDateTime(reg.confirmedAt) : "N/A"}"`);
+    row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
+    row.push(`"${reg.confirmedAt ? formatLocalDateTime(reg.confirmedAt, timezone || null) : "N/A"}"`);
 
     lines.push(row.join(","));
   });
@@ -591,9 +592,9 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
       row.push(`"${reg.token}"`);
       row.push(`"${reg?.approvalStatus || "pending"}"`);
-      row.push(`"${formatLocalDateTime(reg.createdAt)}"`);
-      row.push(`"${reg?.confirmedAt ? formatLocalDateTime(reg.confirmedAt) : "N/A"}"`);
-      row.push(`"${formatLocalDateTime(w.scannedAt)}"`);
+      row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
+      row.push(`"${reg?.confirmedAt ? formatLocalDateTime(reg.confirmedAt, timezone || null) : "N/A"}"`);
+      row.push(`"${formatLocalDateTime(w.scannedAt, timezone || null)}"`);
       row.push(`"${w.scannedBy?.name || w.scannedBy?.email || ""}"`);
       row.push(`"${w.scannedBy?.staffType || ""}"`);
 
@@ -759,6 +760,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     _id: newRegistration._id,
     token: newRegistration.token,
     emailSent: newRegistration.emailSent,
+    whatsappSent: newRegistration.whatsappSent,
     createdAt: newRegistration.createdAt,
     approvalStatus: newRegistration.approvalStatus,
     fullName: newRegistration.fullName,
@@ -1160,6 +1162,8 @@ exports.getRegistrationByToken = asyncHandler(async (req, res) => {
       company: registration.company,
       customFields: Object.fromEntries(registration.customFields || []),
       approvalStatus: registration.approvalStatus,
+      emailSent: registration.emailSent,
+      whatsappSent: registration.whatsappSent,
       eventId: registration.eventId._id,
       eventSlug: registration.eventId.slug,
     },
@@ -1279,7 +1283,7 @@ exports.updateAttendanceStatus = asyncHandler(async (req, res) => {
 // -------------------------------------------
 exports.sendBulkEmails = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const { subject, body, statusFilter } = req.body;
+  const { subject, body, statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
 
   const event = await Event.findOne({ slug }).lean();
   if (!event) return response(res, 404, "Event not found");
@@ -1290,20 +1294,42 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
   };
 
   // Apply status filter
-  if (statusFilter === "confirmed") {
-    filterQuery.approvalStatus = "confirmed";
-  } else if (statusFilter === "notConfirmed") {
-    filterQuery.$or = [
-      { approvalStatus: { $ne: "confirmed" } },
-      { approvalStatus: { $exists: false } },
-    ];
+  if (statusFilter && statusFilter !== "all") {
+    if (statusFilter === "confirmed") {
+      filterQuery.approvalStatus = "confirmed";
+    } else if (statusFilter === "notConfirmed") {
+      filterQuery.$or = [
+        { approvalStatus: { $ne: "confirmed" } },
+        { approvalStatus: { $exists: false } },
+      ];
+    }
   }
 
+  // Apply email sent filter
+  if (emailSentFilter && emailSentFilter !== "all") {
+    if (emailSentFilter === "sent") {
+      filterQuery.emailSent = true;
+    } else if (emailSentFilter === "notSent") {
+      filterQuery.emailSent = { $ne: true };
+    }
+  }
+
+  // Apply WhatsApp sent filter
+  if (whatsappSentFilter && whatsappSentFilter !== "all") {
+    if (whatsappSentFilter === "sent") {
+      filterQuery.whatsappSent = true;
+    } else if (whatsappSentFilter === "notSent") {
+      filterQuery.whatsappSent = { $ne: true };
+    }
+  }
+
+
   const regs = await Registration.find(filterQuery)
-    .select("fullName email company customFields token emailSent createdAt approvalStatus")
+    .select("fullName email company customFields token emailSent whatsappSent createdAt approvalStatus")
     .lean();
 
-  response(res, 200, "Bulk email job started", {
+
+  response(res, 200, "Bulk notification job started", {
     total: regs.length,
   });
 
@@ -1317,20 +1343,53 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
 // Send bulk WhatsApp messages
 exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
   const { slug } = req.params;
+  const { statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
 
   const event = await Event.findOne({ slug }).lean();
   if (!event) return response(res, 404, "Event not found");
 
-  const filterQuery = {
+  let filterQuery = {
     eventId: event._id,
     isDeleted: { $ne: true },
   };
 
+  // Apply status filter - only if not "all" or undefined
+  if (statusFilter && statusFilter !== "all") {
+    if (statusFilter === "confirmed") {
+      filterQuery.approvalStatus = "confirmed";
+    } else if (statusFilter === "notConfirmed") {
+      filterQuery.$or = [
+        { approvalStatus: { $ne: "confirmed" } },
+        { approvalStatus: { $exists: false } },
+      ];
+    }
+  }
+
+  // Apply email sent filter - only if not "all" or undefined
+  if (emailSentFilter && emailSentFilter !== "all") {
+    if (emailSentFilter === "sent") {
+      filterQuery.emailSent = true;
+    } else if (emailSentFilter === "notSent") {
+      filterQuery.emailSent = { $ne: true };
+    }
+  }
+
+  // Apply WhatsApp sent filter - only if not "all" or undefined
+  if (whatsappSentFilter && whatsappSentFilter !== "all") {
+    if (whatsappSentFilter === "sent") {
+      filterQuery.whatsappSent = true;
+    } else if (whatsappSentFilter === "notSent") {
+      filterQuery.whatsappSent = { $ne: true };
+    }
+  }
+
+
   const regs = await Registration.find(filterQuery)
-    .select("fullName email phone company customFields token emailSent createdAt approvalStatus")
+    .select("fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus")
     .lean();
 
-  response(res, 200, "Bulk WhatsApp job started", {
+
+  response(res, 200, "Bulk notification job started", {
     total: regs.length,
   });
 

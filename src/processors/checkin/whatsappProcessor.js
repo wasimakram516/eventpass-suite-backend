@@ -179,7 +179,7 @@ module.exports = async function whatsappProcessor(
                 const result = await sendWhatsApp(formattedPhone, contentVariables);
 
                 if (result.success) {
-                    await Registration.updateOne({ _id: r._id }, { emailSent: true });
+                    await Registration.updateOne({ _id: r._id }, { whatsappSent: true });
                     sent++;
                 } else {
                     failed++;

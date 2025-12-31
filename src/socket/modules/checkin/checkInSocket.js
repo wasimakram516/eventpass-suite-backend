@@ -38,11 +38,19 @@ function emitPresenceConfirmed(eventId, registrationData) {
     });
 }
 
+function emitUploadComplete(eventId, payload) {
+    emitUpdate("checkinRegistrationUploadComplete", {
+        eventId,
+        ...payload,
+    });
+}
+
 module.exports = {
     emitUploadProgress,
     emitEmailProgress,
     emitLoadingProgress,
     emitNewRegistration,
     emitPresenceConfirmed,
+    emitUploadComplete,
 };
 
