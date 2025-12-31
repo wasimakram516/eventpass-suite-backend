@@ -1,6 +1,7 @@
 const env = require("../config/env");
 const { translateText } = require("../services/translationService");
 const { pickPhone } = require("../utils/customFieldUtils");
+const QRCode = require("qrcode");
 
 async function buildCheckInInvitationEmail({
   event,
@@ -12,6 +13,11 @@ async function buildCheckInInvitationEmail({
 }) {
   const targetLang = event.defaultLanguage || "en";
   const emailDir = targetLang === "ar" ? "rtl" : "ltr";
+
+  let qrCodeDataUrl = null;
+  if (registration.token) {
+    qrCodeDataUrl = await QRCode.toDataURL(registration.token);
+  }
 
   // If custom email, use simpler template with same header
   if (customSubject && customBody) {
@@ -130,7 +136,8 @@ async function buildCheckInInvitationEmail({
     "Date",
     "Venue",
     "About",
-    "Confirm your presence !",
+    "Confirm your attendance",
+    "Kindly present this QR code at the event entrance for verification.",
     "Guest",
 
     // dynamic event content
@@ -204,11 +211,24 @@ async function buildCheckInInvitationEmail({
        />
 
        <span style="vertical-align:middle;">
-          ${tr("Confirm your presence !")}
+          ${tr("Confirm your attendance")}
        </span>
     </div>
   </a>
 </div>
+
+        ${qrCodeDataUrl
+      ? `
+        <!-- QR Code Section -->
+        <p style="font-size:15px;color:#333;line-height:1.6;margin-top:24px;text-align:center;">
+          ${tr("Kindly present this QR code at the event entrance for verification")}
+        </p>
+        <div style="text-align:center;margin:20px 0;">
+          <img src="cid:qrcode" alt="QR Code" style="width:180px;display:block;margin:0 auto;" />
+        </div>
+        `
+      : ""
+    }
 
         <!-- Event Details -->
         <h3 style="margin-top:24px;font-size:17px;color:#004aad;">${tr(
@@ -251,7 +271,7 @@ async function buildCheckInInvitationEmail({
 
         <!-- FOOTER -->
         <p style="text-align:center;font-size:14px;color:#777;margin-top:24px;">
-          ${tr("Confirm your presence !")}
+          ${tr("Confirm your attendance")}
         </p>
       </div>
     </div>
@@ -260,7 +280,7 @@ async function buildCheckInInvitationEmail({
   const baseSubject = `${tr("Confirmation for the Event - ")} ${tr(event.name)}`;
   const subject = isReminder ? `${tr("Reminder - ")}${baseSubject}` : baseSubject;
 
-  return { subject, html };
+  return { subject, html, qrCodeDataUrl };
 }
 
 module.exports = { buildCheckInInvitationEmail };
