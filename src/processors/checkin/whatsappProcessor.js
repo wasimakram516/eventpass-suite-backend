@@ -183,7 +183,7 @@ module.exports = async function whatsappProcessor(
                     "3": dateStr,
                     "4": event.venue || "",
                     "5": confirmationLink,
-                    "6": "WhiteWall Digital Solutions",
+                    "6": event.organizerName || "WhiteWall Digital Solutions",
                 };
 
                 const result = await sendWhatsApp(formattedPhone, contentVariables);
@@ -210,7 +210,7 @@ module.exports = async function whatsappProcessor(
 
                     const bodyText = targetLang === "ar"
                         ? `يرجى تقديم رمز QR أدناه عند مدخل الحدث للتحقق.\n\nرمز الوصول الخاص بك هو *${reg.token}*.`
-                        : `Kindly present the QR code below at the event entrance for verification.\n\nYour access token is *${reg.token}*.`;
+                        : `Kindly present this QR code at the event entrance for verification.\n\nYour access token is *${reg.token}*.`;
 
                     const mediaResult = await sendWhatsAppWithMedia(formattedPhone, fileUrl, bodyText);
 

@@ -51,6 +51,9 @@ const EventSchema = new mongoose.Schema({
     enum: ["en", "ar"],
     default: "en"
   },
+  organizerName: { type: String },
+  organizerEmail: { type: String },
+  organizerPhone: { type: String },
   registrations: { type: Number, default: 0 },
   eventType: {
     type: String,
