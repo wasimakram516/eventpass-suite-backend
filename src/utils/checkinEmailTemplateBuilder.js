@@ -138,6 +138,7 @@ async function buildCheckInInvitationEmail({
     "About",
     "Confirm your attendance",
     "Kindly present this QR code at the event entrance for verification.",
+    "Your access token is",
     "Guest",
 
     // dynamic event content
@@ -223,6 +224,12 @@ async function buildCheckInInvitationEmail({
         <p style="font-size:15px;color:#333;line-height:1.6;margin-top:24px;text-align:center;">
           ${tr("Kindly present this QR code at the event entrance for verification")}
         </p>
+        ${registration.token
+        ? `<p style="font-size:15px;color:#333;line-height:1.6;text-align:center;">
+              ${tr("Your access token is")} <strong>${registration.token}</strong>.
+            </p>`
+        : ""
+      }
         <div style="text-align:center;margin:20px 0;">
           <img src="cid:qrcode" alt="QR Code" style="width:180px;display:block;margin:0 auto;" />
         </div>
