@@ -1308,6 +1308,13 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
       filterQuery.approvalStatus = "confirmed";
     } else if (statusFilter === "notConfirmed") {
       filterQuery.approvalStatus = "not_confirmed";
+    } else if (statusFilter === "pending") {
+      filterQuery.$and = [
+        { approvalStatus: { $exists: true } },
+        { approvalStatus: { $ne: "confirmed" } },
+        { approvalStatus: { $ne: "not_confirmed" } },
+        { approvalStatus: "pending" }
+      ];
     }
   }
 
@@ -1372,6 +1379,13 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
       filterQuery.approvalStatus = "confirmed";
     } else if (statusFilter === "notConfirmed") {
       filterQuery.approvalStatus = "not_confirmed";
+    } else if (statusFilter === "pending") {
+      filterQuery.$and = [
+        { approvalStatus: { $exists: true } },
+        { approvalStatus: { $ne: "confirmed" } },
+        { approvalStatus: { $ne: "not_confirmed" } },
+        { approvalStatus: "pending" }
+      ];
     }
   }
 
