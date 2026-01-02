@@ -4,14 +4,14 @@ const axios = require("axios");
 /**
  * Sends a WhatsApp message using Twilio API.
  */
-const sendWhatsApp = async (to, contentVariables) => {
+const sendWhatsApp = async (to, contentVariables, customContentSSID = null) => {
     try {
         const baseUrl = env.notifications.whatsapp.baseUrl;
         const accountSSID = env.notifications.whatsapp.accountSSID;
         const username = env.notifications.whatsapp.username;
         const password = env.notifications.whatsapp.password;
         const from = env.notifications.whatsapp.from;
-        const contentSSID = env.notifications.whatsapp.contentSSID;
+        const contentSSID = customContentSSID || env.notifications.whatsapp.contentSSID;
 
         const url = `${baseUrl}/Accounts/${accountSSID}/Messages.json`;
 

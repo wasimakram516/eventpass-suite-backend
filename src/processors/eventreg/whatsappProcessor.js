@@ -5,34 +5,27 @@ const { sendWhatsAppWithMedia } = require("../../services/whatsappService");
 const { pickPhone, pickFullName } = require("../../utils/customFieldUtils");
 const QRCode = require("qrcode");
 const { uploadToS3 } = require("../../utils/s3Storage");
+const env = require("../../config/env");
 
 const {
     emitEmailProgress,
-} = require("../../socket/modules/checkin/checkInSocket");
+} = require("../../socket/modules/eventreg/eventRegSocket");
 
 /**
  * Format date for WhatsApp template (e.g., "Monday, 24 Jan 2026")
+ * Always uses English format as templates are approved for English only
  */
-const formatDateForWhatsApp = (date, lang = "en") => {
+const formatDateForWhatsApp = (date) => {
     if (!date) return "";
     const d = new Date(date);
-    const months = {
-        en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-        ar: ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
-    };
-    const weekdays = {
-        en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-        ar: ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
-    };
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-    const weekday = weekdays[lang][d.getDay()];
+    const weekday = weekdays[d.getDay()];
     const day = d.getDate();
-    const month = months[lang][d.getMonth()];
+    const month = months[d.getMonth()];
     const year = d.getFullYear();
 
-    if (lang === "ar") {
-        return `${weekday}, ${day} ${month} ${year}`;
-    }
     return `${weekday}, ${day} ${month} ${year}`;
 };
 
@@ -115,14 +108,12 @@ module.exports = async function whatsappProcessor(
                 total: 0,
             });
             console.log(
-                `CheckIn bulk notification finished: 0 sent, 0 failed, total 0`
+                `EventReg bulk notification finished: 0 sent, 0 failed, total 0`
             );
             return;
         }
 
-        const targetLang = event.defaultLanguage || "en";
-        const env = require("../../config/env");
-
+        // Templates are strictly English only
         const business = await Business.findById(event.businessId).lean();
         if (!business) {
             console.error("Business not found for event:", eventId);
@@ -131,11 +122,21 @@ module.exports = async function whatsappProcessor(
 
         const s = new Date(event.startDate);
         const e = event.endDate && new Date(event.endDate);
-        const startStr = formatDateForWhatsApp(s, targetLang);
-        const endStr = e && e.getTime() !== s.getTime() ? formatDateForWhatsApp(e, targetLang) : null;
-        const dateStr = endStr
-            ? (targetLang === "ar" ? `${startStr} إلى ${endStr}` : `${startStr} to ${endStr}`)
-            : startStr;
+        const startStr = formatDateForWhatsApp(s);
+        const endStr = e && e.getTime() !== s.getTime() ? formatDateForWhatsApp(e) : null;
+        const dateStr = endStr ? `${startStr} to ${endStr}` : startStr;
+
+        const eventregSSID = process.env.EVENTREG_WHATSAPP_SSID;
+        if (!eventregSSID) {
+            console.error("EVENTREG_WHATSAPP_SSID not found in environment variables");
+            emitEmailProgress(eventId, {
+                sent: 0,
+                failed: total,
+                processed: total,
+                total,
+            });
+            return;
+        }
 
         for (const r of recipients) {
             processed++;
@@ -162,8 +163,7 @@ module.exports = async function whatsappProcessor(
 
                 const fullName =
                     r.fullName || reg?.fullName || pickFullName(cf) || null;
-                const displayName =
-                    fullName || (targetLang === "ar" ? "ضيف" : "Guest");
+                const displayName = fullName || "Guest";
 
                 const phoneResult = formatPhoneForWhatsApp(phone);
                 if (!phoneResult.formatted) {
@@ -173,20 +173,21 @@ module.exports = async function whatsappProcessor(
                 }
                 const formattedPhone = phoneResult.formatted;
 
-                const confirmationLink = reg.token
-                    ? `${env.client.url}/checkin/event/${event.slug}?token=${encodeURIComponent(reg.token)}`
-                    : `${env.client.url}/checkin/event/${event.slug}`;
+                const organizerEmail = event.organizerEmail || business.contactEmail || "connect@whitewall.om";
+                const organizerPhone = event.organizerPhone || business.contactPhone || "+96877121757";
+                const organizerName = event.organizerName || "WhiteWall Digital Solutions";
 
                 const contentVariables = {
                     "1": displayName,
                     "2": event.name,
                     "3": dateStr,
                     "4": event.venue || "",
-                    "5": confirmationLink,
-                    "6": event.organizerName || "WhiteWall Digital Solutions",
+                    "5": organizerEmail,
+                    "6": organizerPhone,
+                    "7": organizerName,
                 };
 
-                const result = await sendWhatsApp(formattedPhone, contentVariables);
+                const result = await sendWhatsApp(formattedPhone, contentVariables, eventregSSID);
 
                 if (!result.success) {
                     failed++;
@@ -206,11 +207,10 @@ module.exports = async function whatsappProcessor(
                         originalname: `qrcode_${reg.token}.png`,
                     };
 
-                    const { fileUrl } = await uploadToS3(fileObject, business.slug, "Checkin", { inline: true });
+                    const { fileUrl } = await uploadToS3(fileObject, business.slug, "Eventreg", { inline: true });
 
-                    const bodyText = targetLang === "ar"
-                        ? `يرجى تقديم رمز QR أدناه عند مدخل الحدث للتحقق.\n\nرمز الوصول الخاص بك هو *${reg.token}*.`
-                        : `Kindly present this QR code at the event entrance for verification.\n\nYour access token is *${reg.token}*.`;
+
+                    const bodyText = `Kindly present this QR code at the event entrance for verification.\n\nYour access token is *${reg.token}*.`;
 
                     const mediaResult = await sendWhatsAppWithMedia(formattedPhone, fileUrl, bodyText);
 
@@ -246,10 +246,10 @@ module.exports = async function whatsappProcessor(
         });
 
         console.log(
-            `CheckIn bulk notification finished: ${sent} sent, ${failed} failed, total ${total}`
+            `EventReg bulk notification finished: ${sent} sent, ${failed} failed, total ${total}`
         );
     } catch (err) {
-        console.error("CHECKIN WHATSAPP PROCESSOR ERROR:", err);
+        console.error("EVENTREG WHATSAPP PROCESSOR ERROR:", err);
     }
 };
 

@@ -90,6 +90,43 @@ exports.getEventsByBusinessSlug = asyncHandler(async (req, res) => {
   });
 });
 
+// Validate phone number
+const validatePhoneNumber = (phone) => {
+  if (!phone) return { valid: true };
+  const phoneStr = String(phone).trim();
+
+  if (!phoneStr.startsWith("+")) {
+    return { valid: false, error: "Phone number must start with country code (e.g., +92, +968, +1)" };
+  }
+
+  const digits = phoneStr.replace(/\D/g, "");
+
+  if (phoneStr.startsWith("+92")) {
+    const localDigits = digits.replace(/^92/, "");
+    if (localDigits.length !== 10) {
+      return { valid: false, error: "Pakistan phone number must be 10 digits (excluding country code +92)" };
+    }
+    return { valid: true };
+  }
+
+  if (phoneStr.startsWith("+968")) {
+    const localDigits = digits.replace(/^968/, "");
+    if (localDigits.length !== 8) {
+      return { valid: false, error: "Oman phone number must be 8 digits (excluding country code +968)" };
+    }
+    return { valid: true };
+  }
+
+  if (digits.length < 8) {
+    return { valid: false, error: "Phone number is too short" };
+  }
+  if (digits.length > 15) {
+    return { valid: false, error: "Phone number is too long" };
+  }
+
+  return { valid: true };
+};
+
 // CREATE event (only public)
 exports.createEvent = asyncHandler(async (req, res) => {
   if (!req.body) {
@@ -108,12 +145,22 @@ exports.createEvent = asyncHandler(async (req, res) => {
     showQrOnBadge,
     requiresApproval,
     defaultLanguage,
+    organizerName,
+    organizerEmail,
+    organizerPhone,
   } = req.body;
 
   let { capacity, formFields } = req.body;
 
   if (!name || !slug || !startDate || !endDate || !venue || !businessSlug) {
     return response(res, 400, "Missing required fields");
+  }
+
+  if (organizerPhone) {
+    const phoneValidation = validatePhoneNumber(organizerPhone);
+    if (!phoneValidation.valid) {
+      return response(res, 400, phoneValidation.error);
+    }
   }
 
   const parsedStartDate = new Date(startDate);
@@ -215,6 +262,9 @@ exports.createEvent = asyncHandler(async (req, res) => {
     showQrOnBadge,
     requiresApproval: requiresApproval === "true" || requiresApproval === true,
     defaultLanguage: defaultLanguage || "en",
+    organizerName: organizerName || "",
+    organizerEmail: organizerEmail || "",
+    organizerPhone: organizerPhone || "",
   });
 
   recomputeAndEmit(businessId || null).catch((err) =>
@@ -248,6 +298,9 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     removeLogo,
     removeBackgroundEn,
     removeBackgroundAr,
+    organizerName,
+    organizerEmail,
+    organizerPhone,
   } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -468,6 +521,22 @@ exports.updateEvent = asyncHandler(async (req, res) => {
 
   if (defaultLanguage && ["en", "ar"].includes(defaultLanguage)) {
     updates.defaultLanguage = defaultLanguage;
+  }
+
+  if (organizerName !== undefined) {
+    updates.organizerName = organizerName || "";
+  }
+  if (organizerEmail !== undefined) {
+    updates.organizerEmail = organizerEmail || "";
+  }
+  if (organizerPhone !== undefined) {
+    if (organizerPhone) {
+      const phoneValidation = validatePhoneNumber(organizerPhone);
+      if (!phoneValidation.valid) {
+        return response(res, 400, phoneValidation.error);
+      }
+    }
+    updates.organizerPhone = organizerPhone || "";
   }
 
   const updatedEvent = await Event.findByIdAndUpdate(id, updates, {

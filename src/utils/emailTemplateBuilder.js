@@ -12,7 +12,7 @@ async function buildRegistrationEmail({
   const emailDir = targetLang === "ar" ? "rtl" : "ltr";
   const qrCodeDataUrl = await QRCode.toDataURL(registration.token);
 
-  // Arabic date formatter helper
+  // Arabic/English date formatter helper
   const formatDate = (date) => {
     if (!date) return "";
     if (targetLang === "ar") {
@@ -23,7 +23,6 @@ async function buildRegistrationEmail({
         day: "numeric",
       }).format(date);
     }
-    // default (English)
     return date.toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
@@ -32,14 +31,14 @@ async function buildRegistrationEmail({
     });
   };
 
-  // --- Format date range ---
+  // Format date range
   const s = new Date(event.startDate);
   const e = event.endDate && new Date(event.endDate);
   const startStr = formatDate(s);
   const endStr = e && e.getTime() !== s.getTime() ? formatDate(e) : null;
   const dateRange = endStr ? `${startStr} – ${endStr}` : startStr;
 
-  // --- Collect static phrases + event text for translation ---
+  // Collect static phrases + event text for translation
   const textsToTranslate = [
     "Reminder: ",
     "Welcome to",
@@ -61,19 +60,19 @@ async function buildRegistrationEmail({
     dateRange,
   ].filter(Boolean);
 
-  // --- Also include form field labels (not user values) ---
+  // Also include form field labels (not user values)
   const formLabels = Array.isArray(event.formFields)
     ? event.formFields.map((f) => f.inputName)
     : [];
   textsToTranslate.push(...formLabels);
 
-  // --- Translate all in one batch ---
+  // Translate all in one batch
   const results = await translateText(textsToTranslate, targetLang);
   const map = {};
   textsToTranslate.forEach((t, i) => (map[t] = results[i] || t));
   const tr = (t) => map[t] || t;
 
-  // --- Build custom fields section (translate only labels) ---
+  // Build custom fields section (translate only labels)
   let customFieldHtml = "";
   if (Object.keys(customFields).length && Array.isArray(event.formFields)) {
     const filledFields = event.formFields.filter(
@@ -81,62 +80,87 @@ async function buildRegistrationEmail({
     );
     const items = filledFields
       .map((f) => {
-        const v = customFields[f.inputName]; // user-entered value — not translated
+        const v = customFields[f.inputName];
         const translatedLabel = tr(f.inputName);
-        return `<li><strong>${translatedLabel}:</strong> ${v}</li>`;
+        return `<tr><td style="padding:4px 0;"><strong>${translatedLabel}:</strong></td><td style="padding:4px 0;">${v}</td></tr>`;
       })
       .join("");
 
     if (items) {
-      const sectionLabel = tr("Here are your submitted details:");
-      const pad =
-        targetLang === "ar" ? "padding-right:20px;" : "padding-left:20px;";
-      customFieldHtml = `<p style="font-size:16px;">${sectionLabel}</p>
-      <ul style="font-size:15px;line-height:1.6;${pad}">${items}</ul>`;
+      customFieldHtml = `
+        <h3 style="margin-top:24px;font-size:17px;color:#004aad;">${tr("Here are your submitted details:")}</h3>
+        <table style="width:100%;font-size:14px;color:#333;">
+          ${items}
+        </table>`;
     }
   }
 
-  // --- Compose email HTML ---
+  // Compose email HTML (CheckIn-style UI with original EventReg content)
   const html = `
-<div dir="${emailDir}" style="font-family:Arial,sans-serif;padding:20px;background:#f4f4f4;color:#333">
-  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden">
-    <div style="background:#007BFF;padding:20px;text-align:center">
-      <h2 style="color:#fff;margin:0">${tr("Welcome to")} ${tr(event.name)}</h2>
+  <div dir="${emailDir}" style="font-family:'Segoe UI',Arial,sans-serif;background:#f6f8fa;padding:20px;">
+    <div style="max-width:640px;margin:auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);">
+      
+      <!-- HEADER -->
+      <div style="background:#004aad;padding:24px;text-align:center;">
+        ${event.logoUrl
+      ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;" />`
+      : ""
+    }
+        <h2 style="color:#fff;font-size:22px;margin:0;">${tr("Welcome to")} ${tr(event.name)}</h2>
+      </div>
+
+      <!-- CONTENT BODY -->
+      <div style="padding:24px 28px 28px;">
+        
+        <p style="font-size:15px;color:#333;margin-top:28px;">
+          ${tr("Hi")} <strong>${displayName}</strong>,
+        </p>
+
+        <p style="font-size:15px;color:#333;line-height:1.6;">
+          ${tr("You're confirmed for")} <strong>${tr(event.name)}</strong>!
+        </p>
+
+        <!-- QR Code Section -->
+        <p style="font-size:15px;color:#333;line-height:1.6;margin-top:24px;">
+          ${tr("Please present this QR at check-in:")}
+        </p>
+        <div style="text-align:center;margin:20px 0;">
+          {{qrImage}}
+        </div>
+        <p style="font-size:15px;color:#333;line-height:1.6;text-align:center;">
+          ${tr("Your Token:")} <strong>${registration.token}</strong>
+        </p>
+
+        <!-- Event Details -->
+        <h3 style="margin-top:24px;font-size:17px;color:#004aad;">${tr("Event Details:")}</h3>
+        <table style="width:100%;font-size:14px;color:#333;">
+          <tr>
+            <td style="padding:4px 0;"><strong>${tr("Date:")}</strong></td>
+            <td style="padding:4px 0;">${tr(dateRange)}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;"><strong>${tr("Venue:")}</strong></td>
+            <td style="padding:4px 0;">${tr(event.venue)}</td>
+          </tr>
+          ${event.description
+      ? `<tr><td style="padding:4px 0;"><strong>${tr("About:")}</strong></td><td style="padding:4px 0;">${tr(event.description)}</td></tr>`
+      : ""
+    }
+        </table>
+
+        ${customFieldHtml}
+
+        <!-- FOOTER -->
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
+        <p style="font-size:14px;color:#777;">
+          ${tr("Questions? Reply to this email.")}
+        </p>
+        <p style="font-size:14px;color:#777;">
+          ${tr("See you soon!")}
+        </p>
+      </div>
     </div>
-    <div style="padding:30px">
-      <p>${tr("Hi")} <strong>${displayName}</strong>,</p>
-      <p>${tr("You're confirmed for")} <strong>${tr(event.name)}</strong>!</p>
-      ${
-        event.logoUrl
-          ? `<div style="text-align:center;margin:20px 0">
-              <img src="${event.logoUrl}" style="max-width:180px;max-height:100px"/>
-            </div>`
-          : ""
-      }
-      <p>${tr("Please present this QR at check-in:")}</p>
-      <div style="text-align:center;margin:20px auto;width:100%;">{{qrImage}}</div>
-      <p>${tr("Your Token:")} <strong>${registration.token}</strong></p>
-      <p>${tr("Event Details:")}</p>
-      <ul style="${
-        targetLang === "ar" ? "padding-right:20px;" : "padding-left:20px;"
-      }">
-        <li><strong>${tr("Date:")}</strong> ${tr(dateRange)}</li>
-        <li><strong>${tr("Venue:")}</strong> ${tr(event.venue)}</li>
-        ${
-          event.description
-            ? `<li><strong>${tr("About:")}</strong> ${tr(
-                event.description
-              )}</li>`
-            : ""
-        }
-      </ul>
-      ${customFieldHtml}
-      <hr/>
-      <p>${tr("Questions? Reply to this email.")}</p>
-      <p>${tr("See you soon!")}</p>
-    </div>
-  </div>
-</div>`;
+  </div>`;
 
   const baseSubject = `${tr("Registration Confirmed:")} ${tr(event.name)}`;
   const subject = isReminder ? `${tr("Reminder: ")}${baseSubject}` : baseSubject;

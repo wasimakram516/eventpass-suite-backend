@@ -34,6 +34,7 @@ const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder");
 // PROCESSORS
 const uploadProcessor = require("../../processors/eventreg/uploadProcessor");
 const emailProcessor = require("../../processors/eventreg/emailProcessor");
+const whatsappProcessor = require("../../processors/eventreg/whatsappProcessor");
 
 function validateUploadedFileFields(event, rows) {
   if (!rows || rows.length === 0) {
@@ -746,6 +747,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     _id: newRegistration._id,
     token: newRegistration.token,
     emailSent: newRegistration.emailSent,
+    whatsappSent: newRegistration.whatsappSent,
     createdAt: newRegistration.createdAt,
     approvalStatus: newRegistration.approvalStatus,
     fullName: newRegistration.fullName,
@@ -969,27 +971,139 @@ exports.unsentCount = asyncHandler(async (req, res) => {
 // -------------------------------------------
 exports.sendBulkEmails = asyncHandler(async (req, res) => {
   const { slug } = req.params;
+  const { subject, body, statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
+
+  let mediaUrl = null;
+  let originalFilename = null;
+  if (req.file) {
+    const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
+    const uploadResult = await uploadToCloudinary(req.file.buffer, req.file.mimetype, "Eventreg/custom-attachments");
+    mediaUrl = uploadResult.secure_url;
+    originalFilename = req.file.originalname;
+  }
 
   const event = await Event.findOne({ slug }).lean();
   if (!event) return response(res, 404, "Event not found");
 
-  const regs = await Registration.find({
+  let filterQuery = {
     eventId: event._id,
     isDeleted: { $ne: true },
-  })
-    .select("fullName email company customFields token emailSent createdAt")
+  };
+
+  if (statusFilter && statusFilter !== "all") {
+    if (statusFilter === "approved") {
+      filterQuery.approvalStatus = "approved";
+    } else if (statusFilter === "rejected") {
+      filterQuery.approvalStatus = "rejected";
+    } else if (statusFilter === "pending") {
+      filterQuery.approvalStatus = "pending";
+    }
+  }
+
+  if (emailSentFilter && emailSentFilter !== "all") {
+    if (emailSentFilter === "sent") {
+      filterQuery.emailSent = true;
+    } else if (emailSentFilter === "notSent") {
+      filterQuery.emailSent = { $ne: true };
+    }
+  }
+
+  if (whatsappSentFilter && whatsappSentFilter !== "all") {
+    if (whatsappSentFilter === "sent") {
+      filterQuery.whatsappSent = true;
+    } else if (whatsappSentFilter === "notSent") {
+      filterQuery.whatsappSent = { $ne: true };
+    }
+  }
+
+  const regs = await Registration.find(filterQuery)
+    .select("fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus")
     .lean();
 
   // Early response immediately
-  response(res, 200, "Bulk email job started", {
+  response(res, 200, "Bulk notification job started", {
     total: regs.length,
   });
 
   // Background processor
   setImmediate(() => {
-    emailProcessor(event, regs).catch((err) =>
+    const customEmail = subject && body ? { subject, body, mediaUrl, originalFilename } : null;
+    emailProcessor(event, regs, customEmail).catch((err) =>
       console.error("EMAIL PROCESSOR FAILED:", err)
     );
+  });
+});
+
+// -------------------------------------------
+// BULK WHATSAPP SEND (Early Response + Background Job)
+// -------------------------------------------
+exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+  const { type, subject, body, statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
+
+  let mediaUrl = null;
+  if (req.file) {
+    const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
+    const uploadResult = await uploadToCloudinary(req.file.buffer, req.file.mimetype, "Eventreg/custom-attachments");
+    mediaUrl = uploadResult.secure_url;
+  }
+
+  const event = await Event.findOne({ slug }).lean();
+  if (!event) return response(res, 404, "Event not found");
+
+  let filterQuery = {
+    eventId: event._id,
+    isDeleted: { $ne: true },
+  };
+
+  // Apply status filter - only if not "all" or undefined
+  if (statusFilter && statusFilter !== "all") {
+    if (statusFilter === "approved") {
+      filterQuery.approvalStatus = "approved";
+    } else if (statusFilter === "rejected") {
+      filterQuery.approvalStatus = "rejected";
+    } else if (statusFilter === "pending") {
+      filterQuery.approvalStatus = "pending";
+    }
+  }
+
+  // Apply email sent filter - only if not "all" or undefined
+  if (emailSentFilter && emailSentFilter !== "all") {
+    if (emailSentFilter === "sent") {
+      filterQuery.emailSent = true;
+    } else if (emailSentFilter === "notSent") {
+      filterQuery.emailSent = { $ne: true };
+    }
+  }
+
+  // Apply WhatsApp sent filter - only if not "all" or undefined
+  if (whatsappSentFilter && whatsappSentFilter !== "all") {
+    if (whatsappSentFilter === "sent") {
+      filterQuery.whatsappSent = true;
+    } else if (whatsappSentFilter === "notSent") {
+      filterQuery.whatsappSent = { $ne: true };
+    }
+  }
+
+  const regs = await Registration.find(filterQuery)
+    .select("fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus")
+    .lean();
+
+  response(res, 200, "Bulk notification job started", {
+    total: regs.length,
+  });
+
+  setImmediate(() => {
+    if (type === "custom") {
+      const customWhatsAppProcessor = require("../../processors/eventreg/customWhatsAppProcessor");
+      customWhatsAppProcessor(event, regs, { subject, body, mediaUrl }).catch((err) =>
+        console.error("EVENTREG CUSTOM WHATSAPP PROCESSOR FAILED:", err)
+      );
+    } else {
+      whatsappProcessor(event, regs).catch((err) =>
+        console.error("EVENTREG WHATSAPP PROCESSOR FAILED:", err)
+      );
+    }
   });
 });
 
@@ -1031,6 +1145,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
         _id: reg._id,
         token: reg.token,
         emailSent: reg.emailSent,
+        whatsappSent: reg.whatsappSent,
         createdAt: reg.createdAt,
 
         fullName: reg.fullName,
@@ -1088,6 +1203,7 @@ async function loadRemainingRecords(eventId, total) {
             _id: reg._id,
             token: reg.token,
             emailSent: reg.emailSent,
+            whatsappSent: reg.whatsappSent,
             createdAt: reg.createdAt,
             approvalStatus: reg.approvalStatus,
             fullName: reg.fullName,
@@ -1151,6 +1267,7 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
         _id: reg._id,
         token: reg.token,
         emailSent: reg.emailSent,
+        whatsappSent: reg.whatsappSent,
         createdAt: reg.createdAt,
         approvalStatus: reg.approvalStatus,
         fullName: reg.fullName,
