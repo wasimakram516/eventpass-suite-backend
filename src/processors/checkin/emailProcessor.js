@@ -1,7 +1,12 @@
 const Registration = require("../../models/Registration");
-const { buildCheckInInvitationEmail } = require("../../utils/checkinEmailTemplateBuilder");
 const sendEmail = require("../../services/emailService");
 
+const {
+  buildCustomEmail,
+} = require("../../utils/emailTemplateBuilder/buildCustomEmail");
+const {
+  buildCheckInInvitationEmail,
+} = require("../../utils/emailTemplateBuilder/checkinEmailTemplateBuilder");
 const {
   pickEmail,
   pickFullName,
@@ -12,7 +17,11 @@ const {
   emitEmailProgress,
 } = require("../../socket/modules/checkin/checkInSocket");
 
-module.exports = async function emailProcessor(event, recipients, customEmail = null) {
+module.exports = async function emailProcessor(
+  event,
+  recipients,
+  customEmail = null
+) {
   const eventId = event._id.toString();
   const total = recipients.length;
 
@@ -20,52 +29,47 @@ module.exports = async function emailProcessor(event, recipients, customEmail = 
   let sent = 0;
   let failed = 0;
 
-  try {
-    // Handle case when there are no recipients
-    if (total === 0) {
-      emitEmailProgress(eventId, {
-        sent: 0,
-        failed: 0,
-        processed: 0,
-        total: 0,
-      });
-      return;
-    }
+  if (!total) {
+    emitEmailProgress(eventId, { sent: 0, failed: 0, processed: 0, total: 0 });
+    return;
+  }
 
-    for (const r of recipients) {
-      processed++;
+  for (const r of recipients) {
+    processed++;
 
-      try {
-        const reg = await Registration.findById(r._id)
-          .select("customFields fullName email phone company token _id eventId")
-          .lean();
+    try {
+      const reg = await Registration.findById(r._id)
+        .select("customFields fullName email company token")
+        .lean();
 
-        let cf = {};
-        if (reg?.customFields) {
-          if (Array.isArray(reg.customFields)) {
-            cf = Object.fromEntries(reg.customFields);
-          } else if (typeof reg.customFields === "object") {
-            cf = reg.customFields;
-          }
-        }
+      const cf = Array.isArray(reg?.customFields)
+        ? Object.fromEntries(reg.customFields)
+        : reg?.customFields || {};
 
-        const email = r.email || reg?.email || pickEmail(cf) || null;
+      const email = r.email || reg?.email || pickEmail(cf);
+      if (!email) {
+        failed++;
+        continue;
+      }
 
-        const fullName =
-          r.fullName || reg?.fullName || pickFullName(cf) || null;
+      const fullName = r.fullName || reg?.fullName || pickFullName(cf);
+      const company = r.company || reg?.company || pickCompany(cf) || "";
 
-        const company = r.company || reg?.company || pickCompany(cf) || "";
+      const displayName =
+        fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
-        if (!email) {
-          failed++;
-          continue;
-        }
+      const isReminder = r.emailSent === true;
 
-        const displayName =
-          fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
-        const isReminder = r.emailSent === true;
+      let subject, html, qrCodeDataUrl;
 
-        const { subject, html, qrCodeDataUrl } = await buildCheckInInvitationEmail({
+      if (customEmail?.subject && customEmail?.body) {
+        ({ subject, html, qrCodeDataUrl } = buildCustomEmail({
+          event,
+          subject: customEmail.subject,
+          bodyHtml: customEmail.body,
+        }));
+      } else {
+        ({ subject, html, qrCodeDataUrl } = await buildCheckInInvitationEmail({
           event,
           registration: {
             ...reg,
@@ -75,57 +79,49 @@ module.exports = async function emailProcessor(event, recipients, customEmail = 
             company,
             token: reg.token,
           },
-          customSubject: customEmail?.subject || null,
-          customBody: customEmail?.body || null,
           displayName,
           isReminder,
-        });
-
-        const attachments = [];
-        if (event.agendaUrl) {
-          attachments.push({ filename: "Agenda.pdf", path: event.agendaUrl });
-        }
-        if (customEmail?.mediaUrl) {
-          const filename = customEmail.originalFilename || (() => {
-            const urlParts = customEmail.mediaUrl.split("/");
-            return urlParts[urlParts.length - 1] || "attachment";
-          })();
-          attachments.push({ filename, path: customEmail.mediaUrl });
-        }
-
-        const result = await sendEmail(email, subject, html, qrCodeDataUrl, attachments);
-
-        if (result.success) {
-          await Registration.updateOne({ _id: r._id }, { emailSent: true });
-          sent++;
-        } else {
-          failed++;
-        }
-      } catch (err) {
-        console.error("Email send error:", err);
-        failed++;
+        }));
       }
 
-      emitEmailProgress(eventId, {
-        sent,
-        failed,
-        processed,
-        total,
-      });
+      const attachments = [];
+      if (event.agendaUrl) {
+        attachments.push({ filename: "Agenda.pdf", path: event.agendaUrl });
+      }
+      if (customEmail?.mediaUrl) {
+        attachments.push({
+          filename: customEmail.originalFilename || "attachment",
+          path: customEmail.mediaUrl,
+        });
+      }
 
-      await new Promise((r) => setTimeout(r, 20));
+      const result = await sendEmail(
+        email,
+        subject,
+        html,
+        qrCodeDataUrl,
+        attachments
+      );
+
+      if (result.success) {
+        await Registration.updateOne({ _id: r._id }, { emailSent: true });
+        sent++;
+      } else {
+        failed++;
+      }
+    } catch (err) {
+      console.error("Email send error:", err);
+      failed++;
     }
 
-    emitEmailProgress(eventId, {
-      sent,
-      failed,
-      processed: total,
-      total,
-    });
-
-
-  } catch (err) {
-    console.error("CHECKIN EMAIL PROCESSOR ERROR:", err);
+    emitEmailProgress(eventId, { sent, failed, processed, total });
+    await new Promise((r) => setTimeout(r, 20));
   }
-};
 
+  emitEmailProgress(eventId, {
+    sent,
+    failed,
+    processed: total,
+    total,
+  });
+};

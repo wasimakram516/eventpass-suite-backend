@@ -1,6 +1,6 @@
-const env = require("../config/env");
-const { translateText } = require("../services/translationService");
-const { pickPhone } = require("../utils/customFieldUtils");
+const env = require("../../config/env");
+const { translateText } = require("../../services/translationService");
+const { pickPhone } = require("../customFieldUtils");
 
 async function buildSurveyInvitationEmail({
   event,

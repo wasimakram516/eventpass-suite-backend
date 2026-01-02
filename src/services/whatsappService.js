@@ -1,149 +1,63 @@
 const env = require("../config/env");
 const axios = require("axios");
 
-/**
- * Sends a WhatsApp message using Twilio API.
- */
-const sendWhatsApp = async (to, contentVariables, customContentSSID = null) => {
-    try {
-        const baseUrl = env.notifications.whatsapp.baseUrl;
-        const accountSSID = env.notifications.whatsapp.accountSSID;
-        const username = env.notifications.whatsapp.username;
-        const password = env.notifications.whatsapp.password;
-        const from = env.notifications.whatsapp.from;
-        const contentSSID = customContentSSID || env.notifications.whatsapp.contentSSID;
+const sendTwilioWhatsApp = async ({ to, payload }) => {
+  try {
+    const { baseUrl, accountSSID, username, password, from } =
+      env.notifications.whatsapp;
 
-        const url = `${baseUrl}/Accounts/${accountSSID}/Messages.json`;
+    const url = `${baseUrl}/Accounts/${accountSSID}/Messages.json`;
 
-        const formData = new URLSearchParams();
-        formData.append("From", from);
-        formData.append("To", to);
-        formData.append("ContentSid", contentSSID);
-        formData.append("ContentVariables", JSON.stringify(contentVariables));
+    const formData = new URLSearchParams();
+    formData.append("From", from);
+    formData.append("To", to);
 
-        const response = await axios.post(url, formData.toString(), {
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            auth: {
-                username,
-                password,
-            },
-        });
+    Object.entries(payload).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) {
+        formData.append(key, value);
+      }
+    });
 
-        const success = response.status >= 200 && response.status < 300;
+    const response = await axios.post(url, formData.toString(), {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      auth: { username, password },
+    });
 
-        return {
-            success,
-            response: response.data,
-            code: response.status,
-        };
-    } catch (err) {
-        return {
-            success: false,
-            error: err.message,
-            code: err.response?.status || 500,
-            response: err.response?.data,
-        };
-    }
+    return {
+      success: true,
+      code: response.status,
+      response: response.data,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      code: err.response?.status || 500,
+      error: err.message,
+      response: err.response?.data,
+    };
+  }
 };
 
-/**
- * Sends a WhatsApp message with media.
- */
-const sendWhatsAppWithMedia = async (to, mediaUrl, body) => {
-    try {
-        const baseUrl = env.notifications.whatsapp.baseUrl;
-        const accountSSID = env.notifications.whatsapp.accountSSID;
-        const username = env.notifications.whatsapp.username;
-        const password = env.notifications.whatsapp.password;
-        const from = env.notifications.whatsapp.from;
+const sendWhatsApp = (to, contentVariables, customContentSSID) =>
+  sendTwilioWhatsApp({
+    to,
+    payload: {
+      ContentSid: customContentSSID,
+      ContentVariables: JSON.stringify(contentVariables),
+    },
+  });
 
-        const url = `${baseUrl}/Accounts/${accountSSID}/Messages.json`;
+const sendCustomWhatsApp = (to, mediaUrl = null, body) =>
+  sendTwilioWhatsApp({
+    to,
+    payload: {
+      Body: body,
+      MediaUrl: mediaUrl,
+    },
+  });
 
-        const formData = new URLSearchParams();
-        formData.append("From", from);
-        formData.append("To", to);
-        formData.append("MediaUrl", mediaUrl);
-        formData.append("Body", body);
 
-        const response = await axios.post(url, formData.toString(), {
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            auth: {
-                username,
-                password,
-            },
-        });
-
-        const success = response.status >= 200 && response.status < 300;
-
-        return {
-            success,
-            response: response.data,
-            code: response.status,
-        };
-    } catch (err) {
-        return {
-            success: false,
-            error: err.message,
-            code: err.response?.status || 500,
-            response: err.response?.data,
-        };
-    }
+module.exports = {
+  sendWhatsApp,
+  sendCustomWhatsApp,
 };
-
-/**
- * Sends a WhatsApp message with optional media using Twilio API.
- */
-const sendWhatsAppMessage = async (to, body, mediaUrl = null) => {
-    try {
-        const baseUrl = env.notifications.whatsapp.baseUrl;
-        const accountSSID = env.notifications.whatsapp.accountSSID;
-        const username = env.notifications.whatsapp.username;
-        const password = env.notifications.whatsapp.password;
-        const from = env.notifications.whatsapp.from;
-
-        const url = `${baseUrl}/Accounts/${accountSSID}/Messages.json`;
-
-        const formData = new URLSearchParams();
-        formData.append("From", from);
-        formData.append("To", to);
-        formData.append("Body", body);
-
-        if (mediaUrl) {
-            formData.append("MediaUrl", mediaUrl);
-        }
-
-        const response = await axios.post(url, formData.toString(), {
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            auth: {
-                username,
-                password,
-            },
-        });
-
-        const success = response.status >= 200 && response.status < 300;
-
-        return {
-            success,
-            response: response.data,
-            code: response.status,
-        };
-    } catch (err) {
-        return {
-            success: false,
-            error: err.message,
-            code: err.response?.status || 500,
-            response: err.response?.data,
-        };
-    }
-};
-
-module.exports = sendWhatsApp;
-module.exports.sendWhatsAppWithMedia = sendWhatsAppWithMedia;
-module.exports.sendWhatsAppMessage = sendWhatsAppMessage;
-

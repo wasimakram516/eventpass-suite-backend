@@ -29,12 +29,13 @@ const {
   emitNewRegistration,
 } = require("../../socket/modules/eventreg/eventRegSocket");
 
-const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder");
+const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder/eventRegEmailTemplateBuilder");
 
 // PROCESSORS
 const uploadProcessor = require("../../processors/eventreg/uploadProcessor");
 const emailProcessor = require("../../processors/eventreg/emailProcessor");
 const whatsappProcessor = require("../../processors/eventreg/whatsappProcessor");
+const { uploadToS3 } = require("../../utils/s3Storage");
 
 function validateUploadedFileFields(event, rows) {
   if (!rows || rows.length === 0) {
@@ -972,18 +973,19 @@ exports.unsentCount = asyncHandler(async (req, res) => {
 exports.sendBulkEmails = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const { subject, body, statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
+  const event = await Event.findOne({ slug }).lean();
+  if (!event) return response(res, 404, "Event not found");
+
+  const business = await Business.findById(event.businessId).lean();
+  
 
   let mediaUrl = null;
   let originalFilename = null;
   if (req.file) {
-    const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
-    const uploadResult = await uploadToCloudinary(req.file.buffer, req.file.mimetype, "Eventreg/custom-attachments");
-    mediaUrl = uploadResult.secure_url;
+    const {fileUrl} =  await uploadToS3(req.file, business.slug, "EventReg/custom-attachments", { inline: true });
+    mediaUrl = fileUrl;
     originalFilename = req.file.originalname;
   }
-
-  const event = await Event.findOne({ slug }).lean();
-  if (!event) return response(res, 404, "Event not found");
 
   let filterQuery = {
     eventId: event._id,

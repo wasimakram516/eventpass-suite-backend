@@ -1,5 +1,5 @@
 const QRCode = require("qrcode");
-const { translateText } = require("../services/translationService");
+const { translateText } = require("../../services/translationService");
 
 async function buildRegistrationEmail({
   event,

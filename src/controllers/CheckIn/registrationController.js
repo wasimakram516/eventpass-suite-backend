@@ -32,6 +32,7 @@ const uploadProcessor = require("../../processors/checkin/uploadProcessor");
 const emailProcessor = require("../../processors/checkin/emailProcessor");
 const whatsappProcessor = require("../../processors/checkin/whatsappProcessor");
 const { formatLocalDateTime } = require("../../utils/dateUtils");
+const { uploadToS3 } = require("../../utils/s3Storage");
 
 const ALLOWED_EVENT_TYPE = "employee";
 
@@ -1285,17 +1286,18 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const { subject, body, statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
 
-  let mediaUrl = null;
-  let originalFilename = null;
-  if (req.file) {
-    const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
-    const uploadResult = await uploadToCloudinary(req.file.buffer, req.file.mimetype, "Checkin/custom-attachments");
-    mediaUrl = uploadResult.secure_url;
-    originalFilename = req.file.originalname;
-  }
-
   const event = await Event.findOne({ slug }).lean();
-  if (!event) return response(res, 404, "Event not found");
+    if (!event) return response(res, 404, "Event not found");
+
+    const business = await Business.findById(event.businessId).lean();
+
+    let mediaUrl = null;
+    let originalFilename = null;
+    if (req.file) {
+      const {fileUrl} =  await uploadToS3(req.file, business.slug, "CheckIn/custom-attachments", { inline: true });
+      mediaUrl = fileUrl;
+      originalFilename = req.file.originalname;
+    }
 
   let filterQuery = {
     eventId: event._id,

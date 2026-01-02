@@ -3,7 +3,7 @@ const SurveyRecipient = require("../../models/SurveyRecipient");
 const sendEmail = require("../../services/emailService");
 const {
   buildSurveyInvitationEmail,
-} = require("../../utils/surveyEmailTemplateBuilder");
+} = require("../../utils/emailTemplateBuilder/surveyEmailTemplateBuilder");
 const {
   emitSurveyEmailProgress,
 } = require("../../socket/modules/surveyguru/surveyGuruSocket");

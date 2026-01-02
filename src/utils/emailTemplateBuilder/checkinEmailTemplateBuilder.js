@@ -1,13 +1,11 @@
-const env = require("../config/env");
-const { translateText } = require("../services/translationService");
-const { pickPhone } = require("../utils/customFieldUtils");
+const env = require("../../config/env");
+const { translateText } = require("../../services/translationService");
+const { pickPhone } = require("../customFieldUtils");
 const QRCode = require("qrcode");
 
 async function buildCheckInInvitationEmail({
   event,
   registration = {},
-  customSubject = null,
-  customBody = null,
   displayName,
   isReminder = false,
 }) {
@@ -17,33 +15,6 @@ async function buildCheckInInvitationEmail({
   let qrCodeDataUrl = null;
   if (registration.token) {
     qrCodeDataUrl = await QRCode.toDataURL(registration.token);
-  }
-
-  // If custom email, use simpler template with same header
-  if (customSubject && customBody) {
-    const headerText = event.name;
-
-    const html = `
-  <div dir="${emailDir}" style="font-family:'Segoe UI',Arial,sans-serif;background:#f6f8fa;padding:20px;">
-    <div style="max-width:640px;margin:auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);">
-      
-      <!-- HEADER -->
-      <div style="background:#004aad;padding:24px;text-align:center;">
-        ${event.logoUrl
-        ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;" />`
-        : ""
-      }
-        <h2 style="color:#fff;font-size:22px;margin:0;">${headerText}</h2>
-      </div>
-
-      <!-- CONTENT BODY (Custom HTML from CMS) -->
-      <div style="padding:24px 28px 28px;">
-        ${customBody}
-      </div>
-    </div>
-  </div>`;
-
-    return { subject: customSubject, html };
   }
 
   // ---------------------------------------
@@ -185,38 +156,38 @@ async function buildCheckInInvitationEmail({
         </p>
 
     <!-- CONFIRM BUTTON -->
-<div style="padding:28px 0;text-align:center;">
-  <a href="${confirmationLink}" style="text-decoration:none;display:inline-block;">
-    <div style="
-         background:#004aad;
-         color:#ffffff;
-         display:inline-flex;
-         align-items:center;
-         justify-content:center;
-         gap:10px;
-         padding:16px 32px;
-         border-radius:10px;
-         font-weight:700;
-         font-size:17px;
-         border:1px solid #003b87;
-         box-shadow:0 4px 10px rgba(0,0,0,0.18);
-         cursor:pointer;
-       "
-    >
-       <img 
-          src="${env.aws.cloudfrontUrl}/Assets/RegisterIcon.png"
-          width="22"
-          height="22"
-          style="display:inline-block;vertical-align:middle;margin-right:10px;"
-          alt="icon"
-       />
+    <div style="padding:28px 0;text-align:center;">
+      <a href="${confirmationLink}" style="text-decoration:none;display:inline-block;">
+        <div style="
+            background:#004aad;
+            color:#ffffff;
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            gap:10px;
+            padding:16px 32px;
+            border-radius:10px;
+            font-weight:700;
+            font-size:17px;
+            border:1px solid #003b87;
+            box-shadow:0 4px 10px rgba(0,0,0,0.18);
+            cursor:pointer;
+          "
+        >
+          <img 
+              src="${env.aws.cloudfrontUrl}/Assets/RegisterIcon.png"
+              width="22"
+              height="22"
+              style="display:inline-block;vertical-align:middle;margin-right:10px;"
+              alt="icon"
+          />
 
-       <span style="vertical-align:middle;">
-          ${tr("Confirm your attendance")}
-       </span>
+          <span style="vertical-align:middle;">
+              ${tr("Confirm your attendance")}
+          </span>
+        </div>
+      </a>
     </div>
-  </a>
-</div>
 
         ${qrCodeDataUrl
       ? `
