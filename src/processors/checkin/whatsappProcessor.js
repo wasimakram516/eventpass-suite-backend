@@ -115,7 +115,7 @@ module.exports = async function whatsappProcessor(
                 total: 0,
             });
             console.log(
-                `CheckIn bulk WhatsApp finished: 0 sent, 0 failed, total 0`
+                `CheckIn bulk notification finished: 0 sent, 0 failed, total 0`
             );
             return;
         }
@@ -246,7 +246,7 @@ module.exports = async function whatsappProcessor(
         });
 
         console.log(
-            `CheckIn bulk WhatsApp finished: ${sent} sent, ${failed} failed, total ${total}`
+            `CheckIn bulk notification finished: ${sent} sent, ${failed} failed, total ${total}`
         );
     } catch (err) {
         console.error("CHECKIN WHATSAPP PROCESSOR ERROR:", err);
