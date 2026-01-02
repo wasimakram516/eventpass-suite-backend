@@ -56,8 +56,8 @@ jobs:
           echo "WHATSAPP_USERNAME='${{ secrets.WHATSAPP_USERNAME }}'" | sudo tee -a .env
           echo "WHATSAPP_PASSWORD='${{ secrets.WHATSAPP_PASSWORD }}'" | sudo tee -a .env
           echo "WHATSAPP_FROM='${{ secrets.WHATSAPP_FROM }}'" | sudo tee -a .env
-          echo "WHATSAPP_CONTENT_SSID='${{ secrets.WHATSAPP_CONTENT_SSID }}'" | sudo tee -a .env
-          echo "WHATSAPP_COUNTRY_CODE='${{ secrets.WHATSAPP_COUNTRY_CODE }}'" | sudo tee -a .env
+          echo "CHECKIN_WHATSAPP_SSID='${{ secrets.CHECKIN_WHATSAPP_SSID }}'" | sudo tee -a .env
+          echo "EVENTREG_WHATSAPP_SSID='${{ secrets.EVENTREG_WHATSAPP_SSID }}'" | sudo tee -a .env
           echo "NODE_ENV='production'" | sudo tee -a .env
           echo "PORT='8080'" | sudo tee -a .env
           echo ".env file created successfully"
