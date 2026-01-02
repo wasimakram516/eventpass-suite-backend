@@ -49,7 +49,6 @@ const env = {
       from: validateEnv("WHATSAPP_FROM"),
       checkinSSID: validateEnv("CHECKIN_WHATSAPP_SSID"),
       eventregSSID: validateEnv("EVENTREG_WHATSAPP_SSID"),
-      countryCode: validateEnv("WHATSAPP_COUNTRY_CODE"),
     },
   },
   cloudinary: {
