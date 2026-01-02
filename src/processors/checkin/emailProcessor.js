@@ -29,9 +29,6 @@ module.exports = async function emailProcessor(event, recipients, customEmail = 
         processed: 0,
         total: 0,
       });
-      console.log(
-        `CheckIn bulk email finished: 0 sent, 0 failed, total 0`
-      );
       return;
     }
 
@@ -126,9 +123,7 @@ module.exports = async function emailProcessor(event, recipients, customEmail = 
       total,
     });
 
-    console.log(
-      `CheckIn bulk email finished: ${sent} sent, ${failed} failed, total ${total}`
-    );
+
   } catch (err) {
     console.error("CHECKIN EMAIL PROCESSOR ERROR:", err);
   }
