@@ -12,6 +12,7 @@ const {
   downloadSampleExcel,
   uploadRegistrations,
   sendBulkEmails,
+  sendBulkWhatsApp,
   unsentCount,
   updateRegistration,
   updateRegistrationApproval,
@@ -37,7 +38,9 @@ router.post("/:id/walkin", eventRegAccess, createWalkIn);
 router.get("/event/:slug/unsent-count", eventRegAccess, unsentCount);
 
 // SEND bulk emails to all unemailed registrations for an event (protected)
-router.post("/event/:slug/bulk-email", eventRegAccess, sendBulkEmails);
+router.post("/event/:slug/bulk-email", eventRegAccess, upload.single("file"), sendBulkEmails);
+
+router.post("/event/:slug/bulk-whatsapp", eventRegAccess, upload.single("file"), sendBulkWhatsApp);
 
 // Verify registration via QR token (protected)
 router.get("/verify", eventRegAccess, verifyRegistrationByToken);
