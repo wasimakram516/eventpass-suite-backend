@@ -57,7 +57,9 @@ function validateUploadedFileFields(event, rows) {
     if (missingRequiredFields.length > 0) {
       return {
         valid: false,
-        error: `Uploaded file is missing required fields: ${missingRequiredFields.join(", ")}`,
+        error: `Uploaded file is missing required fields: ${missingRequiredFields.join(
+          ", "
+        )}`,
       };
     }
 
@@ -71,7 +73,9 @@ function validateUploadedFileFields(event, rows) {
     if (missingRequiredFields.length > 0) {
       return {
         valid: false,
-        error: `Uploaded file is missing required fields: ${missingRequiredFields.join(", ")}`,
+        error: `Uploaded file is missing required fields: ${missingRequiredFields.join(
+          ", "
+        )}`,
       };
     }
 
@@ -89,8 +93,8 @@ function formatRowNumbers(arr) {
   return arr.length === 1
     ? arr[0].toString()
     : arr.length === 2
-      ? `${arr[0]} and ${arr[1]}`
-      : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
+    ? `${arr[0]} and ${arr[1]}`
+    : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
 }
 
 function validateAllRows(event, rows) {
@@ -140,7 +144,12 @@ function validateAllRows(event, rows) {
       const email = row["Email"];
       extractedEmail = email;
 
-      if (!fullName || fullName.trim() === "" || !email || email.trim() === "") {
+      if (
+        !fullName ||
+        fullName.trim() === "" ||
+        !email ||
+        email.trim() === ""
+      ) {
         hasMissingFields = true;
       }
       if (email && !isValidEmail(email)) {
@@ -168,8 +177,11 @@ function validateAllRows(event, rows) {
     const rowNumbersText = formatRowNumbers(invalidRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Row${invalidRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${invalidRowNumbers.length > 1 ? "have" : "has"
-        } missing required fields: ${allRequiredFields.join(", ")}.`,
+      error: `Cannot upload file. Row${
+        invalidRowNumbers.length > 1 ? "s" : ""
+      } ${rowNumbersText} ${
+        invalidRowNumbers.length > 1 ? "have" : "has"
+      } missing required fields: ${allRequiredFields.join(", ")}.`,
     };
   }
 
@@ -177,8 +189,11 @@ function validateAllRows(event, rows) {
     const rowNumbersText = formatRowNumbers(invalidEmailRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Row${invalidEmailRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${invalidEmailRowNumbers.length > 1 ? "have" : "has"
-        } invalid email format.`,
+      error: `Cannot upload file. Row${
+        invalidEmailRowNumbers.length > 1 ? "s" : ""
+      } ${rowNumbersText} ${
+        invalidEmailRowNumbers.length > 1 ? "have" : "has"
+      } invalid email format.`,
     };
   }
 
@@ -186,8 +201,9 @@ function validateAllRows(event, rows) {
     const rowNumbersText = formatRowNumbers(duplicateEmailRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Duplicate email(s) found at row${duplicateEmailRowNumbers.length > 1 ? "s" : ""
-        } ${rowNumbersText}. Each email must be unique.`,
+      error: `Cannot upload file. Duplicate email(s) found at row${
+        duplicateEmailRowNumbers.length > 1 ? "s" : ""
+      } ${rowNumbersText}. Each email must be unique.`,
     };
   }
 
@@ -309,7 +325,12 @@ exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
     })
   );
 
-  emitLoadingProgress(eventId.toString(), enhanced.length, enhanced.length, enhanced);
+  emitLoadingProgress(
+    eventId.toString(),
+    enhanced.length,
+    enhanced.length,
+    enhanced
+  );
 
   setImmediate(async () => {
     const total = await Registration.countDocuments({ eventId }).notDeleted();
@@ -399,6 +420,9 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     createdTo,
     scannedFrom,
     scannedTo,
+    status,
+    emailSent,
+    whatsappSent,
     timezone,
     ...dynamicFiltersRaw
   } = req.query;
@@ -416,18 +440,41 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     isDeleted: { $ne: true },
   };
 
+  /* ---------- STATUS FILTER ---------- */
+  if (status && status !== "all") {
+    mongoQuery.approvalStatus = status;
+  }
+
+  /* ---------- EMAIL SENT FILTER ---------- */
+  if (emailSent && emailSent !== "all") {
+    if (emailSent === "sent") {
+      mongoQuery.emailSent = true;
+    } else if (emailSent === "not_sent") {
+      mongoQuery.emailSent = { $ne: true };
+    }
+  }
+
+  /* ---------- WHATSAPP SENT FILTER ---------- */
+  if (whatsappSent && whatsappSent !== "all") {
+    if (whatsappSent === "sent") {
+      mongoQuery.whatsappSent = true;
+    } else if (whatsappSent === "not_sent") {
+      mongoQuery.whatsappSent = { $ne: true };
+    }
+  }
+
   if (token) mongoQuery.token = new RegExp(token, "i");
 
   // Dynamic field filters
   const classicFieldsMap = {
     "Full Name": "fullName",
-    "Email": "email",
-    "Phone": "phone",
-    "Company": "company",
-    "fullName": "fullName",
-    "email": "email",
-    "phone": "phone",
-    "company": "company",
+    Email: "email",
+    Phone: "phone",
+    Company: "company",
+    fullName: "fullName",
+    email: "email",
+    phone: "phone",
+    company: "company",
   };
 
   const dynamicFilters = Object.entries(dynamicFiltersRaw)
@@ -538,7 +585,13 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
   lines.push("=== Registrations ===");
 
-  const regHeaders = [...dynamicFields, "Token", "Status", "Registered At", "Confirmed At"];
+  const regHeaders = [
+    ...dynamicFields,
+    "Token",
+    "Status",
+    "Registered At",
+    "Confirmed At",
+  ];
   lines.push(regHeaders.join(","));
 
   regs.forEach((reg) => {
@@ -553,7 +606,13 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     row.push(`"${reg.token}"`);
     row.push(`"${reg.approvalStatus || "pending"}"`);
     row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
-    row.push(`"${reg.confirmedAt ? formatLocalDateTime(reg.confirmedAt, timezone || null) : "N/A"}"`);
+    row.push(
+      `"${
+        reg.confirmedAt
+          ? formatLocalDateTime(reg.confirmedAt, timezone || null)
+          : "N/A"
+      }"`
+    );
 
     lines.push(row.join(","));
   });
@@ -594,7 +653,13 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
       row.push(`"${reg.token}"`);
       row.push(`"${reg?.approvalStatus || "pending"}"`);
       row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
-      row.push(`"${reg?.confirmedAt ? formatLocalDateTime(reg.confirmedAt, timezone || null) : "N/A"}"`);
+      row.push(
+        `"${
+          reg?.confirmedAt
+            ? formatLocalDateTime(reg.confirmedAt, timezone || null)
+            : "N/A"
+        }"`
+      );
       row.push(`"${formatLocalDateTime(w.scannedAt, timezone || null)}"`);
       row.push(`"${w.scannedBy?.name || w.scannedBy?.email || ""}"`);
       row.push(`"${w.scannedBy?.staffType || ""}"`);
@@ -654,7 +719,11 @@ exports.createRegistration = asyncHandler(async (req, res) => {
         if (field.inputType === "email") {
           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
           if (!emailRegex.test(value)) {
-            return response(res, 400, `Invalid email format for ${field.inputName}`);
+            return response(
+              res,
+              400,
+              `Invalid email format for ${field.inputName}`
+            );
           }
         }
         customFields[field.inputName] = value;
@@ -685,7 +754,9 @@ exports.createRegistration = asyncHandler(async (req, res) => {
 
   if (formFields.length > 0) {
     const normalize = (str = "") =>
-      String(str).toLowerCase().replace(/[^a-z0-9]/g, "");
+      String(str)
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
 
     const emailField = formFields.find((f) => f.inputType === "email");
     if (emailField && customFields[emailField.inputName]) {
@@ -703,7 +774,13 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       }
     }
 
-    const phoneMatches = ["phone", "phone number", "mobile", "contact", "whatsapp"];
+    const phoneMatches = [
+      "phone",
+      "phone number",
+      "mobile",
+      "contact",
+      "whatsapp",
+    ];
     for (const [key, value] of Object.entries(customFields)) {
       const normalized = normalize(key);
       if (phoneMatches.some((match) => normalized === normalize(match))) {
@@ -807,24 +884,32 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
       "Full Name" in fields
         ? fields["Full Name"]
         : "fullName" in fields
-          ? fields["fullName"]
-          : "Name" in fields
-            ? fields["Name"]
-            : reg.fullName;
+        ? fields["fullName"]
+        : "Name" in fields
+        ? fields["Name"]
+        : reg.fullName;
     const email =
-      "Email" in fields ? fields["Email"] : "email" in fields ? fields["email"] : reg.email;
+      "Email" in fields
+        ? fields["Email"]
+        : "email" in fields
+        ? fields["email"]
+        : reg.email;
     const phone =
-      "Phone" in fields ? fields["Phone"] : "phone" in fields ? fields["phone"] : reg.phone;
+      "Phone" in fields
+        ? fields["Phone"]
+        : "phone" in fields
+        ? fields["phone"]
+        : reg.phone;
     const company =
       "Company" in fields
         ? fields["Company"]
         : "Institution" in fields
-          ? fields["Institution"]
-          : "Organization" in fields
-            ? fields["Organization"]
-            : "company" in fields
-              ? fields["company"]
-              : reg.company;
+        ? fields["Institution"]
+        : "Organization" in fields
+        ? fields["Organization"]
+        : "company" in fields
+        ? fields["company"]
+        : reg.company;
 
     reg.customFields = {};
     reg.fullName = fullName;
@@ -842,7 +927,10 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
   let currentOriginalPhone = null;
 
   if (formFields.length > 0) {
-    const normalize = (str = "") => String(str).toLowerCase().replace(/[^a-z0-9]/g, "");
+    const normalize = (str = "") =>
+      String(str)
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
     const customFields = hasCustomFields ? newCustomFields : {};
 
     const emailField = formFields.find((f) => f.inputType === "email");
@@ -865,7 +953,13 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
       }
     }
 
-    const phoneMatches = ["phone", "phone number", "mobile", "contact", "whatsapp"];
+    const phoneMatches = [
+      "phone",
+      "phone number",
+      "mobile",
+      "contact",
+      "whatsapp",
+    ];
     for (const [key, value] of Object.entries(customFields)) {
       const normalized = normalize(key);
       if (phoneMatches.some((match) => normalized === normalize(match))) {
@@ -945,7 +1039,8 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   const staffUser = req.user;
 
   if (!token) return response(res, 400, "Token is required");
-  if (!staffUser?.id) return response(res, 401, "Unauthorized – no scanner info");
+  if (!staffUser?.id)
+    return response(res, 401, "Unauthorized – no scanner info");
 
   const reg = await Registration.findOne({ token }).populate("eventId");
   if (!reg || reg.eventId?.eventType !== ALLOWED_EVENT_TYPE) {
@@ -1049,7 +1144,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
     scannedAt: walkin.scannedAt,
     scannedBy: {
       name: adminUser.name || adminUser.email,
-      id: adminUser.id
+      id: adminUser.id,
     },
   });
 });
@@ -1102,7 +1197,11 @@ exports.permanentDeleteAllRegistrations = asyncHandler(async (req, res) => {
 
   await Registration.deleteManyDeleted();
 
-  return response(res, 200, `Permanently deleted ${regs.length} registrations and their walk-ins`);
+  return response(
+    res,
+    200,
+    `Permanently deleted ${regs.length} registrations and their walk-ins`
+  );
 });
 
 // Get registration by token (public endpoint for confirmation page)
@@ -1284,20 +1383,26 @@ exports.updateAttendanceStatus = asyncHandler(async (req, res) => {
 // -------------------------------------------
 exports.sendBulkEmails = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const { subject, body, statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
+  const { subject, body, statusFilter, emailSentFilter, whatsappSentFilter } =
+    req.body;
 
   const event = await Event.findOne({ slug }).lean();
-    if (!event) return response(res, 404, "Event not found");
+  if (!event) return response(res, 404, "Event not found");
 
-    const business = await Business.findById(event.businessId).lean();
+  const business = await Business.findById(event.businessId).lean();
 
-    let mediaUrl = null;
-    let originalFilename = null;
-    if (req.file) {
-      const {fileUrl} =  await uploadToS3(req.file, business.slug, "CheckIn/custom-attachments", { inline: true });
-      mediaUrl = fileUrl;
-      originalFilename = req.file.originalname;
-    }
+  let mediaUrl = null;
+  let originalFilename = null;
+  if (req.file) {
+    const { fileUrl } = await uploadToS3(
+      req.file,
+      business.slug,
+      "CheckIn/custom-attachments",
+      { inline: true }
+    );
+    mediaUrl = fileUrl;
+    originalFilename = req.file.originalname;
+  }
 
   let filterQuery = {
     eventId: event._id,
@@ -1315,7 +1420,7 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
         { approvalStatus: { $exists: true } },
         { approvalStatus: { $ne: "confirmed" } },
         { approvalStatus: { $ne: "not_confirmed" } },
-        { approvalStatus: "pending" }
+        { approvalStatus: "pending" },
       ];
     }
   }
@@ -1338,32 +1443,46 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
     }
   }
 
-
   const regs = await Registration.find(filterQuery)
-    .select("fullName email company customFields token emailSent whatsappSent createdAt approvalStatus")
+    .select(
+      "fullName email company customFields token emailSent whatsappSent createdAt approvalStatus"
+    )
     .lean();
-
 
   response(res, 200, "Bulk notification job started", {
     total: regs.length,
   });
 
   setImmediate(() => {
-    emailProcessor(event, regs, { subject, body, mediaUrl, originalFilename }).catch((err) =>
-      console.error("CHECKIN EMAIL PROCESSOR FAILED:", err)
-    );
+    emailProcessor(event, regs, {
+      subject,
+      body,
+      mediaUrl,
+      originalFilename,
+    }).catch((err) => console.error("CHECKIN EMAIL PROCESSOR FAILED:", err));
   });
 });
 
 // Send bulk WhatsApp messages
 exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const { type, subject, body, statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
+  const {
+    type,
+    subject,
+    body,
+    statusFilter,
+    emailSentFilter,
+    whatsappSentFilter,
+  } = req.body;
 
   let mediaUrl = null;
   if (req.file) {
     const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
-    const uploadResult = await uploadToCloudinary(req.file.buffer, req.file.mimetype, "Checkin/custom-attachments");
+    const uploadResult = await uploadToCloudinary(
+      req.file.buffer,
+      req.file.mimetype,
+      "Checkin/custom-attachments"
+    );
     mediaUrl = uploadResult.secure_url;
   }
 
@@ -1386,7 +1505,7 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
         { approvalStatus: { $exists: true } },
         { approvalStatus: { $ne: "confirmed" } },
         { approvalStatus: { $ne: "not_confirmed" } },
-        { approvalStatus: "pending" }
+        { approvalStatus: "pending" },
       ];
     }
   }
@@ -1409,11 +1528,11 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
     }
   }
 
-
   const regs = await Registration.find(filterQuery)
-    .select("fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus")
+    .select(
+      "fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus"
+    )
     .lean();
-
 
   response(res, 200, "Bulk notification job started", {
     total: regs.length,
@@ -1422,8 +1541,8 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
   setImmediate(() => {
     if (type === "custom") {
       const customWhatsAppProcessor = require("../../processors/checkin/customWhatsAppProcessor");
-      customWhatsAppProcessor(event, regs, { subject, body, mediaUrl }).catch((err) =>
-        console.error("CHECKIN CUSTOM WHATSAPP PROCESSOR FAILED:", err)
+      customWhatsAppProcessor(event, regs, { subject, body, mediaUrl }).catch(
+        (err) => console.error("CHECKIN CUSTOM WHATSAPP PROCESSOR FAILED:", err)
       );
     } else {
       whatsappProcessor(event, regs).catch((err) =>
@@ -1432,4 +1551,3 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
     }
   });
 });
-
