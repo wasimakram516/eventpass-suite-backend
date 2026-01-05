@@ -302,6 +302,9 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     createdTo,
     scannedFrom,
     scannedTo,
+    status,
+    emailSent,
+    whatsappSent,
     timezone,
     ...dynamicFiltersRaw
   } = req.query;
@@ -319,6 +322,26 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     eventId,
     isDeleted: { $ne: true },
   };
+
+  if (status && status !== "all") {
+    mongoQuery.approvalStatus = status;
+  }
+
+  if (emailSent && emailSent !== "all") {
+    if (emailSent === "sent") {
+      mongoQuery.emailSent = true;
+    } else if (emailSent === "not_sent") {
+      mongoQuery.emailSent = { $ne: true };
+    }
+  }
+
+  if (whatsappSent && whatsappSent !== "all") {
+    if (whatsappSent === "sent") {
+      mongoQuery.whatsappSent = true;
+    } else if (whatsappSent === "not_sent") {
+      mongoQuery.whatsappSent = { $ne: true };
+    }
+  }
 
   if (token) mongoQuery.token = new RegExp(token, "i");
 
@@ -448,6 +471,43 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
   const exportedAt = formatLocalDateTime(Date.now(), timezone || null);
 
+  // Build filters string
+  const activeFilters = [];
+
+  if (search) activeFilters.push(`Search: "${search}"`);
+  if (token) activeFilters.push(`Token: "${token}"`);
+  if (status && status !== "all") {
+    const statusLabels = { pending: "Pending", approved: "Approved", rejected: "Rejected" };
+    activeFilters.push(`Status: ${statusLabels[status] || status}`);
+  }
+  if (emailSent && emailSent !== "all") {
+    activeFilters.push(`Email Status: ${emailSent === "sent" ? "Sent" : "Not Sent"}`);
+  }
+  if (whatsappSent && whatsappSent !== "all") {
+    activeFilters.push(`WhatsApp Status: ${whatsappSent === "sent" ? "Sent" : "Not Sent"}`);
+  }
+  if (createdFrom || createdTo) {
+    const fromStr = createdFrom ? formatLocalDateTime(Number(createdFrom), timezone || null) : "—";
+    const toStr = createdTo ? formatLocalDateTime(Number(createdTo), timezone || null) : "—";
+    activeFilters.push(`Registered At: ${fromStr} to ${toStr}`);
+  }
+  if (scannedFrom || scannedTo) {
+    const fromStr = scannedFrom ? formatLocalDateTime(Number(scannedFrom), timezone || null) : "—";
+    const toStr = scannedTo ? formatLocalDateTime(Number(scannedTo), timezone || null) : "—";
+    activeFilters.push(`Scanned At: ${fromStr} to ${toStr}`);
+  }
+  if (scannedBy) activeFilters.push(`Scanned By: "${scannedBy}"`);
+
+  // Dynamic field filters
+  Object.entries(dynamicFiltersRaw)
+    .filter(([key]) => key.startsWith("field_"))
+    .forEach(([key, val]) => {
+      const fieldName = key.replace("field_", "");
+      activeFilters.push(`${fieldName}: "${val}"`);
+    });
+
+  const filtersString = activeFilters.length > 0 ? activeFilters.join("; ") : "None";
+
   // HEADER SECTION (RESTORED)
   lines.push(`Event Name,${event.name || "N/A"}`);
   lines.push(`Business Name,${business?.name || "N/A"}`);
@@ -456,6 +516,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   lines.push(`Total Registrations,${event.registrations || 0}`);
   lines.push(`Exported Registrations,${regs.length}`);
   lines.push(`Exported At,"${exportedAt}"`);
+  lines.push(`Applied Filters,"${filtersString}"`);
   lines.push(""); // spacer
 
   // -------------------------
@@ -977,12 +1038,12 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
   if (!event) return response(res, 404, "Event not found");
 
   const business = await Business.findById(event.businessId).lean();
-  
+
 
   let mediaUrl = null;
   let originalFilename = null;
   if (req.file) {
-    const {fileUrl} =  await uploadToS3(req.file, business.slug, "EventReg/custom-attachments", { inline: true });
+    const { fileUrl } = await uploadToS3(req.file, business.slug, "EventReg/custom-attachments", { inline: true });
     mediaUrl = fileUrl;
     originalFilename = req.file.originalname;
   }
