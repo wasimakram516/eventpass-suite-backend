@@ -57,7 +57,7 @@ const EventSchema = new mongoose.Schema({
   registrations: { type: Number, default: 0 },
   eventType: {
     type: String,
-    enum: ["employee", "public"],
+    enum: ["closed", "public"],
     required: true,
     default: "public",
   },
