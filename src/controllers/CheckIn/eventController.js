@@ -9,7 +9,7 @@ const { generateUniqueSlug } = require("../../utils/slugGenerator");
 const response = require("../../utils/response");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
-// GET all employee events
+// GET all closed events
 exports.getEventDetails = asyncHandler(async (req, res) => {
   const { businessSlug } = req.query;
 
@@ -26,7 +26,7 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
 
   const events = await Event.find({
     businessId,
-    eventType: "employee",
+    eventType: "closed",
   })
     .notDeleted()
     .sort({ startDate: -1 });
@@ -42,8 +42,8 @@ exports.getEventBySlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const event = await Event.findOne({ slug }).notDeleted();
 
-  if (!event || event.eventType !== "employee") {
-    return response(res, 400, "Employee event not found");
+  if (!event || event.eventType !== "closed") {
+    return response(res, 400, "Closed event not found");
   }
 
   return response(res, 200, "Event fetched successfully", event);
@@ -58,8 +58,8 @@ exports.getEventById = asyncHandler(async (req, res) => {
   }
 
   const event = await Event.findById(id).notDeleted();
-  if (!event || event.eventType !== "employee") {
-    return response(res, 400, "Employee event not found");
+  if (!event || event.eventType !== "closed") {
+    return response(res, 400, "Closed event not found");
   }
 
   return response(res, 200, "Event fetched successfully", event);
@@ -102,7 +102,7 @@ const validatePhoneNumber = (phone) => {
   return { valid: true };
 };
 
-// CREATE employee event
+// CREATE closed event
 exports.createEvent = asyncHandler(async (req, res) => {
   const {
     name,
@@ -240,7 +240,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     agendaUrl: agendaUrl || null,
     capacity,
     businessId,
-    eventType: "employee",
+    eventType: "closed",
     formFields: parsedFormFields,
     showQrAfterRegistration,
     showQrOnBadge,
@@ -256,10 +256,10 @@ exports.createEvent = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 201, "Employee event created successfully", newEvent);
+  return response(res, 201, "Closed event created successfully", newEvent);
 });
 
-// UPDATE employee event
+// UPDATE closed event
 exports.updateEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const {
@@ -294,8 +294,8 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   }
 
   const event = await Event.findById(id);
-  if (!event || event.eventType !== "employee") {
-    return response(res, 404, "Employee event not found");
+  if (!event || event.eventType !== "closed") {
+    return response(res, 404, "Closed event not found");
   }
 
   let parsedStartDate = startDate ? new Date(startDate) : event.startDate;
@@ -558,12 +558,12 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   return response(
     res,
     200,
-    "Employee event updated successfully",
+    "Closed event updated successfully",
     updatedEvent
   );
 });
 
-// SOFT DELETE employee event
+// SOFT DELETE closed event
 exports.deleteEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -571,7 +571,7 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
   }
 
   const event = await Event.findById(id);
-  if (!event || event.eventType !== "employee") {
+  if (!event || event.eventType !== "closed") {
     return response(res, 404, "Event not found");
   }
 
@@ -585,7 +585,7 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
   return response(res, 200, "Event moved to Recycle Bin");
 });
 
-// PERMANENT DELETE employee event (cascade registrations + walk-ins)
+// PERMANENT DELETE closed event (cascade registrations + walk-ins)
 exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -593,8 +593,8 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   }
 
   const event = await Event.findById(id);
-  if (!event || event.eventType !== "employee") {
-    return response(res, 404, "Employee event not found");
+  if (!event || event.eventType !== "closed") {
+    return response(res, 404, "Closed event not found");
   }
 
   // Check if registrations exist
@@ -620,13 +620,13 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "Employee event permanently deleted");
+  return response(res, 200, "Closed event permanently deleted");
 });
 
 // RESTORE ALL
 exports.restoreAllEvents = asyncHandler(async (req, res) => {
-  const events = await Event.findDeleted({ eventType: "employee" });
-  if (!events.length) return response(res, 404, "No Employee events in trash");
+  const events = await Event.findDeleted({ eventType: "closed" });
+  if (!events.length) return response(res, 404, "No closed events in trash");
 
   for (const ev of events) {
     const conflict = await Event.findOne({
@@ -647,11 +647,11 @@ exports.restoreAllEvents = asyncHandler(async (req, res) => {
   return response(res, 200, `Restored ${events.length} events`);
 });
 
-// PERMANENT DELETE ALL employee events (only those without registrations)
+// PERMANENT DELETE ALL closed events (only those without registrations)
 exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
-  const events = await Event.findDeleted({ eventType: "employee" });
+  const events = await Event.findDeleted({ eventType: "closed" });
   if (!events.length) {
-    return response(res, 404, "No employee events in trash");
+    return response(res, 404, "No closed events in trash");
   }
 
   const deletableEventIds = [];
@@ -672,6 +672,6 @@ exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
   return response(
     res,
     200,
-    `Permanently deleted ${result.deletedCount} employee events (without registrations)`
+    `Permanently deleted ${result.deletedCount} closed events (without registrations)`
   );
 });

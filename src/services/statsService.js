@@ -39,12 +39,12 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
 
   const publicEventsCount =
     eventCounts.find((e) => e._id === "public")?.count || 0;
-  const employeeEventsCount =
-    eventCounts.find((e) => e._id === "employee")?.count || 0;
+  const closedEventsCount =
+    eventCounts.find((e) => e._id === "closed")?.count || 0;
   const trashPublicEvents =
     trashEventCounts.find((e) => e._id === "public")?.count || 0;
-  const trashEmployeeEvents =
-    trashEventCounts.find((e) => e._id === "employee")?.count || 0;
+  const trashClosedEvents =
+    trashEventCounts.find((e) => e._id === "closed")?.count || 0;
 
   // -------------------------------------------------------------------------
   // REGISTRATIONS + WALKINS
@@ -113,21 +113,21 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
 
   const publicRegs =
     registrationCounts.find((r) => r._id === "public")?.count || 0;
-  const employeeRegs =
-    registrationCounts.find((r) => r._id === "employee")?.count || 0;
+  const closedRegs =
+    registrationCounts.find((r) => r._id === "closed")?.count || 0;
   const trashPublicRegs =
     trashRegistrationCounts.find((r) => r._id === "public")?.count || 0;
-  const trashEmployeeRegs =
-    trashRegistrationCounts.find((r) => r._id === "employee")?.count || 0;
+  const trashClosedRegs =
+    trashRegistrationCounts.find((r) => r._id === "closed")?.count || 0;
 
   const publicWalkIns =
     walkinCounts.find((r) => r._id === "public")?.count || 0;
-  const employeeWalkIns =
-    walkinCounts.find((r) => r._id === "employee")?.count || 0;
+  const closedWalkIns =
+    walkinCounts.find((r) => r._id === "closed")?.count || 0;
   const trashPublicWalkIns =
     trashWalkinCounts.find((r) => r._id === "public")?.count || 0;
-  const trashEmployeeWalkIns =
-    trashWalkinCounts.find((r) => r._id === "employee")?.count || 0;
+  const trashClosedWalkIns =
+    trashWalkinCounts.find((r) => r._id === "closed")?.count || 0;
 
   // -------------------------------------------------------------------------
   // GAMES (Existing behavior preserved exactly)
@@ -579,14 +579,14 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
 
     checkin: {
       totals: {
-        events: employeeEventsCount,
-        registrations: employeeRegs,
-        walkins: employeeWalkIns,
+        events: closedEventsCount,
+        registrations: closedRegs,
+        walkins: closedWalkIns,
       },
       trash: {
-        events: trashEmployeeEvents,
-        registrations: trashEmployeeRegs,
-        walkins: trashEmployeeWalkIns,
+        events: trashClosedEvents,
+        registrations: trashClosedRegs,
+        walkins: trashClosedWalkIns,
       },
     },
 

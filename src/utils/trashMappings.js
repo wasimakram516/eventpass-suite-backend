@@ -70,7 +70,7 @@ const moduleMapping = {
       restoreAll: checkInEventController.restoreAllEvents,
       permanentDeleteAll: checkInEventController.permanentDeleteAllEvents,
     },
-    condition: { eventType: "employee" },
+    condition: { eventType: "closed" },
   },
 
   // Registrations
@@ -97,7 +97,7 @@ const moduleMapping = {
       permanentDeleteAll:
         checkInRegistrationController.permanentDeleteAllRegistrations,
     },
-    condition: { "event.eventType": "employee" },
+    condition: { "event.eventType": "closed" },
   },
 
   // Other modules
@@ -201,15 +201,15 @@ const moduleMapping = {
   // TAPMATCH (solo + memory)
   // -------------------
   "game-tapmatch": {
-  model: Game,
-  controller: {
-    restore: tmGameController.restoreGame,
-    permanentDelete: tmGameController.permanentDeleteGame,
-    restoreAll: tmGameController.restoreAllGames,
-    permanentDeleteAll: tmGameController.permanentDeleteAllGames,
+    model: Game,
+    controller: {
+      restore: tmGameController.restoreGame,
+      permanentDelete: tmGameController.permanentDeleteGame,
+      restoreAll: tmGameController.restoreAllGames,
+      permanentDeleteAll: tmGameController.permanentDeleteAllGames,
+    },
+    condition: { mode: "solo", type: "memory" }
   },
-  condition: { mode: "solo", type: "memory" }
-},
 
   // -------------------
   // EVENTDUEL (pvp + quiz)
