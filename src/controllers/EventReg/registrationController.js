@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 const XLSX = require("xlsx");
-const QRCode = require("qrcode");
 const { formatLocalDateTime } = require("../../utils/dateUtils");
 const Business = require("../../models/Business");
 const Registration = require("../../models/Registration");
@@ -10,7 +9,6 @@ const User = require("../../models/User");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const recountEventRegistrations = require("../../utils/recountEventRegistrations");
-const sendEmail = require("../../services/emailService");
 const {
   pickFullName,
   pickEmail,
@@ -23,11 +21,14 @@ const {
 const { buildBadgeZpl } = require("../../utils/zebraZpl");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const {
-  emitUploadProgress,
-  emitEmailProgress,
   emitLoadingProgress,
   emitNewRegistration,
 } = require("../../socket/modules/eventreg/eventRegSocket");
+
+const {
+  normalizePhone,
+  validatePhoneNumber,
+} = require("../../utils/whatsappProcessorUtils");
 
 const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder/eventRegEmailTemplateBuilder");
 
@@ -90,72 +91,75 @@ function isValidEmail(email) {
   return emailRegex.test(email.trim());
 }
 
-function validateAllRows(event, rows) {
+async function validateAllRows(event, rows) {
   const invalidRowNumbers = [];
   const invalidEmailRowNumbers = [];
   const duplicateEmailRowNumbers = [];
+  const invalidPhoneRowNumbers = [];
 
   const hasCustomFields = event.formFields && event.formFields.length > 0;
 
-  let allRequiredFields = [];
-  if (hasCustomFields) {
-    allRequiredFields = event.formFields
-      .filter((f) => f.required)
-      .map((f) => f.inputName);
-  } else {
-    allRequiredFields = ["Full Name", "Email"];
-  }
+  const allRequiredFields = hasCustomFields
+    ? event.formFields.filter((f) => f.required).map((f) => f.inputName)
+    : ["Full Name", "Email"];
 
-  const emailOccurrences = {}; // Track emails for duplicates
+  const emailOccurrences = {}; // in-file duplicates
+  const phoneOccurrences = {};
 
+  // -----------------------------
+  // PASS 1: ROW-LEVEL VALIDATION
+  // -----------------------------
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
     let hasMissingFields = false;
     let hasInvalidEmail = false;
 
-    let extractedEmail = null; // For duplicate tracking
+    const extractedEmail = pickEmail(row);
+    const extractedPhone = pickPhone(row);
 
+    // ---- Required fields ----
     if (hasCustomFields) {
       for (const field of event.formFields) {
         const value = row[field.inputName];
-
-        if (field.required) {
-          if (!value || (typeof value === "string" && value.trim() === "")) {
-            hasMissingFields = true;
-            break;
-          }
-        }
-
-        if (field.inputType === "email") {
-          extractedEmail = value;
-          if (value && !isValidEmail(value)) {
-            hasInvalidEmail = true;
-          }
+        if (field.required && (!value || String(value).trim() === "")) {
+          hasMissingFields = true;
+          break;
         }
       }
     } else {
-      const fullName = row["Full Name"];
-      const email = row["Email"];
-      extractedEmail = email;
-
       if (
-        !fullName ||
-        fullName.trim() === "" ||
-        !email ||
-        email.trim() === ""
+        !row["Full Name"] ||
+        !row["Email"] ||
+        String(row["Email"]).trim() === ""
       ) {
         hasMissingFields = true;
       }
-      if (email && !isValidEmail(email)) {
-        hasInvalidEmail = true;
-      }
     }
 
-    // Track duplicates (only non-empty, valid-looking emails)
+    // ---- Email format ----
+    if (extractedEmail && !isValidEmail(extractedEmail)) {
+      hasInvalidEmail = true;
+    }
+
+    // ---- Track email duplicates (file-level) ----
     if (extractedEmail) {
-      const emailLower = extractedEmail.toString().trim().toLowerCase();
-      if (!emailOccurrences[emailLower]) emailOccurrences[emailLower] = [];
-      emailOccurrences[emailLower].push(rowNumber);
+      const emailKey = extractedEmail.toLowerCase().trim();
+      if (!emailOccurrences[emailKey]) emailOccurrences[emailKey] = [];
+      emailOccurrences[emailKey].push(rowNumber);
+    }
+
+    // ---- Phone normalization + soft validation ----
+    if (extractedPhone) {
+      const normalized = normalizePhone(extractedPhone);
+      const phoneCheck = validatePhoneNumber(normalized);
+
+      if (!phoneCheck.valid) {
+        invalidPhoneRowNumbers.push(rowNumber);
+      } else {
+        const phoneKey = normalized;
+        if (!phoneOccurrences[phoneKey]) phoneOccurrences[phoneKey] = [];
+        phoneOccurrences[phoneKey].push(rowNumber);
+      }
     }
 
     if (hasMissingFields) invalidRowNumbers.push(rowNumber);
@@ -163,7 +167,7 @@ function validateAllRows(event, rows) {
   });
 
   // -----------------------------
-  // Check for duplicate emails
+  // FILE-LEVEL DUPLICATE CHECK
   // -----------------------------
   for (const email in emailOccurrences) {
     if (emailOccurrences[email].length > 1) {
@@ -171,36 +175,108 @@ function validateAllRows(event, rows) {
     }
   }
 
+  // -----------------------------
+  // HARD FAILURES (FILE)
+  // -----------------------------
   if (invalidRowNumbers.length > 0) {
-    const rowNumbersText = formatRowNumbers(invalidRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Row${invalidRowNumbers.length > 1 ? "s" : ""
-        } ${rowNumbersText} ${invalidRowNumbers.length > 1 ? "have" : "has"
-        } missing required fields: ${allRequiredFields.join(", ")}.`,
+      error: `Cannot upload file. Row${
+        invalidRowNumbers.length > 1 ? "s" : ""
+      } ${formatRowNumbers(invalidRowNumbers)} ${
+        invalidRowNumbers.length > 1 ? "have" : "has"
+      } missing required fields: ${allRequiredFields.join(", ")}.`,
     };
   }
 
   if (invalidEmailRowNumbers.length > 0) {
-    const rowNumbersText = formatRowNumbers(invalidEmailRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Row${invalidEmailRowNumbers.length > 1 ? "s" : ""
-        } ${rowNumbersText} ${invalidEmailRowNumbers.length > 1 ? "have" : "has"
-        } invalid email format.`,
+      error: `Cannot upload file. Row${
+        invalidEmailRowNumbers.length > 1 ? "s" : ""
+      } ${formatRowNumbers(invalidEmailRowNumbers)} ${
+        invalidEmailRowNumbers.length > 1 ? "have" : "has"
+      } invalid email format.`,
     };
   }
 
   if (duplicateEmailRowNumbers.length > 0) {
-    const rowNumbersText = formatRowNumbers(duplicateEmailRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Duplicate email(s) found at row${duplicateEmailRowNumbers.length > 1 ? "s" : ""
-        } ${rowNumbersText}. Each email must be unique.`,
+      error: `Cannot upload file. Duplicate email(s) found at row${
+        duplicateEmailRowNumbers.length > 1 ? "s" : ""
+      } ${formatRowNumbers(duplicateEmailRowNumbers)}. Each email must be unique.`,
     };
   }
 
-  return { valid: true, error: null };
+  // -----------------------------
+  // DB-LEVEL DUPLICATE CHECK
+  // -----------------------------
+  const emailsInFile = Object.keys(emailOccurrences);
+  const phonesInFile = Object.keys(phoneOccurrences);
+
+  if (emailsInFile.length || phonesInFile.length) {
+    const existing = await Registration.find({
+      eventId: event._id,
+      $or: [
+        emailsInFile.length ? { email: { $in: emailsInFile } } : null,
+        phonesInFile.length ? { phone: { $in: phonesInFile } } : null,
+      ].filter(Boolean),
+    }).select("email phone");
+
+    if (existing.length > 0) {
+      const conflictRows = new Set();
+
+      existing.forEach((reg) => {
+        if (reg.email && emailOccurrences[reg.email.toLowerCase()]) {
+          emailOccurrences[reg.email.toLowerCase()].forEach((r) =>
+            conflictRows.add(r)
+          );
+        }
+        if (reg.phone && phoneOccurrences[reg.phone]) {
+          phoneOccurrences[reg.phone].forEach((r) =>
+            conflictRows.add(r)
+          );
+        }
+      });
+
+      return {
+        valid: false,
+        error: `Some rows are already registered for this event: rows ${formatRowNumbers(
+          [...conflictRows]
+        )}`,
+      };
+    }
+  }
+
+  // -----------------------------
+  // SOFT WARNINGS
+  // -----------------------------
+  return {
+    valid: true,
+    warning:
+      invalidPhoneRowNumbers.length > 0
+        ? `Some rows have invalid phone numbers and may not receive WhatsApp messages: rows ${formatRowNumbers(
+            invalidPhoneRowNumbers
+          )}`
+        : null,
+  };
+}
+
+// -----------------------------
+// Helpers
+// -----------------------------
+function isValidEmail(email) {
+  if (!email || typeof email !== "string") return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+function formatRowNumbers(arr) {
+  return arr.length === 1
+    ? arr[0].toString()
+    : arr.length === 2
+      ? `${arr[0]} and ${arr[1]}`
+      : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
 }
 
 // Helper for row number formatting
@@ -274,7 +350,7 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
     );
   }
 
-  const rowValidation = validateAllRows(event, rows);
+  const rowValidation = await validateAllRows(event, rows);
   if (!rowValidation.valid) {
     return response(res, 400, rowValidation.error);
   }
@@ -610,29 +686,21 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   if (event.eventType !== "public")
     return response(res, 400, "This event is not open for public registration");
 
-  const now = new Date();
-  const endOfDay = new Date(event.endDate);
-  endOfDay.setUTCHours(23, 59, 59, 999);
-  if (event.endDate && now > endOfDay) {
-    return response(
-      res,
-      400,
-      "Registration is closed. This event has already ended."
-    );
-  }
-
   if (event.registrations >= event.capacity)
     return response(res, 400, "Event capacity is full");
 
   const eventId = event._id;
-  const formFields = event.formFields || [];
+  const formFields = event.formFields || {};
+  const hasCustomFields = formFields.length > 0;
+
   const customFields = {};
 
-  // --- Process dynamic custom fields ---
-  if (formFields.length > 0) {
+  // ---------- PROCESS CUSTOM FIELDS ----------
+  if (hasCustomFields) {
     for (const field of formFields) {
       const value = req.body[field.inputName];
-      if (field.required && (value == null || value === "")) {
+
+      if (field.required && (!value || String(value).trim() === "")) {
         return response(res, 400, `Missing required field: ${field.inputName}`);
       }
       if (
@@ -664,106 +732,59 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     }
   }
 
-  // --- Extract basic info ---
-  let fullName = null;
-  let email = null;
-  let phone = null;
-  let company = null;
+  // ---------- CANONICAL EXTRACTION ----------
+  const extractedEmail = hasCustomFields
+    ? pickEmail(customFields)
+    : req.body.email;
 
-  if (formFields.length > 0) {
-    // Custom fields exist - store everything in customFields only, leave classic fields empty
-  } else {
-    // No custom fields - use classic fields
-    fullName = req.body.fullName || pickFullName(customFields);
-    email = req.body.email || pickEmail(customFields);
-    phone = req.body.phone || pickPhone(customFields);
-    company = req.body.company || pickCompany(customFields);
+  const extractedPhone = hasCustomFields
+    ? pickPhone(customFields)
+    : req.body.phone;
 
-    if (!fullName || !email || !phone) {
-      return response(res, 400, "Full name, email, and phone are required");
-    }
+  const extractedFullName = hasCustomFields
+    ? pickFullName(customFields)
+    : req.body.fullName;
+
+  const extractedCompany = hasCustomFields
+    ? pickCompany(customFields)
+    : req.body.company;
+
+  if (!extractedFullName || !extractedEmail || !extractedPhone) {
+    return response(res, 400, "Full name, email, and phone are required");
   }
 
-  let extractedEmail = null;
-  let extractedPhone = null;
-  let emailFieldName = null;
-  let phoneFieldName = null;
-
-  if (formFields.length > 0) {
-    const normalize = (str = "") => String(str).toLowerCase().replace(/[^a-z0-9]/g, "");
-
-    const emailField = formFields.find(f => f.inputType === "email");
-    if (emailField && customFields[emailField.inputName]) {
-      emailFieldName = emailField.inputName;
-      extractedEmail = customFields[emailField.inputName];
-    } else {
-      const emailMatches = ["email", "e-mail", "email address"];
-      for (const [key, value] of Object.entries(customFields)) {
-        const normalized = normalize(key);
-        if (emailMatches.some(match => normalized === normalize(match))) {
-          emailFieldName = key;
-          extractedEmail = value;
-          break;
-        }
-      }
-    }
-
-    const phoneMatches = ["phone", "phone number", "mobile", "contact", "whatsapp"];
-    for (const [key, value] of Object.entries(customFields)) {
-      const normalized = normalize(key);
-      if (phoneMatches.some(match => normalized === normalize(match))) {
-        phoneFieldName = key;
-        extractedPhone = value;
-        break;
-      }
-    }
-  } else {
-    extractedEmail = email;
-    extractedPhone = phone;
+  // ---------- PHONE NORMALIZATION ----------
+  const normalizedPhone = normalizePhone(extractedPhone);
+  const phoneCheck = validatePhoneNumber(normalizedPhone);
+  if (!phoneCheck.valid) {
+    return response(res, 400, phoneCheck.error);
   }
 
-  if (extractedEmail || extractedPhone) {
-    const duplicateFilter = { eventId };
-    const or = [];
+  // ---------- DUPLICATE CHECK ----------
+  const duplicateFilter = {
+    eventId,
+    $or: [{ email: extractedEmail }, { phone: normalizedPhone }],
+  };
 
-    if (extractedEmail) {
-      if (emailFieldName) {
-        or.push({ [`customFields.${emailFieldName}`]: extractedEmail });
-      }
-      or.push({ email: extractedEmail });
-    }
-
-    if (extractedPhone) {
-      if (phoneFieldName) {
-        or.push({ [`customFields.${phoneFieldName}`]: extractedPhone });
-      }
-      or.push({ phone: extractedPhone });
-    }
-
-    if (or.length > 0) duplicateFilter.$or = or;
-
-    const dup = await Registration.findOne(duplicateFilter);
-    if (dup) {
-      return response(res, 409, "Already registered with this email or phone");
-    }
+  const dup = await Registration.findOne(duplicateFilter);
+  if (dup) {
+    return response(res, 409, "Already registered with this email or phone");
   }
 
-  // --- Create registration ---
-
+  // ---------- CREATE ----------
   const approvalStatus = event.requiresApproval ? "pending" : "approved";
 
   const newRegistration = await Registration.create({
     eventId,
-    fullName,
-    email,
-    phone,
-    company,
+    fullName: hasCustomFields ? null : extractedFullName,
+    email: hasCustomFields ? null : extractedEmail,
+    phone: hasCustomFields ? null : normalizedPhone,
+    company: hasCustomFields ? null : extractedCompany,
     customFields,
     approvalStatus,
   });
 
-  // --- Increment event counter ---
-  await recountEventRegistrations(event._id);
+  await recountEventRegistrations(eventId);
 
   // --- Generate and send email using util ---
   const emailForSending =
@@ -834,143 +855,65 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
   if (!reg) return response(res, 404, "Registration not found");
 
   const event = reg.eventId;
-  const hasCustomFields = event?.formFields && event.formFields.length > 0;
-  const originalCustomFields = Object.fromEntries(reg.customFields || []);
-  const originalEmail = reg.email;
-  const originalPhone = reg.phone;
+  const hasCustomFields = event.formFields?.length > 0;
 
-  const newCustomFields = {
-    ...originalCustomFields,
-    ...fields,
-  };
-
+  // ---------- APPLY UPDATES ----------
   if (hasCustomFields) {
-    reg.customFields = newCustomFields;
+    reg.customFields = {
+      ...Object.fromEntries(reg.customFields || []),
+      ...fields,
+    };
+
     reg.fullName = null;
     reg.email = null;
     reg.phone = null;
     reg.company = null;
   } else {
-    const fullName =
-      "Full Name" in fields
-        ? fields["Full Name"]
-        : "fullName" in fields
-          ? fields["fullName"]
-          : "Name" in fields
-            ? fields["Name"]
-            : reg.fullName;
-    const email =
-      "Email" in fields
-        ? fields["Email"]
-        : "email" in fields
-          ? fields["email"]
-          : reg.email;
-    const phone =
-      "Phone" in fields
-        ? fields["Phone"]
-        : "phone" in fields
-          ? fields["phone"]
-          : reg.phone;
-    const company =
-      "Company" in fields
-        ? fields["Company"]
-        : "Institution" in fields
-          ? fields["Institution"]
-          : "Organization" in fields
-            ? fields["Organization"]
-            : "company" in fields
-              ? fields["company"]
-              : reg.company;
-
+    reg.fullName = fields.fullName ?? reg.fullName;
+    reg.email = fields.email ?? reg.email;
+    reg.phone = fields.phone ?? reg.phone;
+    reg.company = fields.company ?? reg.company;
     reg.customFields = {};
-    reg.fullName = fullName;
-    reg.email = email;
-    reg.phone = phone;
-    reg.company = company;
   }
 
-  const formFields = event?.formFields || [];
-  let extractedEmail = null;
-  let extractedPhone = null;
-  let emailFieldName = null;
-  let phoneFieldName = null;
-  let currentOriginalEmail = null;
-  let currentOriginalPhone = null;
+  // ---------- CANONICAL EXTRACTION ----------
+  const extractedEmail = hasCustomFields
+    ? pickEmail(reg.customFields)
+    : reg.email;
 
-  if (formFields.length > 0) {
-    const normalize = (str = "") => String(str).toLowerCase().replace(/[^a-z0-9]/g, "");
-    const customFields = hasCustomFields ? newCustomFields : {};
+  const extractedPhone = hasCustomFields
+    ? pickPhone(reg.customFields)
+    : reg.phone;
 
-    const emailField = formFields.find(f => f.inputType === "email");
-    if (emailField) {
-      if (customFields[emailField.inputName]) {
-        emailFieldName = emailField.inputName;
-        extractedEmail = customFields[emailField.inputName];
-        currentOriginalEmail = originalCustomFields[emailField.inputName];
-      }
-    } else {
-      const emailMatches = ["email", "e-mail", "email address"];
-      for (const [key, value] of Object.entries(customFields)) {
-        const normalized = normalize(key);
-        if (emailMatches.some(match => normalized === normalize(match))) {
-          emailFieldName = key;
-          extractedEmail = value;
-          currentOriginalEmail = originalCustomFields[key];
-          break;
-        }
-      }
+  if (extractedPhone) {
+    const normalizedPhone = normalizePhone(extractedPhone);
+    const phoneCheck = validatePhoneNumber(normalizedPhone);
+    if (!phoneCheck.valid) {
+      return response(res, 400, phoneCheck.error);
     }
-
-    const phoneMatches = ["phone", "phone number", "mobile", "contact", "whatsapp"];
-    for (const [key, value] of Object.entries(customFields)) {
-      const normalized = normalize(key);
-      if (phoneMatches.some(match => normalized === normalize(match))) {
-        phoneFieldName = key;
-        extractedPhone = value;
-        currentOriginalPhone = originalCustomFields[key];
-        break;
-      }
-    }
-  } else {
-    extractedEmail = reg.email;
-    extractedPhone = reg.phone;
-    currentOriginalEmail = originalEmail;
-    currentOriginalPhone = originalPhone;
+    reg.phone = hasCustomFields ? null : normalizedPhone;
   }
 
-  const emailChanged = extractedEmail !== currentOriginalEmail;
-  const phoneChanged = extractedPhone !== currentOriginalPhone;
+  // ---------- DUPLICATE CHECK ----------
+  if (extractedEmail || extractedPhone) {
+    const dup = await Registration.findOne({
+      eventId: event._id,
+      _id: { $ne: reg._id },
+      $or: [
+        extractedEmail ? { email: extractedEmail } : null,
+        extractedPhone ? { phone: reg.phone } : null,
+      ].filter(Boolean),
+    });
 
-  if ((emailChanged && extractedEmail) || (phoneChanged && extractedPhone)) {
-    const duplicateFilter = { eventId: event._id, _id: { $ne: reg._id } };
-    const or = [];
-
-    if (emailChanged && extractedEmail) {
-      if (emailFieldName) {
-        or.push({ [`customFields.${emailFieldName}`]: extractedEmail });
-      }
-      or.push({ email: extractedEmail });
-    }
-
-    if (phoneChanged && extractedPhone) {
-      if (phoneFieldName) {
-        or.push({ [`customFields.${phoneFieldName}`]: extractedPhone });
-      }
-      or.push({ phone: extractedPhone });
-    }
-
-    if (or.length > 0) duplicateFilter.$or = or;
-
-    const dup = await Registration.findOne(duplicateFilter);
     if (dup) {
       return response(res, 409, "Already registered with this email or phone");
     }
   }
 
   await reg.save();
-
   return response(res, 200, "Registration updated successfully", reg);
 });
+
 
 // UPDATE registration approval status
 exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
