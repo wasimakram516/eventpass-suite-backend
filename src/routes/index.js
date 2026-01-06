@@ -58,6 +58,9 @@ const spinWheelParticipantRoutes = require("./eventWheel/spinWheelParticipantRou
 
 // Notifications
 const whatsappLogs = require("./notifications/whatsappLogRoutes");
+const whatsappInboxRoutes = require("./notifications/whatsappInboxRoutes");
+
+// Webhooks
 const twilioWhatsAppStatusWebhookRoutes = require("./webhooks/twilioWhatsAppRoutes");
 
 const router = express.Router();
@@ -74,6 +77,8 @@ router.use("/dashboard", dashboardRoutes);
 router.use("/files", fileResourceRoutes);
 router.use("/media", deleteMediaRoutes);
 router.use("/notifications/whatsapp-logs", whatsappLogs);
+router.use("/notifications/whatsapp-inbox", whatsappInboxRoutes);
+
 router.use("/webhooks/twilio/whatsapp", twilioWhatsAppStatusWebhookRoutes);
 
 // ------------------ QuizNest ------------------
