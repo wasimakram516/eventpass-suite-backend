@@ -8,16 +8,10 @@ const {
   updateEvent,
   deleteEvent,
 } = require("../../controllers/CheckIn/eventController");
-const {
-  downloadEmployeeTemplate,
-} = require("../../controllers/common/downloadController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
 
 const checkInAccess = [protect, checkPermission.checkin];
-
-// Download employeeData Template
-router.get("/download-template", checkInAccess, downloadEmployeeTemplate);
 
 // Get all events
 router.get("/", checkInAccess, getEventDetails);

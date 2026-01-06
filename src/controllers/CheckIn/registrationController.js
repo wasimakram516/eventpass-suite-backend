@@ -34,7 +34,7 @@ const whatsappProcessor = require("../../processors/checkin/whatsappProcessor");
 const { formatLocalDateTime } = require("../../utils/dateUtils");
 const { uploadToS3 } = require("../../utils/s3Storage");
 
-const ALLOWED_EVENT_TYPE = "employee";
+const ALLOWED_EVENT_TYPE = "closed";
 
 function validateUploadedFileFields(event, rows) {
   if (!rows || rows.length === 0) {
@@ -93,8 +93,8 @@ function formatRowNumbers(arr) {
   return arr.length === 1
     ? arr[0].toString()
     : arr.length === 2
-    ? `${arr[0]} and ${arr[1]}`
-    : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
+      ? `${arr[0]} and ${arr[1]}`
+      : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
 }
 
 function validateAllRows(event, rows) {
@@ -177,11 +177,9 @@ function validateAllRows(event, rows) {
     const rowNumbersText = formatRowNumbers(invalidRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Row${
-        invalidRowNumbers.length > 1 ? "s" : ""
-      } ${rowNumbersText} ${
-        invalidRowNumbers.length > 1 ? "have" : "has"
-      } missing required fields: ${allRequiredFields.join(", ")}.`,
+      error: `Cannot upload file. Row${invalidRowNumbers.length > 1 ? "s" : ""
+        } ${rowNumbersText} ${invalidRowNumbers.length > 1 ? "have" : "has"
+        } missing required fields: ${allRequiredFields.join(", ")}.`,
     };
   }
 
@@ -189,11 +187,9 @@ function validateAllRows(event, rows) {
     const rowNumbersText = formatRowNumbers(invalidEmailRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Row${
-        invalidEmailRowNumbers.length > 1 ? "s" : ""
-      } ${rowNumbersText} ${
-        invalidEmailRowNumbers.length > 1 ? "have" : "has"
-      } invalid email format.`,
+      error: `Cannot upload file. Row${invalidEmailRowNumbers.length > 1 ? "s" : ""
+        } ${rowNumbersText} ${invalidEmailRowNumbers.length > 1 ? "have" : "has"
+        } invalid email format.`,
     };
   }
 
@@ -201,9 +197,8 @@ function validateAllRows(event, rows) {
     const rowNumbersText = formatRowNumbers(duplicateEmailRowNumbers);
     return {
       valid: false,
-      error: `Cannot upload file. Duplicate email(s) found at row${
-        duplicateEmailRowNumbers.length > 1 ? "s" : ""
-      } ${rowNumbersText}. Each email must be unique.`,
+      error: `Cannot upload file. Duplicate email(s) found at row${duplicateEmailRowNumbers.length > 1 ? "s" : ""
+        } ${rowNumbersText}. Each email must be unique.`,
     };
   }
 
@@ -297,7 +292,7 @@ exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
 
   const event = await Event.findOne({ slug }).notDeleted();
   if (!event || event.eventType !== ALLOWED_EVENT_TYPE) {
-    return response(res, 404, "Employee event not found");
+    return response(res, 404, "Closed event not found");
   }
 
   const eventId = event._id;
@@ -381,7 +376,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
 
   const event = await Event.findOne({ slug }).notDeleted();
   if (!event || event.eventType !== ALLOWED_EVENT_TYPE) {
-    return response(res, 404, "Employee event not found");
+    return response(res, 404, "Closed event not found");
   }
 
   const eventId = event._id;
@@ -574,6 +569,43 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
   const exportedAt = formatLocalDateTime(Date.now(), timezone || null);
 
+  // Build filters string
+  const activeFilters = [];
+
+  if (search) activeFilters.push(`Search: "${search}"`);
+  if (token) activeFilters.push(`Token: "${token}"`);
+  if (status && status !== "all") {
+    const statusLabels = { pending: "Pending", confirmed: "Confirmed", not_confirmed: "Not Confirmed" };
+    activeFilters.push(`Status: ${statusLabels[status] || status}`);
+  }
+  if (emailSent && emailSent !== "all") {
+    activeFilters.push(`Email Status: ${emailSent === "sent" ? "Sent" : "Not Sent"}`);
+  }
+  if (whatsappSent && whatsappSent !== "all") {
+    activeFilters.push(`WhatsApp Status: ${whatsappSent === "sent" ? "Sent" : "Not Sent"}`);
+  }
+  if (createdFrom || createdTo) {
+    const fromStr = createdFrom ? formatLocalDateTime(Number(createdFrom), timezone || null) : "—";
+    const toStr = createdTo ? formatLocalDateTime(Number(createdTo), timezone || null) : "—";
+    activeFilters.push(`Registered At: ${fromStr} to ${toStr}`);
+  }
+  if (scannedFrom || scannedTo) {
+    const fromStr = scannedFrom ? formatLocalDateTime(Number(scannedFrom), timezone || null) : "—";
+    const toStr = scannedTo ? formatLocalDateTime(Number(scannedTo), timezone || null) : "—";
+    activeFilters.push(`Scanned At: ${fromStr} to ${toStr}`);
+  }
+  if (scannedBy) activeFilters.push(`Scanned By: "${scannedBy}"`);
+
+  // Dynamic field filters
+  Object.entries(dynamicFiltersRaw)
+    .filter(([key]) => key.startsWith("field_"))
+    .forEach(([key, val]) => {
+      const fieldName = key.replace("field_", "");
+      activeFilters.push(`${fieldName}: "${val}"`);
+    });
+
+  const filtersString = activeFilters.length > 0 ? activeFilters.join("; ") : "None";
+
   lines.push(`Event Name,${event.name || "N/A"}`);
   lines.push(`Business Name,${business?.name || "N/A"}`);
   lines.push(`Logo URL,${event.logoUrl || "N/A"}`);
@@ -581,6 +613,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   lines.push(`Total Registrations,${event.registrations || 0}`);
   lines.push(`Exported Registrations,${regs.length}`);
   lines.push(`Exported At,"${exportedAt}"`);
+  lines.push(`Applied Filters,"${filtersString}"`);
   lines.push("");
 
   lines.push("=== Registrations ===");
@@ -607,10 +640,9 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     row.push(`"${reg.approvalStatus || "pending"}"`);
     row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
     row.push(
-      `"${
-        reg.confirmedAt
-          ? formatLocalDateTime(reg.confirmedAt, timezone || null)
-          : "N/A"
+      `"${reg.confirmedAt
+        ? formatLocalDateTime(reg.confirmedAt, timezone || null)
+        : "N/A"
       }"`
     );
 
@@ -654,10 +686,9 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
       row.push(`"${reg?.approvalStatus || "pending"}"`);
       row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
       row.push(
-        `"${
-          reg?.confirmedAt
-            ? formatLocalDateTime(reg.confirmedAt, timezone || null)
-            : "N/A"
+        `"${reg?.confirmedAt
+          ? formatLocalDateTime(reg.confirmedAt, timezone || null)
+          : "N/A"
         }"`
       );
       row.push(`"${formatLocalDateTime(w.scannedAt, timezone || null)}"`);
@@ -686,7 +717,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
 
   const event = await Event.findOne({ slug });
   if (!event || event.eventType !== ALLOWED_EVENT_TYPE) {
-    return response(res, 404, "Employee event not found");
+    return response(res, 404, "Closed event not found");
   }
 
   if (event.registrations >= event.capacity)
@@ -884,32 +915,32 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
       "Full Name" in fields
         ? fields["Full Name"]
         : "fullName" in fields
-        ? fields["fullName"]
-        : "Name" in fields
-        ? fields["Name"]
-        : reg.fullName;
+          ? fields["fullName"]
+          : "Name" in fields
+            ? fields["Name"]
+            : reg.fullName;
     const email =
       "Email" in fields
         ? fields["Email"]
         : "email" in fields
-        ? fields["email"]
-        : reg.email;
+          ? fields["email"]
+          : reg.email;
     const phone =
       "Phone" in fields
         ? fields["Phone"]
         : "phone" in fields
-        ? fields["phone"]
-        : reg.phone;
+          ? fields["phone"]
+          : reg.phone;
     const company =
       "Company" in fields
         ? fields["Company"]
         : "Institution" in fields
-        ? fields["Institution"]
-        : "Organization" in fields
-        ? fields["Organization"]
-        : "company" in fields
-        ? fields["company"]
-        : reg.company;
+          ? fields["Institution"]
+          : "Organization" in fields
+            ? fields["Organization"]
+            : "company" in fields
+              ? fields["company"]
+              : reg.company;
 
     reg.customFields = {};
     reg.fullName = fullName;
@@ -1044,7 +1075,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
 
   const reg = await Registration.findOne({ token }).populate("eventId");
   if (!reg || reg.eventId?.eventType !== ALLOWED_EVENT_TYPE) {
-    return response(res, 404, "Registration not found for employee event");
+    return response(res, 404, "Registration not found for closed event");
   }
 
   const walkin = new WalkIn({
@@ -1119,7 +1150,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
   }
 
   if (registration.eventId?.eventType !== ALLOWED_EVENT_TYPE) {
-    return response(res, 400, "This registration is not for an employee event");
+    return response(res, 400, "This registration is not for a closed event");
   }
 
   if (registration.eventId?.requiresApproval) {

@@ -12,7 +12,6 @@ const RegistrationSchema = new mongoose.Schema(
       ref: "Event",
       required: true,
     },
-    employeeId: { type: String, default: null }, // For employee events
 
     fullName: { type: String, default: null }, // Fallback for public events if custom fields are not provided
     email: { type: String, default: null },
