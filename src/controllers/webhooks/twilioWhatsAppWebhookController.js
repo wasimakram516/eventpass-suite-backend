@@ -4,6 +4,7 @@ const {
   emitWhatsAppStatusUpdate,
   emitWhatsAppInboundMessage,
 } = require("../../socket/modules/notifications/whatsappSocket");
+const { sendCustomWhatsApp } = require("../../services/whatsappService");
 
 /**
  * =========================================
@@ -13,12 +14,7 @@ const {
  */
 exports.twilioWhatsAppStatusWebhook = async (req, res) => {
   try {
-    const {
-      MessageSid,
-      MessageStatus,
-      ErrorCode,
-      ErrorMessage,
-    } = req.body;
+    const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
 
     // Twilio retries → always respond 200
     if (!MessageSid || !MessageStatus) {
@@ -99,14 +95,7 @@ exports.twilioWhatsAppStatusWebhook = async (req, res) => {
  */
 exports.twilioWhatsAppInboundWebhook = async (req, res) => {
   try {
-    const {
-      MessageSid,
-      From,
-      To,
-      Body,
-      WaId,
-      NumMedia,
-    } = req.body;
+    const { MessageSid, From, To, Body, WaId, NumMedia } = req.body;
 
     if (!MessageSid || !From) {
       return res.sendStatus(200);
@@ -188,6 +177,31 @@ exports.twilioWhatsAppInboundWebhook = async (req, res) => {
         mediaUrls: log.mediaUrls,
         receivedAt: log.receivedAt,
       });
+    }
+
+    /* ===========================
+      GENERIC AUTO-REPLY (ONE-TIME)
+    ============================ */
+
+    const alreadyReplied = await WhatsAppMessageLog.exists({
+      direction: "outbound",
+      type: "custom",
+      to: From,
+      body: "Thanks for reaching out. Our team has received your message and will get back to you shortly.",
+    });
+
+    if (!alreadyReplied) {
+      await sendCustomWhatsApp(
+        From,
+        null,
+        "Thanks for reaching out. Our team has received your message and will get back to you shortly.",
+        {
+          eventId: log.eventId,
+          registrationId: log.registrationId,
+          businessId: log.businessId,
+          token: log.token,
+        }
+      );
     }
 
     return res.sendStatus(200);
