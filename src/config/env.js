@@ -23,6 +23,7 @@ const env = {
   server: {
     port: validateEnv("PORT"),
     node_env: validateEnv("NODE_ENV"),
+    backendUrl: validateEnv("BACKEND_BASE_URL"),
   },
   client: {
     url: validateEnv("FRONTEND_BASE_URL"),

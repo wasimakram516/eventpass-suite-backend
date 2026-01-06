@@ -117,7 +117,12 @@ module.exports = async function whatsappProcessor(event, recipients) {
       const templateResult = await sendWhatsApp(
         phoneResult.formatted,
         contentVariables,
-        contentSSID
+        contentSSID,
+        {
+          eventId: event._id,
+          registrationId: reg._id,
+          token: reg.token,
+        }
       );
 
       if (!templateResult.success) {

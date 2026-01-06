@@ -56,6 +56,10 @@ const mosaicWallDisplayMediaRoutes = require("./mosaicwall/displayMediaRoutes");
 const spinWheelRoutes = require("./eventWheel/spinWheelRoutes");
 const spinWheelParticipantRoutes = require("./eventWheel/spinWheelParticipantRoutes");
 
+// Notifications
+const whatsappLogs = require("./notifications/whatsappLogRoutes");
+const twilioWhatsAppStatusWebhookRoutes = require("./webhooks/twilioWhatsAppRoutes");
+
 const router = express.Router();
 
 // ------------------ Base CMS Routes ------------------
@@ -69,6 +73,8 @@ router.use("/businesses", businessRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/files", fileResourceRoutes);
 router.use("/media", deleteMediaRoutes);
+router.use("/notifications/whatsapp-logs", whatsappLogs);
+router.use("/webhooks/twilio/whatsapp", twilioWhatsAppStatusWebhookRoutes);
 
 // ------------------ QuizNest ------------------
 router.use("/quiznest/games", quizGameRoutes);
