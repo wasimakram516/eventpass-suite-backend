@@ -31,6 +31,7 @@ const {
 } = require("../../utils/whatsappProcessorUtils");
 
 const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder/eventRegEmailTemplateBuilder");
+const sendEmail = require("../../services/emailService");
 
 // PROCESSORS
 const uploadProcessor = require("../../processors/eventreg/uploadProcessor");
@@ -181,31 +182,26 @@ async function validateAllRows(event, rows) {
   if (invalidRowNumbers.length > 0) {
     return {
       valid: false,
-      error: `Cannot upload file. Row${
-        invalidRowNumbers.length > 1 ? "s" : ""
-      } ${formatRowNumbers(invalidRowNumbers)} ${
-        invalidRowNumbers.length > 1 ? "have" : "has"
-      } missing required fields: ${allRequiredFields.join(", ")}.`,
+      error: `Cannot upload file. Row${invalidRowNumbers.length > 1 ? "s" : ""
+        } ${formatRowNumbers(invalidRowNumbers)} ${invalidRowNumbers.length > 1 ? "have" : "has"
+        } missing required fields: ${allRequiredFields.join(", ")}.`,
     };
   }
 
   if (invalidEmailRowNumbers.length > 0) {
     return {
       valid: false,
-      error: `Cannot upload file. Row${
-        invalidEmailRowNumbers.length > 1 ? "s" : ""
-      } ${formatRowNumbers(invalidEmailRowNumbers)} ${
-        invalidEmailRowNumbers.length > 1 ? "have" : "has"
-      } invalid email format.`,
+      error: `Cannot upload file. Row${invalidEmailRowNumbers.length > 1 ? "s" : ""
+        } ${formatRowNumbers(invalidEmailRowNumbers)} ${invalidEmailRowNumbers.length > 1 ? "have" : "has"
+        } invalid email format.`,
     };
   }
 
   if (duplicateEmailRowNumbers.length > 0) {
     return {
       valid: false,
-      error: `Cannot upload file. Duplicate email(s) found at row${
-        duplicateEmailRowNumbers.length > 1 ? "s" : ""
-      } ${formatRowNumbers(duplicateEmailRowNumbers)}. Each email must be unique.`,
+      error: `Cannot upload file. Duplicate email(s) found at row${duplicateEmailRowNumbers.length > 1 ? "s" : ""
+        } ${formatRowNumbers(duplicateEmailRowNumbers)}. Each email must be unique.`,
     };
   }
 
@@ -257,8 +253,8 @@ async function validateAllRows(event, rows) {
     warning:
       invalidPhoneRowNumbers.length > 0
         ? `Some rows have invalid phone numbers and may not receive WhatsApp messages: rows ${formatRowNumbers(
-            invalidPhoneRowNumbers
-          )}`
+          invalidPhoneRowNumbers
+        )}`
         : null,
   };
 }
@@ -761,9 +757,30 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   }
 
   // ---------- DUPLICATE CHECK ----------
+  const duplicateOr = [];
+
+  if (hasCustomFields) {
+    const emailField = formFields.find((f) => f.inputType === "email");
+    const phoneField = formFields.find((f) =>
+      f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+    );
+
+    if (emailField && extractedEmail) {
+      duplicateOr.push({ [`customFields.${emailField.inputName}`]: extractedEmail });
+    }
+    if (phoneField && normalizedPhone) {
+      duplicateOr.push({ [`customFields.${phoneField.inputName}`]: normalizedPhone });
+    }
+    if (extractedEmail) duplicateOr.push({ email: extractedEmail });
+    if (normalizedPhone) duplicateOr.push({ phone: normalizedPhone });
+  } else {
+    if (extractedEmail) duplicateOr.push({ email: extractedEmail });
+    if (normalizedPhone) duplicateOr.push({ phone: normalizedPhone });
+  }
+
   const duplicateFilter = {
     eventId,
-    $or: [{ email: extractedEmail }, { phone: normalizedPhone }],
+    ...(duplicateOr.length > 0 ? { $or: duplicateOr } : {}),
   };
 
   const dup = await Registration.findOne(duplicateFilter);
@@ -788,12 +805,12 @@ exports.createRegistration = asyncHandler(async (req, res) => {
 
   // --- Generate and send email using util ---
   const emailForSending =
-    formFields.length > 0 ? pickEmail(customFields) : email;
+    formFields.length > 0 ? pickEmail(customFields) : extractedEmail;
   const displayNameForEmail =
     formFields.length > 0
       ? pickFullName(customFields) ||
       (event.defaultLanguage === "ar" ? "ضيف" : "Guest")
-      : fullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
+      : extractedFullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
   const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
     event,
@@ -869,10 +886,13 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     reg.phone = null;
     reg.company = null;
   } else {
-    reg.fullName = fields.fullName ?? reg.fullName;
-    reg.email = fields.email ?? reg.email;
-    reg.phone = fields.phone ?? reg.phone;
-    reg.company = fields.company ?? reg.company;
+    reg.fullName = fields.fullName ?? fields["Full Name"] ?? reg.fullName;
+    reg.email = fields.email ?? fields.Email ?? reg.email;
+    const phoneRaw = fields.phone ?? fields.Phone;
+    if (phoneRaw !== undefined) {
+      reg.phone = phoneRaw;
+    }
+    reg.company = fields.company ?? fields.Company ?? reg.company;
     reg.customFields = {};
   }
 
@@ -885,26 +905,48 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     ? pickPhone(reg.customFields)
     : reg.phone;
 
+  let normalizedPhone = null;
   if (extractedPhone) {
-    const normalizedPhone = normalizePhone(extractedPhone);
+    normalizedPhone = normalizePhone(extractedPhone);
     const phoneCheck = validatePhoneNumber(normalizedPhone);
     if (!phoneCheck.valid) {
       return response(res, 400, phoneCheck.error);
     }
-    reg.phone = hasCustomFields ? null : normalizedPhone;
+    if (!hasCustomFields) {
+      reg.phone = normalizedPhone;
+    }
   }
 
   // ---------- DUPLICATE CHECK ----------
-  if (extractedEmail || extractedPhone) {
-    const dup = await Registration.findOne({
+  if (extractedEmail || normalizedPhone) {
+    const duplicateOr = [];
+
+    if (hasCustomFields) {
+      const emailField = event.formFields.find((f) => f.inputType === "email");
+      const phoneField = event.formFields.find((f) =>
+        f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+      );
+
+      if (emailField && extractedEmail) {
+        duplicateOr.push({ [`customFields.${emailField.inputName}`]: extractedEmail });
+      }
+      if (phoneField && normalizedPhone) {
+        duplicateOr.push({ [`customFields.${phoneField.inputName}`]: normalizedPhone });
+      }
+      if (extractedEmail) duplicateOr.push({ email: extractedEmail });
+      if (normalizedPhone) duplicateOr.push({ phone: normalizedPhone });
+    } else {
+      if (extractedEmail) duplicateOr.push({ email: extractedEmail });
+      if (normalizedPhone) duplicateOr.push({ phone: normalizedPhone });
+    }
+
+    const duplicateFilter = {
       eventId: event._id,
       _id: { $ne: reg._id },
-      $or: [
-        extractedEmail ? { email: extractedEmail } : null,
-        extractedPhone ? { phone: reg.phone } : null,
-      ].filter(Boolean),
-    });
+      ...(duplicateOr.length > 0 ? { $or: duplicateOr } : {}),
+    };
 
+    const dup = await Registration.findOne(duplicateFilter);
     if (dup) {
       return response(res, 409, "Already registered with this email or phone");
     }

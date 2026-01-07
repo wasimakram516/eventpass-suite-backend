@@ -46,6 +46,7 @@ const EventSchema = new mongoose.Schema({
   showQrAfterRegistration: { type: Boolean, default: false },
   showQrOnBadge: { type: Boolean, default: true },
   requiresApproval: { type: Boolean, default: false },
+  useInternationalNumbers: { type: Boolean, default: false },
   defaultLanguage: {
     type: String,
     enum: ["en", "ar"],
@@ -68,7 +69,7 @@ const EventSchema = new mongoose.Schema({
       inputName: { type: String, required: true },
       inputType: {
         type: String,
-        enum: ["text", "number", "radio", "list", "email"],
+        enum: ["text", "number", "phone", "radio", "list", "email"],
         required: true,
       },
       values: [String],
