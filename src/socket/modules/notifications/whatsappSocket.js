@@ -22,7 +22,19 @@ function emitWhatsAppInboundMessage(eventId, payload) {
   });
 }
 
+/* ===========================
+   OUTBOUND MESSAGE SENT
+=========================== */
+
+function emitWhatsAppOutboundMessage(eventId, payload) {
+  emitUpdate("whatsappOutboundMessage", {
+    eventId,
+    ...payload,
+  });
+}
+
 module.exports = {
   emitWhatsAppStatusUpdate,
   emitWhatsAppInboundMessage,
+  emitWhatsAppOutboundMessage,
 };

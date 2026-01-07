@@ -1,28 +1,51 @@
 const WhatsAppMessageLog = require("../../models/WhatsAppMessageLog");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
-const { sendWhatsAppTextMessage } = require("../../services/whatsappService");
+const { sendCustomWhatsApp } = require("../../services/whatsappService");
+const mongoose = require("mongoose");
 
 /* ======================================================
-   GET INBOX (GROUPED BY PHONE)
+   GET INBOX (GROUPED BY CONVERSATION PHONE)
 ====================================================== */
 exports.getWhatsAppInbox = asyncHandler(async (req, res) => {
-  const { eventId, businessId } = req.query;
+  const eventId = req.query.eventId || req.query.eventid;
+  const { businessId } = req.query;
 
   if (!eventId && !businessId) {
     return response(res, 400, "eventId or businessId is required");
   }
 
   const match = {};
-  if (eventId) match.eventId = eventId;
-  if (businessId) match.businessId = businessId;
+
+  if (eventId) {
+    match.eventId = new mongoose.Types.ObjectId(eventId);
+  }
+
+  if (businessId) {
+    match.businessId = new mongoose.Types.ObjectId(businessId);
+  }
 
   const inbox = await WhatsAppMessageLog.aggregate([
     { $match: match },
     { $sort: { createdAt: -1 } },
     {
       $group: {
-        _id: "$to",
+        _id: {
+          $cond: [
+            { $eq: ["$direction", "inbound"] },
+            "$from",
+            "$to",
+          ],
+        },
+        phone: {
+          $first: {
+            $cond: [
+              { $eq: ["$direction", "inbound"] },
+              "$from",
+              "$to",
+            ],
+          },
+        },
         lastMessage: { $first: "$body" },
         lastDirection: { $first: "$direction" },
         lastStatus: { $first: "$status" },
@@ -31,11 +54,7 @@ exports.getWhatsAppInbox = asyncHandler(async (req, res) => {
         registrationId: { $first: "$registrationId" },
         unreadCount: {
           $sum: {
-            $cond: [
-              { $eq: ["$direction", "inbound"] },
-              1,
-              0,
-            ],
+            $cond: [{ $eq: ["$direction", "inbound"] }, 1, 0],
           },
         },
       },
@@ -47,7 +66,7 @@ exports.getWhatsAppInbox = asyncHandler(async (req, res) => {
 });
 
 /* ======================================================
-   GET CONVERSATION (ONE PHONE)
+   GET CONVERSATION (ONE PHONE, BOTH DIRECTIONS)
 ====================================================== */
 exports.getWhatsAppConversation = asyncHandler(async (req, res) => {
   const { eventId, to, limit = 50 } = req.query;
@@ -58,7 +77,10 @@ exports.getWhatsAppConversation = asyncHandler(async (req, res) => {
 
   const messages = await WhatsAppMessageLog.find({
     eventId,
-    to,
+    $or: [
+      { to },
+      { from: to },
+    ],
   })
     .sort({ createdAt: 1 })
     .limit(Number(limit))
@@ -80,28 +102,31 @@ exports.sendWhatsAppReply = asyncHandler(async (req, res) => {
     body,
   } = req.body;
 
-  if (!to || !body) {
-    return response(res, 400, "Recipient and message body are required");
+  if (!eventId || !businessId || !to || !body) {
+    return response(
+      res,
+      400,
+      "eventId, businessId, recipient and body are required"
+    );
   }
 
-  // Send via WhatsApp provider
-  const providerRes = await sendWhatsAppTextMessage({
+  // Send custom WhatsApp text
+  const providerRes = await sendCustomWhatsApp(
     to,
+    null,           // no media
     body,
-  });
+    {
+      eventId,
+      businessId,
+      registrationId,
+    }
+  );
 
-  // Log outbound message
-  const log = await WhatsAppMessageLog.create({
-    eventId,
-    businessId,
-    registrationId,
-    to,
-    body,
-    direction: "outbound",
-    type: "reply",
-    status: providerRes?.status || "sent",
-    providerMessageId: providerRes?.messageId,
-  });
+  if (!providerRes?.success) {
+    return response(res, 500, "Failed to send WhatsApp reply", providerRes);
+  }
 
-  return response(res, 201, "Reply sent", log);
+  return response(res, 201, "Reply sent", {
+    messageSid: providerRes.messageSid,
+  });
 });

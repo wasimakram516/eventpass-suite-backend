@@ -183,25 +183,34 @@ exports.twilioWhatsAppInboundWebhook = async (req, res) => {
       GENERIC AUTO-REPLY (ONE-TIME)
     ============================ */
 
-    const alreadyReplied = await WhatsAppMessageLog.exists({
-      direction: "outbound",
-      type: "custom",
-      to: From,
-      body: "Thanks for reaching out. Our team has received your message and will get back to you shortly.",
-    });
+    const AUTO_REPLY_BODY =
+      "Thanks for reaching out. Our team has received your message and will get back to you shortly.";
 
-    if (!alreadyReplied) {
-      await sendCustomWhatsApp(
-        From,
-        null,
-        "Thanks for reaching out. Our team has received your message and will get back to you shortly.",
-        {
-          eventId: log.eventId,
-          registrationId: log.registrationId,
-          businessId: log.businessId,
-          token: log.token,
-        }
-      );
+    const REPLY_COOLDOWN_MINUTES = 10; // 10 minutes
+
+    const lastAutoReply = await WhatsAppMessageLog.findOne({
+      direction: "outbound",
+      type: "auto_reply",
+      to: From,
+    })
+      .sort({ createdAt: -1 })
+      .select("createdAt");
+
+    const now = Date.now();
+
+    const canReply =
+      !lastAutoReply ||
+      now - new Date(lastAutoReply.createdAt).getTime() >
+        REPLY_COOLDOWN_MINUTES * 60 * 1000;
+        
+    if (canReply) {
+      await sendCustomWhatsApp(From, null, AUTO_REPLY_BODY, {
+        eventId: log.eventId,
+        registrationId: log.registrationId,
+        businessId: log.businessId,
+        token: log.token,
+        type: "auto_reply",
+      });
     }
 
     return res.sendStatus(200);

@@ -1,6 +1,9 @@
 const env = require("../config/env");
 const axios = require("axios");
 const WhatsAppMessageLog = require("../models/WhatsAppMessageLog");
+const {
+  emitWhatsAppOutboundMessage,
+} = require("../socket/modules/notifications/whatsappSocket");
 
 const sendTwilioWhatsApp = async ({ to, payload, meta = {} }) => {
   const attemptedAt = new Date();
@@ -13,12 +16,10 @@ const sendTwilioWhatsApp = async ({ to, payload, meta = {} }) => {
   const formData = new URLSearchParams();
   formData.append("From", from);
   formData.append("To", to);
-
-  env.server.node_env === "production" &&
-    formData.append(
-      "StatusCallback",
-      `${env.server.backendUrl}/api/webhooks/twilio/whatsapp/status`
-    );
+  formData.append(
+    "StatusCallback",
+    `${env.server.backendUrl}/api/webhooks/twilio/whatsapp/status`
+  );
 
   Object.entries(payload).forEach(([key, value]) => {
     if (value !== null && value !== undefined) {
@@ -61,6 +62,18 @@ const sendTwilioWhatsApp = async ({ to, payload, meta = {} }) => {
 
       /* ===== Debug ===== */
       rawResponse: response.data,
+    });
+
+    emitWhatsAppOutboundMessage(meta.eventId, {
+      logId: log._id,
+      to: log.to,
+      from: log.from,
+
+      body: log.body,
+      direction: "outbound",
+      status: log.status,
+
+      createdAt: log.createdAt,
     });
 
     return {

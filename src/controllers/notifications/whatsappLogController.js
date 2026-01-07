@@ -2,6 +2,24 @@ const WhatsAppMessageLog = require("../../models/WhatsAppMessageLog");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 
+/* =========================================
+   HELPERS
+========================================= */
+function normalizeWhatsAppNumber(value) {
+  if (!value) return value;
+  return value.replace(/^whatsapp:/i, "");
+}
+
+function normalizeLog(log) {
+  const obj = log.toObject ? log.toObject() : log;
+
+  return {
+    ...obj,
+    to: normalizeWhatsAppNumber(obj.to),
+    from: normalizeWhatsAppNumber(obj.from),
+  };
+}
+
 /**
  * =========================================
  * GET WHATSAPP LOGS (PAGINATED)
@@ -31,7 +49,7 @@ exports.getWhatsAppLogs = asyncHandler(async (req, res) => {
   if (direction) filter.direction = direction;
 
   const pageNum = Math.max(Number(page), 1);
-  const limitNum = Math.min(Number(limit), 100); // hard cap for safety
+  const limitNum = Math.min(Number(limit), 100); // hard cap
   const skip = (pageNum - 1) * limitNum;
 
   const [logs, total] = await Promise.all([
@@ -45,8 +63,10 @@ exports.getWhatsAppLogs = asyncHandler(async (req, res) => {
     WhatsAppMessageLog.countDocuments(filter),
   ]);
 
+  const normalizedLogs = logs.map(normalizeLog);
+
   return response(res, 200, "WhatsApp logs fetched", {
-    data: logs,
+    data: normalizedLogs,
     pagination: {
       total,
       page: pageNum,
@@ -75,13 +95,17 @@ exports.getWhatsAppLogsByRegistration = asyncHandler(async (req, res) => {
     WhatsAppMessageLog.find({ registrationId })
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limitNum),
+      .limit(limitNum)
+      .populate("registrationId", "name phone")
+      .populate("eventId", "name slug"),
 
     WhatsAppMessageLog.countDocuments({ registrationId }),
   ]);
 
+  const normalizedLogs = logs.map(normalizeLog);
+
   return response(res, 200, "WhatsApp logs fetched", {
-    data: logs,
+    data: normalizedLogs,
     pagination: {
       total,
       page: pageNum,
@@ -107,5 +131,5 @@ exports.getWhatsAppLogById = asyncHandler(async (req, res) => {
     return response(res, 404, "WhatsApp log not found");
   }
 
-  return response(res, 200, "WhatsApp log fetched", log);
+  return response(res, 200, "WhatsApp log fetched", normalizeLog(log));
 });

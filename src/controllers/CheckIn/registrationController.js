@@ -1478,15 +1478,11 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
   });
 
   setImmediate(() => {
-    if (type === "custom") {
-      const customWhatsAppProcessor = require("../../processors/checkin/customWhatsAppProcessor");
-      customWhatsAppProcessor(event, regs, { subject, body, mediaUrl }).catch(
-        (err) => console.error("CHECKIN CUSTOM WHATSAPP PROCESSOR FAILED:", err)
-      );
-    } else {
-      whatsappProcessor(event, regs).catch((err) =>
-        console.error("CHECKIN WHATSAPP PROCESSOR FAILED:", err)
-      );
-    }
+    whatsappProcessor({
+      event,
+      recipients: regs,
+      mode: type === "custom" ? "custom" : "template",
+      customMessage: type === "custom" ? { subject, body, mediaUrl } : null,
+    }).catch((err) => console.error("CHECKIN WHATSAPP PROCESSOR FAILED:", err));
   });
 });

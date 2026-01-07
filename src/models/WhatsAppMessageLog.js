@@ -49,7 +49,7 @@ const WhatsAppMessageLogSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ["template", "custom", "reply"],
+      enum: ["template", "custom", "reply", "auto_reply"],
       index: true,
     },
 
@@ -113,13 +113,13 @@ const WhatsAppMessageLogSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
-        "queued",        // Created, sent to Twilio
-        "sent",          // Accepted by WhatsApp
-        "delivered",     // Delivered to device
-        "read",          // User opened
-        "failed",        // Permanently failed
-        "undelivered",  // Not delivered
-        "received",     // Inbound message received
+        "queued", // Created, sent to Twilio
+        "sent", // Accepted by WhatsApp
+        "delivered", // Delivered to device
+        "read", // User opened
+        "failed", // Permanently failed
+        "undelivered", // Not delivered
+        "received", // Inbound message received
       ],
       index: true,
     },
@@ -186,7 +186,4 @@ WhatsAppMessageLogSchema.index({ messageSid: 1 });
 WhatsAppMessageLogSchema.index({ status: 1, createdAt: -1 });
 WhatsAppMessageLogSchema.index({ direction: 1, createdAt: -1 });
 
-module.exports = mongoose.model(
-  "WhatsAppMessageLog",
-  WhatsAppMessageLogSchema
-);
+module.exports = mongoose.model("WhatsAppMessageLog", WhatsAppMessageLogSchema);
