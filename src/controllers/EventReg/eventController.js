@@ -101,22 +101,6 @@ const validatePhoneNumber = (phone) => {
 
   const digits = phoneStr.replace(/\D/g, "");
 
-  if (phoneStr.startsWith("+92")) {
-    const localDigits = digits.replace(/^92/, "");
-    if (localDigits.length !== 10) {
-      return { valid: false, error: "Pakistan phone number must be 10 digits (excluding country code +92)" };
-    }
-    return { valid: true };
-  }
-
-  if (phoneStr.startsWith("+968")) {
-    const localDigits = digits.replace(/^968/, "");
-    if (localDigits.length !== 8) {
-      return { valid: false, error: "Oman phone number must be 8 digits (excluding country code +968)" };
-    }
-    return { valid: true };
-  }
-
   if (digits.length < 8) {
     return { valid: false, error: "Phone number is too short" };
   }
@@ -144,6 +128,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     showQrAfterRegistration,
     showQrOnBadge,
     requiresApproval,
+    useInternationalNumbers,
     defaultLanguage,
     organizerName,
     organizerEmail,
@@ -261,6 +246,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     showQrAfterRegistration,
     showQrOnBadge,
     requiresApproval: requiresApproval === "true" || requiresApproval === true,
+    useInternationalNumbers: useInternationalNumbers === "true" || useInternationalNumbers === true,
     defaultLanguage: defaultLanguage || "en",
     organizerName: organizerName || "",
     organizerEmail: organizerEmail || "",
@@ -294,6 +280,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     showQrAfterRegistration,
     showQrOnBadge,
     requiresApproval,
+    useInternationalNumbers,
     defaultLanguage,
     removeLogo,
     removeBackgroundEn,
@@ -517,6 +504,15 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   ) {
     updates.requiresApproval =
       requiresApproval === "true" || requiresApproval === true;
+  }
+
+  if (
+    typeof useInternationalNumbers === "boolean" ||
+    useInternationalNumbers === "true" ||
+    useInternationalNumbers === "false"
+  ) {
+    updates.useInternationalNumbers =
+      useInternationalNumbers === "true" || useInternationalNumbers === true;
   }
 
   if (defaultLanguage && ["en", "ar"].includes(defaultLanguage)) {
