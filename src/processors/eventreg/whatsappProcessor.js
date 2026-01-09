@@ -81,14 +81,14 @@ module.exports = async function eventRegWhatsAppProcessor(event, recipients) {
     processed++;
 
     try {
-      const { reg, phone, fullName } = await resolveRecipientContext(r._id, r);
+      const { reg, phone, isoCode, fullName } = await resolveRecipientContext(r._id, r);
 
       if (!phone) {
         failed++;
         continue;
       }
 
-      const phoneResult = formatPhoneForWhatsApp(phone);
+      const phoneResult = formatPhoneForWhatsApp(phone, isoCode);
       if (!phoneResult.formatted) {
         failed++;
         continue;

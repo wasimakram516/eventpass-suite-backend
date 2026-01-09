@@ -10,6 +10,7 @@ const {
   deleteRegistration,
   getAllPublicRegistrationsByEvent,
   downloadSampleExcel,
+  downloadCountryReference,
   uploadRegistrations,
   sendBulkEmails,
   sendBulkWhatsApp,
@@ -58,6 +59,7 @@ router.get("/event/:slug/export", eventRegAccess, exportRegistrations);
 router.delete("/:id", eventRegAccess, deleteRegistration);
 
 router.get("/event/:slug/sample-excel", eventRegAccess, downloadSampleExcel);
+router.get("/country-reference", eventRegAccess, downloadCountryReference);
 router.post("/event/:slug/upload", eventRegAccess, upload.single("file"), uploadRegistrations);
 
 module.exports = router;

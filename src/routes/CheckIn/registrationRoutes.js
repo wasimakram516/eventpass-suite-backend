@@ -8,6 +8,7 @@ const {
   deleteRegistration,
   getAllCheckInRegistrationsByEvent,
   downloadSampleExcel,
+  downloadCountryReference,
   uploadRegistrations,
   updateRegistration,
   updateRegistrationApproval,
@@ -64,6 +65,7 @@ router.delete("/:id", CheckInAccess, deleteRegistration);
 
 // Sample Excel and upload
 router.get("/event/:slug/sample-excel", CheckInAccess, downloadSampleExcel);
+router.get("/country-reference", CheckInAccess, downloadCountryReference);
 router.post(
   "/event/:slug/upload",
   CheckInAccess,

@@ -66,24 +66,11 @@ exports.getEventById = asyncHandler(async (req, res) => {
 });
 
 // Validate phone number
+const { validatePhoneNumberByCountry } = require("../../utils/phoneValidation");
+
 const validatePhoneNumber = (phone) => {
   if (!phone) return { valid: true };
-  const phoneStr = String(phone).trim();
-
-  if (!phoneStr.startsWith("+")) {
-    return { valid: false, error: "Phone number must start with country code (e.g., +92, +968, +1)" };
-  }
-
-  const digits = phoneStr.replace(/\D/g, "");
-
-  if (digits.length < 8) {
-    return { valid: false, error: "Phone number is too short" };
-  }
-  if (digits.length > 15) {
-    return { valid: false, error: "Phone number is too long" };
-  }
-
-  return { valid: true };
+  return validatePhoneNumberByCountry(phone);
 };
 
 // CREATE closed event

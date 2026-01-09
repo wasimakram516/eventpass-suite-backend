@@ -33,6 +33,13 @@ const {
   normalizePhone,
   validatePhoneNumber,
 } = require("../../utils/whatsappProcessorUtils");
+const { validatePhoneNumberByCountry } = require("../../utils/phoneValidation");
+const {
+  extractCountryCodeAndIsoCode,
+  combinePhoneWithCountryCode,
+  DEFAULT_ISO_CODE,
+  COUNTRY_CODES,
+} = require("../../utils/countryCodes");
 
 const ALLOWED_EVENT_TYPE = "closed";
 
@@ -93,8 +100,8 @@ function formatRowNumbers(arr) {
   return arr.length === 1
     ? arr[0].toString()
     : arr.length === 2
-    ? `${arr[0]} and ${arr[1]}`
-    : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
+      ? `${arr[0]} and ${arr[1]}`
+      : `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
 }
 
 function validateAllRows(event, rows) {
@@ -160,7 +167,7 @@ function validateAllRows(event, rows) {
     // ---------- PHONE NORMALIZATION + VALIDATION (SOFT) ----------
     if (extractedPhone) {
       const normalized = normalizePhone(extractedPhone);
-      const phoneCheck = validatePhoneNumber(normalized);
+      const phoneCheck = validatePhoneNumberByCountry(normalized);
 
       if (!phoneCheck.valid) {
         invalidPhoneRowNumbers.push(rowNumber);
@@ -224,8 +231,8 @@ function validateAllRows(event, rows) {
     warnings:
       invalidPhoneRowNumbers.length > 0
         ? `Some rows have invalid phone numbers and may not receive WhatsApp messages: rows ${formatRowNumbers(
-            invalidPhoneRowNumbers
-          )}`
+          invalidPhoneRowNumbers
+        )}`
         : null,
   };
 }
@@ -240,18 +247,91 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
     return response(res, 404, "Event not found");
   }
 
+  const hasCustomFields = event.formFields && event.formFields.length > 0;
+  const formFields = event.formFields || [];
+
+  // Build headers and identify phone fields
   let headers = [];
-  if (event.formFields && event.formFields.length > 0) {
-    headers = event.formFields.map((f) => f.inputName);
+  const phoneFields = [];
+
+  if (hasCustomFields) {
+    formFields.forEach((f) => {
+      headers.push(f.inputName);
+      if (f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")) {
+        phoneFields.push({ name: f.inputName, index: headers.length - 1 });
+      }
+    });
   } else {
     headers = ["Full Name", "Email", "Phone", "Company"];
+    phoneFields.push({ name: "Phone", index: 2 });
   }
   headers.push("Token");
 
-  const ws = XLSX.utils.aoa_to_sheet([headers]);
+  // Insert isoCode columns before each phone field (from right to left to maintain indices)
+  phoneFields.reverse().forEach((phoneField) => {
+    const isoCodeHeader = "isoCode";
+    headers.splice(phoneField.index, 0, isoCodeHeader);
+  });
+
+  const dummyRows = [
+    {
+      fullName: "User 1",
+      email: "user1@gmail.com",
+      phone: "1234567890",
+      phoneIsoCode: "pk",
+      company: "Company 1",
+    },
+    {
+      fullName: "User 2",
+      email: "user2@gmail.com",
+      phone: "12345678",
+      phoneIsoCode: "om",
+      company: "Company 2",
+    },
+    {
+      fullName: "User 3",
+      email: "user3@gmail.com",
+      phone: "1234567890",
+      phoneIsoCode: "ca",
+      company: "Company 3",
+    },
+  ];
+
+  const rows = [headers];
+
+  dummyRows.forEach((dummy) => {
+    const row = [];
+    if (hasCustomFields) {
+      formFields.forEach((f) => {
+        if (f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")) {
+          row.push(dummy.phoneIsoCode);
+          row.push(dummy.phone);
+        } else if (f.inputName?.toLowerCase().includes("name") || f.inputName?.toLowerCase().includes("full")) {
+          row.push(dummy.fullName);
+        } else if (f.inputType === "email" || f.inputName?.toLowerCase().includes("email")) {
+          row.push(dummy.email);
+        } else if (f.inputName?.toLowerCase().includes("company")) {
+          row.push(dummy.company);
+        } else {
+          row.push("");
+        }
+      });
+    } else {
+      row.push(dummy.fullName);
+      row.push(dummy.email);
+      row.push(dummy.phoneIsoCode);
+      row.push(dummy.phone);
+      row.push(dummy.company);
+    }
+    row.push("");
+    rows.push(row);
+  });
+
+  // Create sample Excel file
+  const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Registrations");
-  const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  const sampleBuffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
   res.setHeader(
     "Content-Disposition",
@@ -261,7 +341,43 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
     "Content-Type",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
-  res.send(buffer);
+  res.send(sampleBuffer);
+});
+
+// DOWNLOAD country reference Excel file
+exports.downloadCountryReference = asyncHandler(async (req, res) => {
+  const formatDigits = (digits) => {
+    if (typeof digits === "number") {
+      return digits.toString();
+    }
+    if (typeof digits === "object" && digits.min && digits.max) {
+      return `${digits.min}-${digits.max}`;
+    }
+    return "";
+  };
+
+  const countryHeaders = [["Country Name", "ISO Code", "Country Code", "No. of Digits"]];
+  const countryRows = COUNTRY_CODES.map((cc) => [
+    cc.country,
+    cc.isoCode,
+    cc.code,
+    formatDigits(cc.digits),
+  ]);
+  const countryData = [...countryHeaders, ...countryRows];
+  const countryWs = XLSX.utils.aoa_to_sheet(countryData);
+  const countryWb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(countryWb, countryWs, "Countries");
+  const countryBuffer = XLSX.write(countryWb, { type: "buffer", bookType: "xlsx" });
+
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=country_reference.xlsx`
+  );
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.send(countryBuffer);
 });
 
 // Upload registrations (background)
@@ -603,7 +719,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     const statusLabels = {
       pending: "Pending",
       confirmed: "Confirmed",
-      not_confirmed: "Not Confirmed",
+      not_confirmed: "Not Attending",
     };
     activeFilters.push(`Status: ${statusLabels[status] || status}`);
   }
@@ -682,10 +798,9 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     row.push(`"${reg.approvalStatus || "pending"}"`);
     row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
     row.push(
-      `"${
-        reg.confirmedAt
-          ? formatLocalDateTime(reg.confirmedAt, timezone || null)
-          : "N/A"
+      `"${reg.confirmedAt
+        ? formatLocalDateTime(reg.confirmedAt, timezone || null)
+        : "N/A"
       }"`
     );
 
@@ -729,10 +844,9 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
       row.push(`"${reg?.approvalStatus || "pending"}"`);
       row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
       row.push(
-        `"${
-          reg?.confirmedAt
-            ? formatLocalDateTime(reg.confirmedAt, timezone || null)
-            : "N/A"
+        `"${reg?.confirmedAt
+          ? formatLocalDateTime(reg.confirmedAt, timezone || null)
+          : "N/A"
         }"`
       );
       row.push(`"${formatLocalDateTime(w.scannedAt, timezone || null)}"`);
@@ -824,24 +938,107 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   const company =
     formFields.length > 0 ? pickCompany(customFields) : req.body.company;
 
-  if (!fullName || !email || !phoneRaw) {
-    return response(res, 400, "Full name, email, and phone are required");
+  if (formFields.length === 0) {
+    if (!fullName || !email) {
+      return response(res, 400, "Full name and email are required");
+    }
   }
 
-  const phone = normalizePhone(phoneRaw);
-  const phoneCheck = validatePhoneNumber(phone);
-  if (!phoneCheck.valid) {
-    return response(res, 400, "Invalid phone number");
+  const normalizedPhone = normalizePhone(phoneRaw);
+
+  let phoneIsoCode = req.body.isoCode || null;
+  let phoneLocalNumber = null;
+  let phoneForValidation = null;
+  let phoneForDuplicateCheck = null;
+
+  if (normalizedPhone) {
+    phoneLocalNumber = normalizedPhone;
+    phoneForValidation = normalizedPhone;
+
+    if (!normalizedPhone.startsWith("+") && phoneIsoCode) {
+      phoneLocalNumber = normalizedPhone;
+      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode);
+    } else if (normalizedPhone.startsWith("+")) {
+      const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
+      if (extracted.isoCode) {
+        phoneLocalNumber = extracted.localNumber;
+        if (!phoneIsoCode) {
+          phoneIsoCode = extracted.isoCode;
+        }
+        phoneForValidation = normalizedPhone;
+      } else if (!phoneIsoCode) {
+        phoneIsoCode = DEFAULT_ISO_CODE;
+        phoneLocalNumber = normalizedPhone;
+        phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+      }
+    } else if (!phoneIsoCode) {
+      phoneIsoCode = DEFAULT_ISO_CODE;
+      phoneLocalNumber = normalizedPhone;
+      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+    } else {
+      phoneLocalNumber = normalizedPhone;
+      phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
+    }
+
+    const phoneCheck = validatePhoneNumberByCountry(phoneForValidation);
+    if (!phoneCheck.valid) {
+      return response(res, 400, phoneCheck.error);
+    }
+
+    phoneForDuplicateCheck = phoneForValidation;
+  }
+
+  if (formFields.length > 0) {
+    const phoneField = formFields.find((f) =>
+      f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+    );
+    if (phoneField && customFields[phoneField.inputName]) {
+      customFields[phoneField.inputName] = phoneLocalNumber;
+    }
   }
 
   // ---------- DUPLICATE CHECK ----------
-  const dup = await Registration.findOne({
-    eventId,
-    $or: [{ email }, { phone }],
-  });
+  const duplicateOr = [];
 
-  if (dup) {
-    return response(res, 409, "Already registered with this email or phone");
+  if (formFields.length > 0) {
+    const emailField = formFields.find((f) => f.inputType === "email");
+    const phoneField = formFields.find((f) =>
+      f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+    );
+
+    if (emailField && email && String(email).trim()) {
+      duplicateOr.push({ [`customFields.${emailField.inputName}`]: email });
+    }
+    if (phoneField && phoneForDuplicateCheck && String(phoneForDuplicateCheck).trim()) {
+      duplicateOr.push({ [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck });
+      if (phoneLocalNumber && phoneIsoCode) {
+        duplicateOr.push({
+          $and: [
+            { [`customFields.${phoneField.inputName}`]: phoneLocalNumber },
+            { isoCode: phoneIsoCode },
+          ],
+        });
+      }
+    }
+  } else {
+    if (email) duplicateOr.push({ email });
+    if (phoneForDuplicateCheck) {
+      duplicateOr.push({ phone: phoneForDuplicateCheck });
+      if (phoneLocalNumber && phoneIsoCode) {
+        duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
+      }
+    }
+  }
+
+  if (duplicateOr.length > 0) {
+    const dup = await Registration.findOne({
+      eventId,
+      $or: duplicateOr,
+    });
+
+    if (dup) {
+      return response(res, 409, "Already registered with this email or phone");
+    }
   }
 
   // ---------- CREATE ----------
@@ -849,11 +1046,17 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     eventId,
     fullName,
     email,
-    phone,
+    phone: formFields.length > 0 ? null : phoneLocalNumber,
+    isoCode: formFields.length > 0 ? null : phoneIsoCode,
     company,
     customFields,
     approvalStatus: "pending",
   });
+
+  if (formFields.length > 0 && phoneIsoCode) {
+    newRegistration.isoCode = phoneIsoCode;
+    await newRegistration.save();
+  }
 
   await recountEventRegistrations(event._id);
 
@@ -866,7 +1069,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     approvalStatus: newRegistration.approvalStatus,
     fullName,
     email,
-    phone,
+    phone: phoneForDuplicateCheck,
     company,
     customFields,
     walkIns: [],
@@ -902,27 +1105,66 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     ? pickPhone(newCustomFields)
     : fields.phone ?? fields.Phone ?? reg.phone;
 
-  const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
+  let normalizedPhone = phoneRaw ? normalizePhone(phoneRaw) : null;
+  let phoneLocalNumber = null;
+  let phoneIsoCode = null;
+  let phoneForDuplicateCheck = null;
 
-  if (phone) {
-    const phoneCheck = validatePhoneNumber(phone);
-    if (!phoneCheck.valid) {
-      return response(res, 400, "Invalid phone number");
+  if (normalizedPhone) {
+    phoneIsoCode = fields.isoCode || reg.isoCode || null;
+    let phoneForValidation = normalizedPhone;
+
+    if (!normalizedPhone.startsWith("+") && phoneIsoCode) {
+      phoneLocalNumber = normalizedPhone;
+      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode);
+    } else if (normalizedPhone.startsWith("+")) {
+      const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
+      if (extracted.isoCode) {
+        phoneLocalNumber = extracted.localNumber;
+        if (!phoneIsoCode) {
+          phoneIsoCode = extracted.isoCode;
+        }
+        phoneForValidation = normalizedPhone;
+      } else if (!phoneIsoCode) {
+        phoneIsoCode = DEFAULT_ISO_CODE;
+        phoneLocalNumber = normalizedPhone;
+        phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+      }
+    } else if (!phoneIsoCode) {
+      phoneIsoCode = reg.isoCode || DEFAULT_ISO_CODE;
+      phoneLocalNumber = normalizedPhone;
+      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+    } else {
+      phoneLocalNumber = normalizedPhone;
+      phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
     }
+
+    const phoneCheck = validatePhoneNumberByCountry(phoneForValidation);
+    if (!phoneCheck.valid) {
+      return response(res, 400, phoneCheck.error);
+    }
+
+    phoneForDuplicateCheck = phoneForValidation;
   }
 
   const emailChanged = email && email !== originalEmail;
-  const phoneChanged = phone && phone !== originalPhone;
+  const phoneChanged = phoneForDuplicateCheck && phoneForDuplicateCheck !== originalPhone;
 
   // ---------- DUPLICATE CHECK ----------
   if (emailChanged || phoneChanged) {
+    const duplicateOr = [];
+    if (emailChanged) duplicateOr.push({ email });
+    if (phoneChanged && phoneForDuplicateCheck) {
+      duplicateOr.push({ phone: phoneForDuplicateCheck });
+      if (phoneLocalNumber && phoneIsoCode) {
+        duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
+      }
+    }
+
     const dup = await Registration.findOne({
       eventId: event._id,
       _id: { $ne: reg._id },
-      $or: [
-        emailChanged ? { email } : null,
-        phoneChanged ? { phone } : null,
-      ].filter(Boolean),
+      ...(duplicateOr.length > 0 ? { $or: duplicateOr } : {}),
     });
 
     if (dup) {
@@ -932,16 +1174,33 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
 
   // ---------- APPLY UPDATE ----------
   if (hasCustomFields) {
+    const phoneField = event.formFields.find((f) =>
+      f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+    );
+
+    if (phoneField && phoneLocalNumber) {
+      newCustomFields[phoneField.inputName] = phoneLocalNumber;
+    }
+
     reg.customFields = newCustomFields;
     reg.fullName = null;
     reg.email = null;
     reg.phone = null;
     reg.company = null;
+    if (phoneIsoCode) {
+      reg.isoCode = phoneIsoCode;
+    }
   } else {
     reg.fullName = fields.fullName ?? fields["Full Name"] ?? reg.fullName;
     reg.email = email;
-    reg.phone = phone;
+    if (phoneLocalNumber !== null) {
+      reg.phone = phoneLocalNumber;
+    }
+    if (phoneIsoCode) {
+      reg.isoCode = phoneIsoCode;
+    }
     reg.company = fields.company ?? fields.Company ?? reg.company;
+    reg.customFields = {};
   }
 
   await reg.save();
@@ -1063,7 +1322,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
 
   if (registration.eventId?.requiresApproval) {
     if (registration.approvalStatus !== "confirmed") {
-      return response(res, 400, "This registration is not confirmed");
+      return response(res, 400, "This registration is not attending");
     }
   }
 
@@ -1198,6 +1457,7 @@ exports.getRegistrationByToken = asyncHandler(async (req, res) => {
       fullName,
       email: registration.email,
       phone: registration.phone,
+      isoCode: registration.isoCode,
       company: registration.company,
       customFields: Object.fromEntries(registration.customFields || []),
       approvalStatus: registration.approvalStatus,
@@ -1272,7 +1532,7 @@ exports.updateAttendanceStatus = asyncHandler(async (req, res) => {
   }
 
   if (!["confirmed", "not_confirmed"].includes(status)) {
-    return response(res, 400, "Status must be 'confirmed' or 'not_confirmed'");
+    return response(res, 400, "Status must be 'confirmed' or 'not attending'");
   }
 
   const registration = await Registration.findOne({ token })
@@ -1469,7 +1729,7 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
 
   const regs = await Registration.find(filterQuery)
     .select(
-      "fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus"
+      "fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus isoCode"
     )
     .lean();
 

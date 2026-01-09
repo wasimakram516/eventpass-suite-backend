@@ -5,6 +5,13 @@ const {
   pickEmail,
   pickPhone,
 } = require("../../utils/customFieldUtils");
+const { normalizePhone } = require("../../utils/whatsappProcessorUtils");
+const {
+  extractCountryCodeAndIsoCode,
+  combinePhoneWithCountryCode,
+  getCountryByCode,
+  DEFAULT_ISO_CODE,
+} = require("../../utils/countryCodes");
 
 function formatRowNumbers(arr) {
   if (arr.length === 0) return "";
@@ -43,9 +50,17 @@ module.exports = async function uploadProcessor(event, rows) {
           let extractedEmail = null;
           let extractedPhone = null;
 
+          let phoneIsoCode = null;
+          let phoneLocalNumber = null;
+          let phoneForDuplicateCheck = null;
+
           if (hasCustomFields) {
             const customFields = {};
             let missingField = null;
+
+            const phoneFields = event.formFields.filter((f) =>
+              f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+            );
 
             for (const field of event.formFields) {
               const value = row[field.inputName];
@@ -61,7 +76,47 @@ module.exports = async function uploadProcessor(event, rows) {
               continue;
             }
 
+            for (const phoneField of phoneFields) {
+              const phoneValue = customFields[phoneField.inputName];
+              if (phoneValue) {
+                const isoCodeColumnName = `${phoneField.inputName} isoCode`;
+                let isoCodeFromFile = row[isoCodeColumnName] || row["isoCode"] || null;
+
+                if (isoCodeFromFile && isoCodeFromFile.startsWith("+")) {
+                  const country = getCountryByCode(isoCodeFromFile);
+                  if (country) {
+                    isoCodeFromFile = country.isoCode;
+                  }
+                }
+
+                const normalizedPhone = normalizePhone(phoneValue);
+                let extractedIsoCode = isoCodeFromFile?.toLowerCase() || null;
+
+                if (normalizedPhone.startsWith("+")) {
+                  const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
+                  if (extracted.isoCode) {
+                    phoneLocalNumber = extracted.localNumber;
+                    extractedIsoCode = extracted.isoCode;
+                    phoneForDuplicateCheck = normalizedPhone;
+                  } else {
+                    phoneLocalNumber = normalizedPhone;
+                    extractedIsoCode = extractedIsoCode || DEFAULT_ISO_CODE;
+                    phoneForDuplicateCheck = combinePhoneWithCountryCode(phoneLocalNumber, extractedIsoCode) || normalizedPhone;
+                  }
+                } else {
+                  phoneLocalNumber = normalizedPhone;
+                  extractedIsoCode = extractedIsoCode || DEFAULT_ISO_CODE;
+                  phoneForDuplicateCheck = combinePhoneWithCountryCode(phoneLocalNumber, extractedIsoCode) || normalizedPhone;
+                }
+
+                customFields[phoneField.inputName] = phoneLocalNumber;
+                phoneIsoCode = extractedIsoCode;
+                break;
+              }
+            }
+
             registrationData.customFields = customFields;
+            registrationData.isoCode = phoneIsoCode || null;
 
             const formFields = event.formFields || [];
             const emailField = formFields.find((f) => f.inputType === "email");
@@ -70,25 +125,59 @@ module.exports = async function uploadProcessor(event, rows) {
             } else {
               extractedEmail = pickEmail(customFields);
             }
-            extractedPhone = pickPhone(customFields);
+            extractedPhone = phoneForDuplicateCheck || pickPhone(customFields);
           } else {
             const fullName = row["Full Name"];
             const email = row["Email"];
             const phone = row["Phone"] || null;
             const company = row["Company"] || null;
+            let isoCodeFromFile = row["isoCode"] || row["Phone isoCode"] || null;
+
+            if (isoCodeFromFile && isoCodeFromFile.startsWith("+")) {
+              const country = getCountryByCode(isoCodeFromFile);
+              if (country) {
+                isoCodeFromFile = country.isoCode;
+              }
+            }
+
             if (!fullName || !email) {
               skipped++;
               continue;
             }
 
+            if (phone) {
+              const normalizedPhone = normalizePhone(phone);
+              let extractedIsoCode = isoCodeFromFile?.toLowerCase() || null;
+
+              if (normalizedPhone.startsWith("+")) {
+                const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
+                if (extracted.isoCode) {
+                  phoneLocalNumber = extracted.localNumber;
+                  extractedIsoCode = extracted.isoCode;
+                  phoneForDuplicateCheck = normalizedPhone;
+                } else {
+                  phoneLocalNumber = normalizedPhone;
+                  extractedIsoCode = extractedIsoCode || DEFAULT_ISO_CODE;
+                  phoneForDuplicateCheck = combinePhoneWithCountryCode(phoneLocalNumber, extractedIsoCode) || normalizedPhone;
+                }
+              } else {
+                phoneLocalNumber = normalizedPhone;
+                extractedIsoCode = extractedIsoCode || DEFAULT_ISO_CODE;
+                phoneForDuplicateCheck = combinePhoneWithCountryCode(phoneLocalNumber, extractedIsoCode) || normalizedPhone;
+              }
+
+              phoneIsoCode = extractedIsoCode;
+            }
+
             registrationData.fullName = fullName;
             registrationData.email = email;
-            registrationData.phone = phone;
+            registrationData.phone = phoneLocalNumber || phone;
+            registrationData.isoCode = phoneIsoCode || null;
             registrationData.company = company;
             registrationData.customFields = {};
 
             extractedEmail = email;
-            extractedPhone = phone;
+            extractedPhone = phoneForDuplicateCheck || phone;
           }
 
           const duplicateFilter = { eventId, isDeleted: { $ne: true } };
@@ -105,16 +194,20 @@ module.exports = async function uploadProcessor(event, rows) {
           }
 
           if (extractedPhone) {
+            const phoneForDupCheck = phoneForDuplicateCheck || extractedPhone;
             if (hasCustomFields) {
               const phoneField = event.formFields.find((f) =>
                 f.inputType === "phone" ||
                 f.inputName?.toLowerCase().includes("phone")
               );
               if (phoneField) {
-                or.push({ [`customFields.${phoneField.inputName}`]: extractedPhone });
+
+                or.push({ [`customFields.${phoneField.inputName}`]: phoneLocalNumber || extractedPhone });
+                or.push({ [`customFields.${phoneField.inputName}`]: phoneForDupCheck });
               }
             }
-            or.push({ phone: extractedPhone });
+            or.push({ phone: phoneLocalNumber || extractedPhone });
+            or.push({ phone: phoneForDupCheck });
           }
 
           if (or.length > 0) {
