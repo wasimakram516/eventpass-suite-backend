@@ -856,47 +856,57 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     ? pickCompany(customFields)
     : req.body.company;
 
-  if (!extractedFullName || !extractedEmail || !extractedPhone) {
-    return response(res, 400, "Full name, email, and phone are required");
+  if (!hasCustomFields) {
+    if (!extractedFullName || !extractedEmail) {
+      return response(res, 400, "Full name and email are required");
+    }
   }
 
   // ---------- PHONE NORMALIZATION AND EXTRACTION ----------
   const normalizedPhone = normalizePhone(extractedPhone);
 
   let phoneIsoCode = req.body.isoCode || null;
-  let phoneLocalNumber = normalizedPhone;
-  let phoneForValidation = normalizedPhone;
+  let phoneLocalNumber = null;
+  let phoneForValidation = null;
+  let phoneForDuplicateCheck = null;
 
-  if (!normalizedPhone.startsWith("+") && phoneIsoCode) {
-    phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode);
-  } else if (normalizedPhone.startsWith("+")) {
-    const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
-    if (extracted.isoCode) {
-      phoneLocalNumber = extracted.localNumber;
-      if (!phoneIsoCode) {
-        phoneIsoCode = extracted.isoCode;
+  if (normalizedPhone) {
+    phoneLocalNumber = normalizedPhone;
+    phoneForValidation = normalizedPhone;
+
+    if (!normalizedPhone.startsWith("+") && phoneIsoCode) {
+      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode);
+    } else if (normalizedPhone.startsWith("+")) {
+      const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
+      if (extracted.isoCode) {
+        phoneLocalNumber = extracted.localNumber;
+        if (!phoneIsoCode) {
+          phoneIsoCode = extracted.isoCode;
+        }
+        phoneForValidation = normalizedPhone;
+      } else if (!phoneIsoCode) {
+        phoneIsoCode = DEFAULT_ISO_CODE;
+        phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
       }
-      phoneForValidation = normalizedPhone;
     } else if (!phoneIsoCode) {
       phoneIsoCode = DEFAULT_ISO_CODE;
       phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+    } else {
+      phoneLocalNumber = normalizedPhone;
+      phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
     }
-  } else if (!phoneIsoCode) {
-    phoneIsoCode = DEFAULT_ISO_CODE;
-    phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
-  } else {
-    phoneLocalNumber = normalizedPhone;
-    phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
+
+    const phoneCheck = validatePhoneNumberByCountry(phoneForValidation);
+    if (!phoneCheck.valid) {
+      return response(res, 400, phoneCheck.error);
+    }
+
+    phoneForDuplicateCheck = phoneForValidation;
   }
 
-  const phoneCheck = validatePhoneNumberByCountry(phoneForValidation);
-  if (!phoneCheck.valid) {
-    return response(res, 400, phoneCheck.error);
-  }
-
-  const phoneForDuplicateCheck = phoneForValidation;
+  let phoneField = null;
   if (hasCustomFields) {
-    const phoneField = formFields.find((f) =>
+    phoneField = formFields.find((f) =>
       f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
     );
     if (phoneField && customFields[phoneField.inputName]) {
@@ -909,14 +919,11 @@ exports.createRegistration = asyncHandler(async (req, res) => {
 
   if (hasCustomFields) {
     const emailField = formFields.find((f) => f.inputType === "email");
-    const phoneField = formFields.find((f) =>
-      f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
-    );
 
-    if (emailField && extractedEmail) {
+    if (emailField && extractedEmail && String(extractedEmail).trim()) {
       duplicateOr.push({ [`customFields.${emailField.inputName}`]: extractedEmail });
     }
-    if (phoneField && phoneForDuplicateCheck) {
+    if (phoneField && phoneForDuplicateCheck && String(phoneForDuplicateCheck).trim()) {
       duplicateOr.push({ [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck });
       if (phoneLocalNumber && phoneIsoCode) {
         duplicateOr.push({
@@ -927,16 +934,9 @@ exports.createRegistration = asyncHandler(async (req, res) => {
         });
       }
     }
-    if (extractedEmail) duplicateOr.push({ email: extractedEmail });
-    if (phoneForDuplicateCheck) {
-      duplicateOr.push({ phone: phoneForDuplicateCheck });
-      if (phoneLocalNumber && phoneIsoCode) {
-        duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
-      }
-    }
   } else {
-    if (extractedEmail) duplicateOr.push({ email: extractedEmail });
-    if (phoneForDuplicateCheck) {
+    if (extractedEmail && String(extractedEmail).trim()) duplicateOr.push({ email: extractedEmail });
+    if (phoneForDuplicateCheck && String(phoneForDuplicateCheck).trim()) {
       duplicateOr.push({ phone: phoneForDuplicateCheck });
       if (phoneLocalNumber && phoneIsoCode) {
         duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
@@ -944,14 +944,16 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     }
   }
 
-  const duplicateFilter = {
-    eventId,
-    ...(duplicateOr.length > 0 ? { $or: duplicateOr } : {}),
-  };
+  if (duplicateOr.length > 0) {
+    const duplicateFilter = {
+      eventId,
+      $or: duplicateOr,
+    };
 
-  const dup = await Registration.findOne(duplicateFilter);
-  if (dup) {
-    return response(res, 409, "Already registered with this email or phone");
+    const dup = await Registration.findOne(duplicateFilter);
+    if (dup) {
+      return response(res, 409, "Already registered with this email or phone");
+    }
   }
 
   // ---------- CREATE ----------
@@ -1144,6 +1146,16 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
         reg.isoCode = phoneIsoCode;
       }
     } else {
+      const phoneField = event.formFields.find((f) =>
+        f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+      );
+      if (phoneField && phoneLocalNumber !== null) {
+        const updatedCustomFields = {
+          ...Object.fromEntries(reg.customFields || []),
+          [phoneField.inputName]: phoneLocalNumber,
+        };
+        reg.customFields = updatedCustomFields;
+      }
       if (phoneIsoCode) {
         reg.isoCode = phoneIsoCode;
       }

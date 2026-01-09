@@ -719,7 +719,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     const statusLabels = {
       pending: "Pending",
       confirmed: "Confirmed",
-      not_confirmed: "Not Confirmed",
+      not_confirmed: "Not Attending",
     };
     activeFilters.push(`Status: ${statusLabels[status] || status}`);
   }
@@ -938,44 +938,55 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   const company =
     formFields.length > 0 ? pickCompany(customFields) : req.body.company;
 
-  if (!fullName || !email || !phoneRaw) {
-    return response(res, 400, "Full name, email, and phone are required");
+  if (formFields.length === 0) {
+    if (!fullName || !email) {
+      return response(res, 400, "Full name and email are required");
+    }
   }
 
   const normalizedPhone = normalizePhone(phoneRaw);
 
   let phoneIsoCode = req.body.isoCode || null;
-  let phoneLocalNumber = normalizedPhone;
-  let phoneForValidation = normalizedPhone;
+  let phoneLocalNumber = null;
+  let phoneForValidation = null;
+  let phoneForDuplicateCheck = null;
 
-  if (!normalizedPhone.startsWith("+") && phoneIsoCode) {
-    phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode);
-  } else if (normalizedPhone.startsWith("+")) {
-    const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
-    if (extracted.isoCode) {
-      phoneLocalNumber = extracted.localNumber;
-      if (!phoneIsoCode) {
-        phoneIsoCode = extracted.isoCode;
+  if (normalizedPhone) {
+    phoneLocalNumber = normalizedPhone;
+    phoneForValidation = normalizedPhone;
+
+    if (!normalizedPhone.startsWith("+") && phoneIsoCode) {
+      phoneLocalNumber = normalizedPhone;
+      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode);
+    } else if (normalizedPhone.startsWith("+")) {
+      const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
+      if (extracted.isoCode) {
+        phoneLocalNumber = extracted.localNumber;
+        if (!phoneIsoCode) {
+          phoneIsoCode = extracted.isoCode;
+        }
+        phoneForValidation = normalizedPhone;
+      } else if (!phoneIsoCode) {
+        phoneIsoCode = DEFAULT_ISO_CODE;
+        phoneLocalNumber = normalizedPhone;
+        phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
       }
-      phoneForValidation = normalizedPhone;
     } else if (!phoneIsoCode) {
       phoneIsoCode = DEFAULT_ISO_CODE;
+      phoneLocalNumber = normalizedPhone;
       phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+    } else {
+      phoneLocalNumber = normalizedPhone;
+      phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
     }
-  } else if (!phoneIsoCode) {
-    phoneIsoCode = DEFAULT_ISO_CODE;
-    phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
-  } else {
-    phoneLocalNumber = normalizedPhone;
-    phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
-  }
 
-  const phoneCheck = validatePhoneNumberByCountry(phoneForValidation);
-  if (!phoneCheck.valid) {
-    return response(res, 400, phoneCheck.error);
-  }
+    const phoneCheck = validatePhoneNumberByCountry(phoneForValidation);
+    if (!phoneCheck.valid) {
+      return response(res, 400, phoneCheck.error);
+    }
 
-  const phoneForDuplicateCheck = phoneForValidation;
+    phoneForDuplicateCheck = phoneForValidation;
+  }
 
   if (formFields.length > 0) {
     const phoneField = formFields.find((f) =>
@@ -988,21 +999,46 @@ exports.createRegistration = asyncHandler(async (req, res) => {
 
   // ---------- DUPLICATE CHECK ----------
   const duplicateOr = [];
-  if (email) duplicateOr.push({ email });
-  if (phoneForDuplicateCheck) {
-    duplicateOr.push({ phone: phoneForDuplicateCheck });
-    if (phoneLocalNumber && phoneIsoCode) {
-      duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
+
+  if (formFields.length > 0) {
+    const emailField = formFields.find((f) => f.inputType === "email");
+    const phoneField = formFields.find((f) =>
+      f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+    );
+
+    if (emailField && email && String(email).trim()) {
+      duplicateOr.push({ [`customFields.${emailField.inputName}`]: email });
+    }
+    if (phoneField && phoneForDuplicateCheck && String(phoneForDuplicateCheck).trim()) {
+      duplicateOr.push({ [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck });
+      if (phoneLocalNumber && phoneIsoCode) {
+        duplicateOr.push({
+          $and: [
+            { [`customFields.${phoneField.inputName}`]: phoneLocalNumber },
+            { isoCode: phoneIsoCode },
+          ],
+        });
+      }
+    }
+  } else {
+    if (email) duplicateOr.push({ email });
+    if (phoneForDuplicateCheck) {
+      duplicateOr.push({ phone: phoneForDuplicateCheck });
+      if (phoneLocalNumber && phoneIsoCode) {
+        duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
+      }
     }
   }
 
-  const dup = await Registration.findOne({
-    eventId,
-    ...(duplicateOr.length > 0 ? { $or: duplicateOr } : {}),
-  });
+  if (duplicateOr.length > 0) {
+    const dup = await Registration.findOne({
+      eventId,
+      $or: duplicateOr,
+    });
 
-  if (dup) {
-    return response(res, 409, "Already registered with this email or phone");
+    if (dup) {
+      return response(res, 409, "Already registered with this email or phone");
+    }
   }
 
   // ---------- CREATE ----------
@@ -1079,6 +1115,7 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     let phoneForValidation = normalizedPhone;
 
     if (!normalizedPhone.startsWith("+") && phoneIsoCode) {
+      phoneLocalNumber = normalizedPhone;
       phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode);
     } else if (normalizedPhone.startsWith("+")) {
       const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
@@ -1090,10 +1127,12 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
         phoneForValidation = normalizedPhone;
       } else if (!phoneIsoCode) {
         phoneIsoCode = DEFAULT_ISO_CODE;
+        phoneLocalNumber = normalizedPhone;
         phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
       }
     } else if (!phoneIsoCode) {
       phoneIsoCode = reg.isoCode || DEFAULT_ISO_CODE;
+      phoneLocalNumber = normalizedPhone;
       phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
     } else {
       phoneLocalNumber = normalizedPhone;
@@ -1283,7 +1322,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
 
   if (registration.eventId?.requiresApproval) {
     if (registration.approvalStatus !== "confirmed") {
-      return response(res, 400, "This registration is not confirmed");
+      return response(res, 400, "This registration is not attending");
     }
   }
 
@@ -1493,7 +1532,7 @@ exports.updateAttendanceStatus = asyncHandler(async (req, res) => {
   }
 
   if (!["confirmed", "not_confirmed"].includes(status)) {
-    return response(res, 400, "Status must be 'confirmed' or 'not_confirmed'");
+    return response(res, 400, "Status must be 'confirmed' or 'not attending'");
   }
 
   const registration = await Registration.findOne({ token })
