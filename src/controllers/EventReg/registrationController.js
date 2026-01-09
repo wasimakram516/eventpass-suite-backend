@@ -25,10 +25,14 @@ const {
   emitNewRegistration,
 } = require("../../socket/modules/eventreg/eventRegSocket");
 
+const { normalizePhone } = require("../../utils/whatsappProcessorUtils");
+const { validatePhoneNumberByCountry } = require("../../utils/phoneValidation");
 const {
-  normalizePhone,
-  validatePhoneNumber,
-} = require("../../utils/whatsappProcessorUtils");
+  extractCountryCodeAndIsoCode,
+  combinePhoneWithCountryCode,
+  DEFAULT_ISO_CODE,
+  COUNTRY_CODES,
+} = require("../../utils/countryCodes");
 
 const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder/eventRegEmailTemplateBuilder");
 const sendEmail = require("../../services/emailService");
@@ -152,7 +156,7 @@ async function validateAllRows(event, rows) {
     // ---- Phone normalization + soft validation ----
     if (extractedPhone) {
       const normalized = normalizePhone(extractedPhone);
-      const phoneCheck = validatePhoneNumber(normalized);
+      const phoneCheck = validatePhoneNumberByCountry(normalized);
 
       if (!phoneCheck.valid) {
         invalidPhoneRowNumbers.push(rowNumber);
@@ -291,18 +295,89 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
   const event = await Event.findOne({ slug }).notDeleted();
   if (!event) return response(res, 404, "Event not found");
 
+  const hasCustomFields = event.formFields && event.formFields.length > 0;
+  const formFields = event.formFields || [];
+
   let headers = [];
-  if (event.formFields && event.formFields.length > 0) {
-    headers = event.formFields.map((f) => f.inputName);
+  const phoneFields = [];
+
+  if (hasCustomFields) {
+    formFields.forEach((f) => {
+      headers.push(f.inputName);
+      if (f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")) {
+        phoneFields.push({ name: f.inputName, index: headers.length - 1 });
+      }
+    });
   } else {
     headers = ["Full Name", "Email", "Phone", "Company"];
+    phoneFields.push({ name: "Phone", index: 2 });
   }
   headers.push("Token");
 
-  const ws = XLSX.utils.aoa_to_sheet([headers]);
+  phoneFields.reverse().forEach((phoneField) => {
+    const isoCodeHeader = "isoCode";
+    headers.splice(phoneField.index, 0, isoCodeHeader);
+  });
+
+  const dummyRows = [
+    {
+      fullName: "User 1",
+      email: "user1@gmail.com",
+      phone: "1234567890",
+      phoneIsoCode: "pk",
+      company: "Company 1",
+    },
+    {
+      fullName: "User 2",
+      email: "user2@gmail.com",
+      phone: "12345678",
+      phoneIsoCode: "om",
+      company: "Company 2",
+    },
+    {
+      fullName: "User 3",
+      email: "user3@gmail.com",
+      phone: "1234567890",
+      phoneIsoCode: "ca",
+      company: "Company 3",
+    },
+  ];
+
+  const rows = [headers];
+
+  dummyRows.forEach((dummy) => {
+    const row = [];
+    if (hasCustomFields) {
+      formFields.forEach((f) => {
+        if (f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")) {
+          row.push(dummy.phoneIsoCode);
+          row.push(dummy.phone);
+        } else if (f.inputName?.toLowerCase().includes("name") || f.inputName?.toLowerCase().includes("full")) {
+          row.push(dummy.fullName);
+        } else if (f.inputType === "email" || f.inputName?.toLowerCase().includes("email")) {
+          row.push(dummy.email);
+        } else if (f.inputName?.toLowerCase().includes("company")) {
+          row.push(dummy.company);
+        } else {
+          row.push("");
+        }
+      });
+    } else {
+      row.push(dummy.fullName);
+      row.push(dummy.email);
+      row.push(dummy.phoneIsoCode);
+      row.push(dummy.phone);
+      row.push(dummy.company);
+    }
+    row.push("");
+    rows.push(row);
+  });
+
+  // Create sample Excel file
+  const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Registrations");
-  const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  const sampleBuffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
   res.setHeader(
     "Content-Disposition",
@@ -312,7 +387,43 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
     "Content-Type",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
-  res.send(buffer);
+  res.send(sampleBuffer);
+});
+
+// DOWNLOAD country reference Excel file
+exports.downloadCountryReference = asyncHandler(async (req, res) => {
+  const formatDigits = (digits) => {
+    if (typeof digits === "number") {
+      return digits.toString();
+    }
+    if (typeof digits === "object" && digits.min && digits.max) {
+      return `${digits.min}-${digits.max}`;
+    }
+    return "";
+  };
+
+  const countryHeaders = [["Country Name", "ISO Code", "Country Code", "No. of Digits"]];
+  const countryRows = COUNTRY_CODES.map((cc) => [
+    cc.country,
+    cc.isoCode,
+    cc.code,
+    formatDigits(cc.digits),
+  ]);
+  const countryData = [...countryHeaders, ...countryRows];
+  const countryWs = XLSX.utils.aoa_to_sheet(countryData);
+  const countryWb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(countryWb, countryWs, "Countries");
+  const countryBuffer = XLSX.write(countryWb, { type: "buffer", bookType: "xlsx" });
+
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=country_reference.xlsx`
+  );
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.send(countryBuffer);
 });
 
 // -------------------------------------------
@@ -694,7 +805,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   // ---------- PROCESS CUSTOM FIELDS ----------
   if (hasCustomFields) {
     for (const field of formFields) {
-      const value = req.body[field.inputName];
+      let value = req.body[field.inputName];
 
       if (field.required && (!value || String(value).trim() === "")) {
         return response(res, 400, `Missing required field: ${field.inputName}`);
@@ -749,11 +860,48 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     return response(res, 400, "Full name, email, and phone are required");
   }
 
-  // ---------- PHONE NORMALIZATION ----------
+  // ---------- PHONE NORMALIZATION AND EXTRACTION ----------
   const normalizedPhone = normalizePhone(extractedPhone);
-  const phoneCheck = validatePhoneNumber(normalizedPhone);
+
+  let phoneIsoCode = req.body.isoCode || null;
+  let phoneLocalNumber = normalizedPhone;
+  let phoneForValidation = normalizedPhone;
+
+  if (!normalizedPhone.startsWith("+") && phoneIsoCode) {
+    phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode);
+  } else if (normalizedPhone.startsWith("+")) {
+    const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
+    if (extracted.isoCode) {
+      phoneLocalNumber = extracted.localNumber;
+      if (!phoneIsoCode) {
+        phoneIsoCode = extracted.isoCode;
+      }
+      phoneForValidation = normalizedPhone;
+    } else if (!phoneIsoCode) {
+      phoneIsoCode = DEFAULT_ISO_CODE;
+      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+    }
+  } else if (!phoneIsoCode) {
+    phoneIsoCode = DEFAULT_ISO_CODE;
+    phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+  } else {
+    phoneLocalNumber = normalizedPhone;
+    phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
+  }
+
+  const phoneCheck = validatePhoneNumberByCountry(phoneForValidation);
   if (!phoneCheck.valid) {
     return response(res, 400, phoneCheck.error);
+  }
+
+  const phoneForDuplicateCheck = phoneForValidation;
+  if (hasCustomFields) {
+    const phoneField = formFields.find((f) =>
+      f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+    );
+    if (phoneField && customFields[phoneField.inputName]) {
+      customFields[phoneField.inputName] = phoneLocalNumber;
+    }
   }
 
   // ---------- DUPLICATE CHECK ----------
@@ -768,14 +916,32 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     if (emailField && extractedEmail) {
       duplicateOr.push({ [`customFields.${emailField.inputName}`]: extractedEmail });
     }
-    if (phoneField && normalizedPhone) {
-      duplicateOr.push({ [`customFields.${phoneField.inputName}`]: normalizedPhone });
+    if (phoneField && phoneForDuplicateCheck) {
+      duplicateOr.push({ [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck });
+      if (phoneLocalNumber && phoneIsoCode) {
+        duplicateOr.push({
+          $and: [
+            { [`customFields.${phoneField.inputName}`]: phoneLocalNumber },
+            { isoCode: phoneIsoCode },
+          ],
+        });
+      }
     }
     if (extractedEmail) duplicateOr.push({ email: extractedEmail });
-    if (normalizedPhone) duplicateOr.push({ phone: normalizedPhone });
+    if (phoneForDuplicateCheck) {
+      duplicateOr.push({ phone: phoneForDuplicateCheck });
+      if (phoneLocalNumber && phoneIsoCode) {
+        duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
+      }
+    }
   } else {
     if (extractedEmail) duplicateOr.push({ email: extractedEmail });
-    if (normalizedPhone) duplicateOr.push({ phone: normalizedPhone });
+    if (phoneForDuplicateCheck) {
+      duplicateOr.push({ phone: phoneForDuplicateCheck });
+      if (phoneLocalNumber && phoneIsoCode) {
+        duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
+      }
+    }
   }
 
   const duplicateFilter = {
@@ -795,7 +961,8 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     eventId,
     fullName: hasCustomFields ? null : extractedFullName,
     email: hasCustomFields ? null : extractedEmail,
-    phone: hasCustomFields ? null : normalizedPhone,
+    phone: hasCustomFields ? null : phoneLocalNumber,
+    isoCode: hasCustomFields ? null : phoneIsoCode,
     company: hasCustomFields ? null : extractedCompany,
     customFields,
     approvalStatus,
@@ -876,11 +1043,33 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
 
   // ---------- APPLY UPDATES ----------
   if (hasCustomFields) {
-    reg.customFields = {
+    const phoneField = event.formFields.find((f) =>
+      f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+    );
+
+    const updatedCustomFields = {
       ...Object.fromEntries(reg.customFields || []),
       ...fields,
     };
 
+    if (phoneField && updatedCustomFields[phoneField.inputName]) {
+      const phoneValue = normalizePhone(updatedCustomFields[phoneField.inputName]);
+      if (phoneValue && phoneValue.startsWith("+")) {
+        const extracted = extractCountryCodeAndIsoCode(phoneValue);
+        if (extracted.isoCode) {
+          updatedCustomFields[phoneField.inputName] = extracted.localNumber;
+          reg.isoCode = fields.isoCode || extracted.isoCode;
+        } else {
+          reg.isoCode = fields.isoCode || reg.isoCode || DEFAULT_ISO_CODE;
+        }
+      } else {
+        reg.isoCode = fields.isoCode || reg.isoCode || DEFAULT_ISO_CODE;
+      }
+    } else {
+      reg.isoCode = fields.isoCode || reg.isoCode;
+    }
+
+    reg.customFields = updatedCustomFields;
     reg.fullName = null;
     reg.email = null;
     reg.phone = null;
@@ -906,19 +1095,67 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     : reg.phone;
 
   let normalizedPhone = null;
+  let phoneLocalNumber = null;
+  let phoneIsoCode = null;
+  let phoneForDuplicateCheck = null;
+
   if (extractedPhone) {
     normalizedPhone = normalizePhone(extractedPhone);
-    const phoneCheck = validatePhoneNumber(normalizedPhone);
+
+    phoneIsoCode = fields.isoCode || reg.isoCode || null;
+    let phoneForValidation = normalizedPhone;
+
+    if (!normalizedPhone.startsWith("+") && phoneIsoCode) {
+      phoneLocalNumber = normalizedPhone;
+      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode);
+    } else if (normalizedPhone.startsWith("+")) {
+      const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
+      if (extracted.isoCode) {
+        phoneLocalNumber = extracted.localNumber;
+        if (!phoneIsoCode) {
+          phoneIsoCode = extracted.isoCode;
+        }
+        phoneForValidation = normalizedPhone;
+      } else if (!phoneIsoCode) {
+        phoneIsoCode = DEFAULT_ISO_CODE;
+        phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+      }
+    } else if (!phoneIsoCode) {
+      phoneIsoCode = reg.isoCode || DEFAULT_ISO_CODE;
+      phoneLocalNumber = normalizedPhone;
+      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+    } else {
+      phoneLocalNumber = normalizedPhone;
+      phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
+    }
+
+    const phoneCheck = validatePhoneNumberByCountry(phoneForValidation);
     if (!phoneCheck.valid) {
       return response(res, 400, phoneCheck.error);
     }
+
+    phoneForDuplicateCheck = phoneForValidation;
+
     if (!hasCustomFields) {
-      reg.phone = normalizedPhone;
+      if (phoneLocalNumber !== null) {
+        reg.phone = phoneLocalNumber;
+      }
+      if (phoneIsoCode) {
+        reg.isoCode = phoneIsoCode;
+      }
+    } else {
+      if (phoneIsoCode) {
+        reg.isoCode = phoneIsoCode;
+      }
+    }
+  } else {
+    if (!hasCustomFields && fields.isoCode) {
+      reg.isoCode = fields.isoCode;
     }
   }
 
   // ---------- DUPLICATE CHECK ----------
-  if (extractedEmail || normalizedPhone) {
+  if (extractedEmail || phoneForDuplicateCheck) {
     const duplicateOr = [];
 
     if (hasCustomFields) {
@@ -930,14 +1167,32 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
       if (emailField && extractedEmail) {
         duplicateOr.push({ [`customFields.${emailField.inputName}`]: extractedEmail });
       }
-      if (phoneField && normalizedPhone) {
-        duplicateOr.push({ [`customFields.${phoneField.inputName}`]: normalizedPhone });
+      if (phoneField && phoneForDuplicateCheck) {
+        duplicateOr.push({ [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck });
+        if (phoneLocalNumber && phoneIsoCode) {
+          duplicateOr.push({
+            $and: [
+              { [`customFields.${phoneField.inputName}`]: phoneLocalNumber },
+              { isoCode: phoneIsoCode },
+            ],
+          });
+        }
       }
       if (extractedEmail) duplicateOr.push({ email: extractedEmail });
-      if (normalizedPhone) duplicateOr.push({ phone: normalizedPhone });
+      if (phoneForDuplicateCheck) {
+        duplicateOr.push({ phone: phoneForDuplicateCheck });
+        if (phoneLocalNumber && phoneIsoCode) {
+          duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
+        }
+      }
     } else {
       if (extractedEmail) duplicateOr.push({ email: extractedEmail });
-      if (normalizedPhone) duplicateOr.push({ phone: normalizedPhone });
+      if (phoneForDuplicateCheck) {
+        duplicateOr.push({ phone: phoneForDuplicateCheck });
+        if (phoneLocalNumber && phoneIsoCode) {
+          duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
+        }
+      }
     }
 
     const duplicateFilter = {
@@ -1134,7 +1389,7 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
   }
 
   const regs = await Registration.find(filterQuery)
-    .select("fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus")
+    .select("fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus isoCode")
     .lean();
 
   response(res, 200, "Bulk notification job started", {
@@ -1199,6 +1454,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
         fullName: reg.fullName,
         email: reg.email,
         phone: reg.phone,
+        isoCode: reg.isoCode,
         company: reg.company,
 
         customFields: reg.customFields || {},
@@ -1321,6 +1577,7 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
         fullName: reg.fullName,
         email: reg.email,
         phone: reg.phone,
+        isoCode: reg.isoCode,
         company: reg.company,
         customFields: reg.customFields || {},
         walkIns: walkIns.map((w) => ({
