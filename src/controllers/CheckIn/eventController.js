@@ -3,6 +3,7 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const Event = require("../../models/Event");
 const Business = require("../../models/Business");
 const Registration = require("../../models/Registration");
+const WalkIn = require("../../models/WalkIn");
 const env = require("../../config/env");
 const { deleteFromS3 } = require("../../utils/s3Storage");
 const { generateUniqueSlug } = require("../../utils/slugGenerator");
@@ -575,35 +576,53 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid Event ID");
   }
 
-  const event = await Event.findById(id);
-  if (!event || event.eventType !== "closed") {
-    return response(res, 404, "Closed event not found");
+  const event = await Event.findOneDeleted({
+    _id: id,
+    eventType: "closed",
+  });
+  if (!event) {
+    return response(res, 404, "Closed event not found in trash");
   }
 
-  // Check if registrations exist
   const regs = await Registration.find({ eventId: event._id });
-  if (regs.length > 0) {
-    return response(
-      res,
-      400,
-      "Cannot delete event with existing registrations"
-    );
+  const regIds = regs.map((r) => r._id);
+
+  if (regIds.length > 0) {
+    await WalkIn.deleteMany({ registrationId: { $in: regIds } });
+    await Registration.deleteMany({ eventId: event._id });
   }
 
-  if (event.logoUrl) await deleteImage(event.logoUrl);
-  if (event.brandingMediaUrl) await deleteImage(event.brandingMediaUrl);
-  if (event.agendaUrl) await deleteImage(event.agendaUrl);
+  if (event.logoUrl) await deleteFromS3(event.logoUrl);
+  if (event.brandingMediaUrl) await deleteFromS3(event.brandingMediaUrl);
+  if (event.agendaUrl) await deleteFromS3(event.agendaUrl);
+  if (event.background?.en?.key || event.background?.en?.url) {
+    try {
+      await deleteFromS3(event.background.en.key || event.background.en.url);
+    } catch { }
+  }
+  if (event.background?.ar?.key || event.background?.ar?.url) {
+    try {
+      await deleteFromS3(event.background.ar.key || event.background.ar.url);
+    } catch { }
+  }
+  if (Array.isArray(event.brandingMedia) && event.brandingMedia.length) {
+    for (const m of event.brandingMedia) {
+      if (m?.logoUrl) {
+        try {
+          await deleteFromS3(m.logoUrl);
+        } catch { }
+      }
+    }
+  }
 
   const businessId = event.businessId;
-
   await event.deleteOne();
 
-  // Fire background recompute
   recomputeAndEmit(businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "Closed event permanently deleted");
+  return response(res, 200, "Closed event and its registrations permanently deleted");
 });
 
 // RESTORE ALL
@@ -630,24 +649,25 @@ exports.restoreAllEvents = asyncHandler(async (req, res) => {
   return response(res, 200, `Restored ${events.length} events`);
 });
 
-// PERMANENT DELETE ALL closed events (only those without registrations)
+// PERMANENT DELETE ALL closed events (cascade delete registrations + walk-ins)
 exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
   const events = await Event.findDeleted({ eventType: "closed" });
   if (!events.length) {
     return response(res, 404, "No closed events in trash");
   }
 
-  const deletableEventIds = [];
-  for (const ev of events) {
-    const regCount = await Registration.countDocuments({ eventId: ev._id });
-    if (regCount === 0) {
-      deletableEventIds.push(ev._id);
-    }
+  const eventIds = events.map((ev) => ev._id);
+
+  const regs = await Registration.find({ eventId: { $in: eventIds } });
+  const regIds = regs.map((r) => r._id);
+
+  if (regIds.length > 0) {
+    await WalkIn.deleteMany({ registrationId: { $in: regIds } });
+    await Registration.deleteMany({ eventId: { $in: eventIds } });
   }
 
-  const result = await Event.deleteMany({ _id: { $in: deletableEventIds } });
+  const result = await Event.deleteMany({ _id: { $in: eventIds } });
 
-  // Fire background recompute
   recomputeAndEmit(null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
@@ -655,6 +675,6 @@ exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
   return response(
     res,
     200,
-    `Permanently deleted ${result.deletedCount} closed events (without registrations)`
+    `Permanently deleted ${result.deletedCount} closed events and their registrations`
   );
 });
