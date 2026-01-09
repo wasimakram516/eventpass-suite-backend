@@ -1,5 +1,6 @@
 const Registration = require("../models/Registration");
 const { pickPhone, pickFullName } = require("./customFieldUtils");
+const { combinePhoneWithCountryCode } = require("./countryCodes");
 
 /* ---------- Custom fields normalization ---------- */
 const normalizeCustomFields = (customFields) => {
@@ -39,14 +40,38 @@ const validatePhoneNumber = (phone) => {
 };
 
 /* ---------- WhatsApp formatting ---------- */
-const formatPhoneForWhatsApp = (phone) => {
-    const validation = validatePhoneNumber(phone);
-    if (!validation.valid) {
-        return { formatted: null, error: validation.error };
+const formatPhoneForWhatsApp = (phone, isoCode = null) => {
+    if (!phone) {
+        return { formatted: null, error: "Phone number is required" };
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+        return { formatted: null, error: "Phone number is required" };
+    }
+
+    let phoneWithCountryCode = null;
+
+    if (normalizedPhone.startsWith("+")) {
+        phoneWithCountryCode = normalizedPhone;
+    } else {
+        if (!isoCode) {
+            return { formatted: null, error: "ISO code is required for phone number without country code" };
+        }
+        phoneWithCountryCode = combinePhoneWithCountryCode(normalizedPhone, isoCode);
+        if (!phoneWithCountryCode) {
+            return { formatted: null, error: "Failed to combine phone number with country code" };
+        }
+    }
+
+    // Validate the final phone number
+    const digits = phoneWithCountryCode.replace(/\D/g, "");
+    if (digits.length < 8 || digits.length > 15) {
+        return { formatted: null, error: "Invalid phone number length" };
     }
 
     return {
-        formatted: `whatsapp:${validation.normalized}`,
+        formatted: `whatsapp:${phoneWithCountryCode}`,
         error: null,
     };
 };
@@ -54,7 +79,7 @@ const formatPhoneForWhatsApp = (phone) => {
 /* ---------- Registration resolver ---------- */
 const resolveRecipientContext = async (recipientId, fallback = {}) => {
     const reg = await Registration.findById(recipientId)
-        .select("customFields fullName phone email company token eventId")
+        .select("customFields fullName phone email company token eventId isoCode")
         .lean();
 
     const cf = normalizeCustomFields(reg?.customFields);
@@ -65,13 +90,18 @@ const resolveRecipientContext = async (recipientId, fallback = {}) => {
         pickPhone(cf) ||
         null;
 
+    const isoCode =
+        fallback.isoCode ||
+        reg?.isoCode ||
+        null;
+
     const fullName =
         fallback.fullName ||
         reg?.fullName ||
         pickFullName(cf) ||
         null;
 
-    return { reg, cf, phone, fullName };
+    return { reg, cf, phone, isoCode, fullName };
 };
 
 module.exports = {
