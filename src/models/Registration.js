@@ -16,6 +16,7 @@ const RegistrationSchema = new mongoose.Schema(
     fullName: { type: String, default: null }, // Fallback for public events if custom fields are not provided
     email: { type: String, default: null },
     phone: { type: String, default: null },
+    isoCode: { type: String, default: "om" }, // ISO country code (e.g., "om", "pk") for phone number
     company: { type: String, default: null },
 
     customFields: {
