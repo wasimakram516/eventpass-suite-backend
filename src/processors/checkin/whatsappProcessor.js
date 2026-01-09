@@ -155,13 +155,13 @@ module.exports = async function whatsappProcessor({
     processed++;
 
     try {
-      const { reg, phone, fullName } = await resolveRecipientContext(r._id, r);
+      const { reg, phone, isoCode, fullName } = await resolveRecipientContext(r._id, r);
       if (!reg || !phone) {
         failed++;
         continue;
       }
 
-      const phoneResult = formatPhoneForWhatsApp(phone);
+      const phoneResult = formatPhoneForWhatsApp(phone, isoCode);
       if (!phoneResult.formatted) {
         failed++;
         continue;
