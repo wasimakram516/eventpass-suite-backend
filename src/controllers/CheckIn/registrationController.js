@@ -719,7 +719,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     const statusLabels = {
       pending: "Pending",
       confirmed: "Confirmed",
-      not_confirmed: "Not Attending",
+      not_attending: "Not Attending",
     };
     activeFilters.push(`Status: ${statusLabels[status] || status}`);
   }
@@ -1213,7 +1213,7 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  if (!["confirmed", "pending", "not_confirmed"].includes(status)) {
+  if (!["confirmed", "pending", "not_attending"].includes(status)) {
     return response(res, 400, "Invalid status");
   }
 
@@ -1531,7 +1531,7 @@ exports.updateAttendanceStatus = asyncHandler(async (req, res) => {
     return response(res, 400, "Token is required");
   }
 
-  if (!["confirmed", "not_confirmed"].includes(status)) {
+  if (!["confirmed", "not_attending"].includes(status)) {
     return response(res, 400, "Status must be 'confirmed' or 'not attending'");
   }
 
@@ -1613,12 +1613,12 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
     if (statusFilter === "confirmed") {
       filterQuery.approvalStatus = "confirmed";
     } else if (statusFilter === "notConfirmed") {
-      filterQuery.approvalStatus = "not_confirmed";
+      filterQuery.approvalStatus = "not_attending";
     } else if (statusFilter === "pending") {
       filterQuery.$and = [
         { approvalStatus: { $exists: true } },
         { approvalStatus: { $ne: "confirmed" } },
-        { approvalStatus: { $ne: "not_confirmed" } },
+        { approvalStatus: { $ne: "not_attending" } },
         { approvalStatus: "pending" },
       ];
     }
@@ -1698,12 +1698,12 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
     if (statusFilter === "confirmed") {
       filterQuery.approvalStatus = "confirmed";
     } else if (statusFilter === "notConfirmed") {
-      filterQuery.approvalStatus = "not_confirmed";
+      filterQuery.approvalStatus = "not_attending";
     } else if (statusFilter === "pending") {
       filterQuery.$and = [
         { approvalStatus: { $exists: true } },
         { approvalStatus: { $ne: "confirmed" } },
-        { approvalStatus: { $ne: "not_confirmed" } },
+        { approvalStatus: { $ne: "not_attending" } },
         { approvalStatus: "pending" },
       ];
     }
