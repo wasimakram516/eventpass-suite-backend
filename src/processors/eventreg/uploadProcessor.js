@@ -1,6 +1,13 @@
 const Registration = require("../../models/Registration");
 const Event = require("../../models/Event");
 const { emitUploadProgress } = require("../../socket/modules/eventreg/eventRegSocket");
+const { normalizePhone } = require("../../utils/whatsappProcessorUtils");
+const {
+  extractCountryCodeAndIsoCode,
+  combinePhoneWithCountryCode,
+  getCountryByCode,
+  DEFAULT_ISO_CODE,
+} = require("../../utils/countryCodes");
 
 module.exports = async function uploadProcessor(event, rows) {
   const eventId = event._id.toString();
@@ -25,9 +32,16 @@ module.exports = async function uploadProcessor(event, rows) {
             token: row["Token"] || undefined,
           };
 
+          let phoneIsoCode = null;
+          let phoneLocalNumber = null;
+
           if (hasCustomFields) {
             const customFields = {};
             let missingField = null;
+
+            const phoneFields = event.formFields.filter((f) =>
+              f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+            );
 
             for (const field of event.formFields) {
               const value = row[field.inputName];
@@ -43,21 +57,89 @@ module.exports = async function uploadProcessor(event, rows) {
               continue;
             }
 
+            for (const phoneField of phoneFields) {
+              const phoneValue = customFields[phoneField.inputName];
+              if (phoneValue) {
+                const isoCodeColumnName = `${phoneField.inputName} isoCode`;
+                let isoCodeFromFile = row[isoCodeColumnName] || row["isoCode"] || null;
+
+                if (isoCodeFromFile && isoCodeFromFile.startsWith("+")) {
+                  const country = getCountryByCode(isoCodeFromFile);
+                  if (country) {
+                    isoCodeFromFile = country.isoCode;
+                  }
+                }
+
+                const normalizedPhone = normalizePhone(phoneValue);
+                let extractedIsoCode = isoCodeFromFile?.toLowerCase() || null;
+
+                if (normalizedPhone.startsWith("+")) {
+                  const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
+                  if (extracted.isoCode) {
+                    phoneLocalNumber = extracted.localNumber;
+                    extractedIsoCode = extracted.isoCode;
+                  } else {
+                    phoneLocalNumber = normalizedPhone;
+                    extractedIsoCode = extractedIsoCode || DEFAULT_ISO_CODE;
+                  }
+                } else {
+                  phoneLocalNumber = normalizedPhone;
+                  extractedIsoCode = extractedIsoCode || DEFAULT_ISO_CODE;
+                }
+
+                customFields[phoneField.inputName] = phoneLocalNumber;
+                phoneIsoCode = extractedIsoCode;
+                break;
+              }
+            }
+
             registrationData.customFields = customFields;
+            registrationData.isoCode = phoneIsoCode || null;
           } else {
             // Case: No custom fields - use classic fields
             const fullName = row["Full Name"];
             const email = row["Email"];
             const phone = row["Phone"] || null;
             const company = row["Company"] || null;
+            let isoCodeFromFile = row["isoCode"] || row["Phone isoCode"] || null;
+
+            if (isoCodeFromFile && isoCodeFromFile.startsWith("+")) {
+              const country = getCountryByCode(isoCodeFromFile);
+              if (country) {
+                isoCodeFromFile = country.isoCode;
+              }
+            }
+
             if (!fullName || !email) {
               skipped++;
               continue;
             }
 
+            if (phone) {
+              const normalizedPhone = normalizePhone(phone);
+              let extractedIsoCode = isoCodeFromFile?.toLowerCase() || null;
+
+              if (normalizedPhone.startsWith("+")) {
+                const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
+                if (extracted.isoCode) {
+                  phoneLocalNumber = extracted.localNumber;
+                  extractedIsoCode = extracted.isoCode;
+                } else {
+                  phoneLocalNumber = normalizedPhone;
+                  extractedIsoCode = extractedIsoCode || DEFAULT_ISO_CODE;
+                }
+              } else {
+                phoneLocalNumber = normalizedPhone;
+                extractedIsoCode = extractedIsoCode || DEFAULT_ISO_CODE;
+              }
+
+              phoneIsoCode = extractedIsoCode;
+            }
+
             registrationData.fullName = fullName;
             registrationData.email = email;
-            registrationData.phone = phone;
+            registrationData.phone = phoneLocalNumber || phone;
+            registrationData.isoCode = phoneIsoCode || null;
             registrationData.company = company;
             registrationData.customFields = {};
           }
