@@ -625,6 +625,23 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
   return response(res, 200, "Closed event and its registrations permanently deleted");
 });
 
+// Restore event
+exports.restoreEvent = asyncHandler(async (req, res) => {
+  const event = await Event.findOneDeleted({
+    _id: req.params.id,
+    eventType: "public",
+  });
+  if (!event) return response(res, 404, "Event not found in trash");
+
+  await event.restore();
+
+  // Fire background recompute
+  recomputeAndEmit(event.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+  return response(res, 200, "Event restored successfully", event);
+});
+
 // RESTORE ALL
 exports.restoreAllEvents = asyncHandler(async (req, res) => {
   const events = await Event.findDeleted({ eventType: "closed" });
