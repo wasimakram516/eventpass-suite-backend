@@ -629,7 +629,7 @@ exports.permanentDeleteEvent = asyncHandler(async (req, res) => {
 exports.restoreEvent = asyncHandler(async (req, res) => {
   const event = await Event.findOneDeleted({
     _id: req.params.id,
-    eventType: "public",
+    eventType: "closed",
   });
   if (!event) return response(res, 404, "Event not found in trash");
 
