@@ -81,6 +81,9 @@ exports.createEvent = asyncHandler(async (req, res) => {
     slug,
     startDate,
     endDate,
+    startTime,
+    endTime,
+    timezone,
     venue,
     description,
     businessSlug,
@@ -203,6 +206,9 @@ exports.createEvent = asyncHandler(async (req, res) => {
     slug: uniqueSlug,
     startDate: parsedStartDate,
     endDate: parsedEndDate,
+    startTime: startTime || null,
+    endTime: endTime || null,
+    timezone: timezone || "Asia/Muscat",
     venue,
     description,
     logoUrl: logoUrl || null,
@@ -241,6 +247,9 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     slug,
     startDate,
     endDate,
+    startTime,
+    endTime,
+    timezone,
     venue,
     description,
     capacity,
@@ -528,6 +537,16 @@ exports.updateEvent = asyncHandler(async (req, res) => {
       }
     }
     updates.organizerPhone = organizerPhone || "";
+  }
+
+  if (startTime !== undefined) {
+    updates.startTime = startTime || null;
+  }
+  if (endTime !== undefined) {
+    updates.endTime = endTime || null;
+  }
+  if (timezone !== undefined) {
+    updates.timezone = timezone || "Asia/Muscat";
   }
 
   const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
