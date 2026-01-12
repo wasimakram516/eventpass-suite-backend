@@ -62,6 +62,9 @@ const EventSchema = new mongoose.Schema({
     required: true,
     default: "public",
   },
+  startTime: { type: String },
+  endTime: { type: String },
+  timezone: { type: String, default: "Asia/Muscat" },
 
   /** ===== Custom Form Fields ===== */
   formFields: [
