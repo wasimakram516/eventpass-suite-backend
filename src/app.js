@@ -21,7 +21,7 @@ const allowedOrigins = [
   "https://eventpass.whitewall.solutions",
   "https://uat.eventpass.whitewall.solutions",
 ];
-
+ 
 app.use(
   cors({
     origin: (origin, callback) => {
