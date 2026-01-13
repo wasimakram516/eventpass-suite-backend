@@ -18,15 +18,15 @@ jobs:
 
       - name: Prepare production directory
         run: |
-          sudo mkdir -p /var/www/eventpass-backend
-          sudo chown -R ubuntu:ubuntu /var/www/eventpass-backend
-          cd /var/www/eventpass-backend
+          sudo mkdir -p /var/www/eventpass/backend
+          sudo chown -R ubuntu:ubuntu /var/www/eventpass
+          cd /var/www/eventpass/backend
           rm -rf * .[^.]* || true
           cp -r $GITHUB_WORKSPACE/* .
 
       - name: Create production .env
         run: |
-          cd /var/www/eventpass-backend
+          cd /var/www/eventpass/backend
           sudo rm -f .env
           sudo touch .env
           sudo tee .env > /dev/null <<EOF
@@ -70,9 +70,9 @@ jobs:
 
       - name: Install dependencies & restart PM2 (prod)
         run: |
-          cd /var/www/eventpass-backend
+          cd /var/www/eventpass/backend
           npm install --omit=dev
-          pm2 restart eventpass-backend || pm2 start npm --name "eventpass-backend" -- run start
+          pm2 restart eventpass-backend --update-env || pm2 start npm --name "eventpass-backend" -- run start
           pm2 save
 
 
@@ -87,15 +87,15 @@ jobs:
 
       - name: Prepare UAT directory
         run: |
-          sudo mkdir -p /var/www/eventpass-backend-uat
-          sudo chown -R ubuntu:ubuntu /var/www/eventpass-backend-uat
-          cd /var/www/eventpass-backend-uat
+          sudo mkdir -p /var/www/eventpass-uat/backend
+          sudo chown -R ubuntu:ubuntu /var/www/eventpass
+          cd /var/www/eventpass-uat/backend
           rm -rf * .[^.]* || true
           cp -r $GITHUB_WORKSPACE/* .
 
       - name: Create UAT .env
         run: |
-          cd /var/www/eventpass-backend-uat
+          cd /var/www/eventpass-uat/backend
           sudo rm -f .env
           sudo touch .env
           sudo tee .env > /dev/null <<EOF
@@ -139,7 +139,7 @@ jobs:
 
       - name: Install dependencies & restart PM2 (uat)
         run: |
-          cd /var/www/eventpass-backend-uat
+          cd /var/www/eventpass-uat/backend
           npm install --omit=dev
-          pm2 restart eventpass-backend-uat || pm2 start npm --name "eventpass-backend-uat" -- run start
+          pm2 restart eventpass-backend-uat --update-env || pm2 start npm --name "eventpass-backend-uat" -- run start
           pm2 save
