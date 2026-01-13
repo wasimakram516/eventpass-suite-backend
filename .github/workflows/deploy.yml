@@ -21,7 +21,7 @@ jobs:
           sudo mkdir -p /var/www/eventpass/backend
           sudo chown -R ubuntu:ubuntu /var/www/eventpass
           cd /var/www/eventpass/backend
-          rm -rf * .[^.]* || true
+          rm -rf node_modules dist build .next || true
           cp -r $GITHUB_WORKSPACE/* .
 
       - name: Create production .env
@@ -72,7 +72,7 @@ jobs:
         run: |
           cd /var/www/eventpass/backend
           npm ci --omit=dev
-          pm2 restart eventpass-backend || pm2 start npm --name "eventpass-backend" -- run start
+          pm2 restart eventpass-backend --update-env || pm2 start npm --name "eventpass-backend" -- run start
           pm2 save
 
 
@@ -90,7 +90,7 @@ jobs:
           sudo mkdir -p /var/www/eventpass-uat/backend
           sudo chown -R ubuntu:ubuntu /var/www/eventpass-uat
           cd /var/www/eventpass-uat/backend
-          rm -rf * .[^.]* || true
+          rm -rf node_modules dist build .next || true
           cp -r $GITHUB_WORKSPACE/* .
 
       - name: Create UAT .env
@@ -141,5 +141,5 @@ jobs:
         run: |
           cd /var/www/eventpass-uat/backend
           npm ci --omit=dev
-          pm2 restart eventpass-backend-uat || pm2 start npm --name "eventpass-backend-uat" -- run start
+          pm2 restart eventpass-backend-uat --update-env || pm2 start npm --name "eventpass-backend-uat" -- run start
           pm2 save
