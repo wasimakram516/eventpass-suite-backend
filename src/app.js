@@ -19,6 +19,7 @@ const allowedOrigins = [
   "https://www.whitewall.solutions",
   "https://whitewall.solutions", 
   "https://eventpass.whitewall.solutions",
+  "https://uat.eventpass.whitewall.solutions",
 ];
 
 app.use(

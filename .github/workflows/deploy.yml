@@ -1,19 +1,22 @@
-name: Deploy EventPass Backend (EC2 Runner)
+name: Deploy EventPass Backend
 
 on:
   push:
     branches:
       - main
+      - uat
 
 jobs:
-  deploy:
-    runs-on: [self-hosted, backend]
+  deploy-prod:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, backend, production]
+    environment: Production
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare deployment directory
+      - name: Prepare production directory
         run: |
           sudo mkdir -p /var/www/eventpass-backend
           sudo chown -R ubuntu:ubuntu /var/www/eventpass-backend
@@ -21,51 +24,122 @@ jobs:
           rm -rf * .[^.]* || true
           cp -r $GITHUB_WORKSPACE/* .
 
-      - name: Create .env file
+      - name: Create production .env
         run: |
           cd /var/www/eventpass-backend
           sudo rm -f .env
           sudo touch .env
-          echo "MONGO_URI='${{ secrets.MONGO_URI }}'" | sudo tee -a .env
-          echo "EMAIL_HOST='${{ secrets.EMAIL_HOST }}'" | sudo tee -a .env
-          echo "EMAIL_PORT='${{ secrets.EMAIL_PORT }}'" | sudo tee -a .env
-          echo "EMAIL_USER='${{ secrets.EMAIL_USER }}'" | sudo tee -a .env
-          echo "EMAIL_PASS='${{ secrets.EMAIL_PASS }}'" | sudo tee -a .env
-          echo "EMAIL_FROM='${{ secrets.EMAIL_FROM }}'" | sudo tee -a .env
-          echo "ADMIN_EMAIL='${{ secrets.ADMIN_EMAIL }}'" | sudo tee -a .env
-          echo "ADMIN_PASSWORD='${{ secrets.ADMIN_PASSWORD }}'" | sudo tee -a .env
-          echo "MASTER_KEY='${{ secrets.MASTER_KEY }}'" | sudo tee -a .env
-          echo "JWT_SECRET='${{ secrets.JWT_SECRET }}'" | sudo tee -a .env
-          echo "JWT_ACCESS_EXPIRY='${{ secrets.JWT_ACCESS_EXPIRY }}'" | sudo tee -a .env
-          echo "JWT_REFRESH_EXPIRY='${{ secrets.JWT_REFRESH_EXPIRY }}'" | sudo tee -a .env
-          echo "CLOUDINARY_CLOUD_NAME='${{ secrets.CLOUDINARY_CLOUD_NAME }}'" | sudo tee -a .env
-          echo "CLOUDINARY_API_KEY='${{ secrets.CLOUDINARY_API_KEY }}'" | sudo tee -a .env
-          echo "CLOUDINARY_API_SECRET='${{ secrets.CLOUDINARY_API_SECRET }}'" | sudo tee -a .env
-          echo "CLOUDINARY_FOLDER='${{ secrets.CLOUDINARY_FOLDER }}'" | sudo tee -a .env
-          echo "AWS_REGION='${{ secrets.AWS_REGION }}'" | sudo tee -a .env
-          echo "AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}'" | sudo tee -a .env
-          echo "AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}'" | sudo tee -a .env
-          echo "S3_BUCKET='${{ secrets.S3_BUCKET }}'" | sudo tee -a .env
-          echo "CLOUDFRONT_URL='${{ secrets.CLOUDFRONT_URL }}'" | sudo tee -a .env
-          echo "GOOGLE_API_URL='${{ secrets.GOOGLE_API_URL }}'" | sudo tee -a .env
-          echo "GOOGLE_TRANSLATE_API_KEY='${{ secrets.GOOGLE_TRANSLATE_API_KEY }}'" | sudo tee -a .env
-          echo "FRONTEND_BASE_URL='${{ secrets.FRONTEND_BASE_URL }}'" | sudo tee -a .env
-          echo "SURVEYGURU_PUBLIC_PATH='${{ secrets.SURVEYGURU_PUBLIC_PATH }}'" | sudo tee -a .env
-          echo "WHATSAPP_BASE_URL='${{ secrets.WHATSAPP_BASE_URL }}'" | sudo tee -a .env
-          echo "WHATSAPP_ACCOUNT_SSID='${{ secrets.WHATSAPP_ACCOUNT_SSID }}'" | sudo tee -a .env
-          echo "WHATSAPP_USERNAME='${{ secrets.WHATSAPP_USERNAME }}'" | sudo tee -a .env
-          echo "WHATSAPP_PASSWORD='${{ secrets.WHATSAPP_PASSWORD }}'" | sudo tee -a .env
-          echo "WHATSAPP_FROM='${{ secrets.WHATSAPP_FROM }}'" | sudo tee -a .env
-          echo "CHECKIN_WHATSAPP_SSID='${{ secrets.CHECKIN_WHATSAPP_SSID }}'" | sudo tee -a .env
-          echo "EVENTREG_WHATSAPP_SSID='${{ secrets.EVENTREG_WHATSAPP_SSID }}'" | sudo tee -a .env
-          echo "BACKEND_BASE_URL='${{ secrets.BACKEND_BASE_URL }}'" | sudo tee -a .env
-          echo "NODE_ENV='production'" | sudo tee -a .env
-          echo "PORT='8080'" | sudo tee -a .env
-          echo ".env file created successfully"
+          sudo tee .env > /dev/null <<EOF
+          MONGO_URI=${{ secrets.MONGO_URI }}
+          EMAIL_HOST=${{ secrets.EMAIL_HOST }}
+          EMAIL_PORT=${{ secrets.EMAIL_PORT }}
+          EMAIL_USER=${{ secrets.EMAIL_USER }}
+          EMAIL_PASS=${{ secrets.EMAIL_PASS }}
+          EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+          MASTER_KEY=${{ secrets.MASTER_KEY }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_ACCESS_EXPIRY=${{ secrets.JWT_ACCESS_EXPIRY }}
+          JWT_REFRESH_EXPIRY=${{ secrets.JWT_REFRESH_EXPIRY }}
+          CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}
+          CLOUDINARY_FOLDER=${{ secrets.CLOUDINARY_FOLDER }}
+          AWS_REGION=${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          S3_BUCKET=${{ secrets.S3_BUCKET }}
+          CLOUDFRONT_URL=${{ secrets.CLOUDFRONT_URL }}
+          GOOGLE_API_URL=${{ secrets.GOOGLE_API_URL }}
+          GOOGLE_TRANSLATE_API_KEY=${{ secrets.GOOGLE_TRANSLATE_API_KEY }}
+          FRONTEND_BASE_URL=${{ secrets.FRONTEND_BASE_URL }}
+          SURVEYGURU_PUBLIC_PATH=${{ secrets.SURVEYGURU_PUBLIC_PATH }}
+          WHATSAPP_BASE_URL=${{ secrets.WHATSAPP_BASE_URL }}
+          WHATSAPP_ACCOUNT_SSID=${{ secrets.WHATSAPP_ACCOUNT_SSID }}
+          WHATSAPP_USERNAME=${{ secrets.WHATSAPP_USERNAME }}
+          WHATSAPP_PASSWORD=${{ secrets.WHATSAPP_PASSWORD }}
+          WHATSAPP_FROM=${{ secrets.WHATSAPP_FROM }}
+          CHECKIN_WHATSAPP_SSID=${{ secrets.CHECKIN_WHATSAPP_SSID }}
+          CHECKIN_WHATSAPP_REMIMDER_SSID=${{ secrets.CHECKIN_WHATSAPP_REMIMDER_SSID }}
+          EVENTREG_WHATSAPP_SSID=${{ secrets.EVENTREG_WHATSAPP_SSID }}
+          BACKEND_BASE_URL=${{ secrets.BACKEND_BASE_URL }}
+          NODE_ENV=production
+          PORT=${{ secrets.PORT }}
+          EOF
 
-      - name: Install and restart PM2 app
+      - name: Install dependencies & restart PM2 (prod)
         run: |
           cd /var/www/eventpass-backend
           npm install --omit=dev
           pm2 restart eventpass-backend || pm2 start npm --name "eventpass-backend" -- run start
+          pm2 save
+
+
+  deploy-uat:
+    if: github.ref == 'refs/heads/uat'
+    runs-on: [self-hosted, backend, uat]
+    environment: UAT
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare UAT directory
+        run: |
+          sudo mkdir -p /var/www/eventpass-backend-uat
+          sudo chown -R ubuntu:ubuntu /var/www/eventpass-backend-uat
+          cd /var/www/eventpass-backend-uat
+          rm -rf * .[^.]* || true
+          cp -r $GITHUB_WORKSPACE/* .
+
+      - name: Create UAT .env
+        run: |
+          cd /var/www/eventpass-backend-uat
+          sudo rm -f .env
+          sudo touch .env
+          sudo tee .env > /dev/null <<EOF
+          MONGO_URI=${{ secrets.MONGO_URI }}
+          EMAIL_HOST=${{ secrets.EMAIL_HOST }}
+          EMAIL_PORT=${{ secrets.EMAIL_PORT }}
+          EMAIL_USER=${{ secrets.EMAIL_USER }}
+          EMAIL_PASS=${{ secrets.EMAIL_PASS }}
+          EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+          MASTER_KEY=${{ secrets.MASTER_KEY }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_ACCESS_EXPIRY=${{ secrets.JWT_ACCESS_EXPIRY }}
+          JWT_REFRESH_EXPIRY=${{ secrets.JWT_REFRESH_EXPIRY }}
+          CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}
+          CLOUDINARY_FOLDER=${{ secrets.CLOUDINARY_FOLDER }}
+          AWS_REGION=${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          S3_BUCKET=${{ secrets.S3_BUCKET }}
+          CLOUDFRONT_URL=${{ secrets.CLOUDFRONT_URL }}
+          GOOGLE_API_URL=${{ secrets.GOOGLE_API_URL }}
+          GOOGLE_TRANSLATE_API_KEY=${{ secrets.GOOGLE_TRANSLATE_API_KEY }}
+          FRONTEND_BASE_URL=${{ secrets.FRONTEND_BASE_URL }}
+          SURVEYGURU_PUBLIC_PATH=${{ secrets.SURVEYGURU_PUBLIC_PATH }}
+          WHATSAPP_BASE_URL=${{ secrets.WHATSAPP_BASE_URL }}
+          WHATSAPP_ACCOUNT_SSID=${{ secrets.WHATSAPP_ACCOUNT_SSID }}
+          WHATSAPP_USERNAME=${{ secrets.WHATSAPP_USERNAME }}
+          WHATSAPP_PASSWORD=${{ secrets.WHATSAPP_PASSWORD }}
+          WHATSAPP_FROM=${{ secrets.WHATSAPP_FROM }}
+          CHECKIN_WHATSAPP_SSID=${{ secrets.CHECKIN_WHATSAPP_SSID }}
+          CHECKIN_WHATSAPP_REMIMDER_SSID=${{ secrets.CHECKIN_WHATSAPP_REMIMDER_SSID }}
+          EVENTREG_WHATSAPP_SSID=${{ secrets.EVENTREG_WHATSAPP_SSID }}
+          BACKEND_BASE_URL=${{ secrets.BACKEND_BASE_URL }}
+          NODE_ENV=uat
+          PORT=${{ secrets.PORT }}
+          EOF
+
+      - name: Install dependencies & restart PM2 (uat)
+        run: |
+          cd /var/www/eventpass-backend-uat
+          npm install --omit=dev
+          pm2 restart eventpass-backend-uat || pm2 start npm --name "eventpass-backend-uat" -- run start
           pm2 save
