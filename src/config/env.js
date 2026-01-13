@@ -49,6 +49,7 @@ const env = {
       password: validateEnv("WHATSAPP_PASSWORD"),
       from: validateEnv("WHATSAPP_FROM"),
       checkinSSID: validateEnv("CHECKIN_WHATSAPP_SSID"),
+      checkinReminderSSID: validateEnv("CHECKIN_WHATSAPP_REMIMDER_SSID"),
       eventregSSID: validateEnv("EVENTREG_WHATSAPP_SSID"),
     },
   },

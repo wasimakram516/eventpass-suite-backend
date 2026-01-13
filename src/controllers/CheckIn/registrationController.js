@@ -1741,7 +1741,7 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
     whatsappProcessor({
       event,
       recipients: regs,
-      mode: type === "custom" ? "custom" : "template",
+      mode: type === "custom" ? "custom" : type === "reminder" ? "reminder" : "template",
       customMessage: type === "custom" ? { subject, body, mediaUrl } : null,
     }).catch((err) => console.error("CHECKIN WHATSAPP PROCESSOR FAILED:", err));
   });
