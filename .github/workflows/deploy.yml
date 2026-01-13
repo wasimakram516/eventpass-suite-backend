@@ -143,3 +143,4 @@ jobs:
           npm install --omit=dev
           pm2 restart eventpass-backend-uat --update-env || pm2 start npm --name "eventpass-backend-uat" -- run start
           pm2 save
+ 
