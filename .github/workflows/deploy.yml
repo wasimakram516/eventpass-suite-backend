@@ -72,7 +72,7 @@ jobs:
         run: |
           cd /var/www/eventpass/backend
           npm install --omit=dev
-          pm2 restart eventpass-backend --update-env || pm2 start npm --name "eventpass-backend" -- run start
+          pm2 restart eventpass-backend || pm2 start npm --name "eventpass-backend" -- run start
           pm2 save
 
 
@@ -141,6 +141,6 @@ jobs:
         run: |
           cd /var/www/eventpass-uat/backend
           npm install --omit=dev
-          pm2 restart eventpass-backend-uat --update-env || pm2 start npm --name "eventpass-backend-uat" -- run start
+          pm2 restart eventpass-backend-uat || pm2 start npm --name "eventpass-backend-uat" -- run start
           pm2 save
  
