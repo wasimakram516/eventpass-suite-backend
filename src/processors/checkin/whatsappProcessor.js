@@ -79,9 +79,69 @@ const formatDateForWhatsApp = (date) => {
     "Saturday",
   ];
 
-  return `${weekdays[d.getDay()]}, ${d.getDate()} ${
-    months[d.getMonth()]
-  } ${d.getFullYear()}`;
+  return `${weekdays[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]
+    } ${d.getFullYear()}`;
+};
+
+const formatDateForReminder = (date) => {
+  if (!date) return "";
+
+  const d = new Date(date);
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+};
+
+const formatTimeForReminder = (startTime, endTime) => {
+  const convertTo12Hour = (time24) => {
+    if (!time24) return "";
+    const [hours, minutes] = time24.split(":");
+    const hour24 = parseInt(hours, 10);
+    const minute = minutes || "00";
+
+    let hour12;
+    let period;
+
+    if (hour24 === 0) {
+      hour12 = 12;
+      period = "AM";
+    } else if (hour24 < 12) {
+      hour12 = hour24;
+      period = "AM";
+    } else if (hour24 === 12) {
+      hour12 = 12;
+      period = "PM";
+    } else {
+      hour12 = hour24 - 12;
+      period = "PM";
+    }
+
+    return `${hour12.toString().padStart(2, "0")}:${minute} ${period}`;
+  };
+
+  if (!startTime) return "";
+
+  const startTime12 = convertTo12Hour(startTime);
+
+  if (!endTime) {
+    return startTime12;
+  }
+
+  const endTime12 = convertTo12Hour(endTime);
+  return `${startTime12} to ${endTime12}`;
 };
 
 /* =====================================================
@@ -92,7 +152,7 @@ const formatDateForWhatsApp = (date) => {
  * @param {Object} params
  * @param {Object} params.event
  * @param {Array}  params.recipients
- * @param {"template"|"custom"} params.mode
+ * @param {"template"|"custom"|"reminder"} params.mode
  * @param {Object} [params.customMessage]
  */
 module.exports = async function whatsappProcessor({
@@ -124,6 +184,8 @@ module.exports = async function whatsappProcessor({
   ====================== */
 
   let dateStr = null;
+  let reminderDateStr = null;
+  let reminderTimeStr = null;
   let contentSSID = null;
 
   if (mode === "template") {
@@ -136,6 +198,19 @@ module.exports = async function whatsappProcessor({
 
     dateStr = endStr ? `${startStr} to ${endStr}` : startStr;
     contentSSID = env.notifications.whatsapp.checkinSSID;
+  }
+
+  if (mode === "reminder") {
+    const s = new Date(event.startDate);
+    const e = event.endDate && new Date(event.endDate);
+
+    const startStr = formatDateForReminder(s);
+    const endStr =
+      e && e.getTime() !== s.getTime() ? formatDateForReminder(e) : null;
+
+    reminderDateStr = endStr ? `${startStr} to ${endStr}` : startStr;
+    reminderTimeStr = formatTimeForReminder(event.startTime, event.endTime);
+    contentSSID = env.notifications.whatsapp.checkinReminderSSID;
   }
 
   /* ======================
@@ -188,9 +263,8 @@ module.exports = async function whatsappProcessor({
         const displayName = fullName || "Guest";
 
         const confirmationLink = reg.token
-          ? `${env.client.url}/checkin/event/${
-              event.slug
-            }?token=${encodeURIComponent(reg.token)}`
+          ? `${env.client.url}/checkin/event/${event.slug
+          }?token=${encodeURIComponent(reg.token)}`
           : `${env.client.url}/checkin/event/${event.slug}`;
 
         const contentVariables = {
@@ -200,6 +274,36 @@ module.exports = async function whatsappProcessor({
           4: event.venue || "",
           5: confirmationLink,
           6: event.organizerName || "WhiteWall Digital Solutions",
+        };
+
+        result = await sendWhatsApp(
+          phoneResult.formatted,
+          contentVariables,
+          contentSSID,
+          meta
+        );
+      }
+
+      /* ======================
+         REMINDER SEND
+      ====================== */
+
+      if (mode === "reminder") {
+        const displayName = fullName || "Guest";
+
+        const confirmationLink = reg.token
+          ? `${env.client.url}/checkin/event/${event.slug
+          }?token=${encodeURIComponent(reg.token)}`
+          : `${env.client.url}/checkin/event/${event.slug}`;
+
+        const contentVariables = {
+          1: displayName,
+          2: event.name,
+          3: confirmationLink,
+          4: reminderDateStr,
+          5: reminderTimeStr,
+          6: event.venue || "",
+          7: event.organizerName || "WhiteWall Digital Solutions",
         };
 
         result = await sendWhatsApp(
