@@ -88,7 +88,7 @@ jobs:
       - name: Prepare UAT directory
         run: |
           sudo mkdir -p /var/www/eventpass-uat/backend
-          sudo chown -R ubuntu:ubuntu /var/www/eventpass
+          sudo chown -R ubuntu:ubuntu /var/www/eventpass-uat
           cd /var/www/eventpass-uat/backend
           rm -rf * .[^.]* || true
           cp -r $GITHUB_WORKSPACE/* .
