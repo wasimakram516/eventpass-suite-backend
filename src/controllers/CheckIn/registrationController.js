@@ -1357,7 +1357,7 @@ exports.deleteRegistration = asyncHandler(async (req, res) => {
   const registration = await Registration.findById(id);
   if (!registration) return response(res, 404, "Registration not found");
 
-  await registration.softDelete(req.user?._id);
+  await registration.softDelete(req.user?.id || req.user?._id);
 
   await Event.findByIdAndUpdate(registration.eventId, {
     $inc: { registrations: -1 },

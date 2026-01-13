@@ -40,6 +40,41 @@ async function fetchDeletedItems({
           },
         },
         { $unwind: "$game" },
+        {
+          $lookup: {
+            from: "users",
+            localField: "deletedBy",
+            foreignField: "_id",
+            as: "deletedByUser",
+          },
+        },
+        {
+          $unwind: {
+            path: "$deletedByUser",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $addFields: {
+            deletedBy: {
+              $cond: {
+                if: { $ifNull: ["$deletedByUser", false] },
+                then: {
+                  _id: "$deletedByUser._id",
+                  name: "$deletedByUser.name",
+                  fullName: "$deletedByUser.fullName",
+                  email: "$deletedByUser.email",
+                },
+                else: "$deletedBy",
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            deletedByUser: 0,
+          },
+        },
         { $match: { "game.mode": condition["gameId.mode"] } },
         { $sort: { deletedAt: -1 } },
       ];
@@ -58,6 +93,41 @@ async function fetchDeletedItems({
           $unwind: {
             path: "$event",
             preserveNullAndEmptyArrays: true, // include registrations even if parent event is deleted
+          },
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "deletedBy",
+            foreignField: "_id",
+            as: "deletedByUser",
+          },
+        },
+        {
+          $unwind: {
+            path: "$deletedByUser",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $addFields: {
+            deletedBy: {
+              $cond: {
+                if: { $ifNull: ["$deletedByUser", false] },
+                then: {
+                  _id: "$deletedByUser._id",
+                  name: "$deletedByUser.name",
+                  fullName: "$deletedByUser.fullName",
+                  email: "$deletedByUser.email",
+                },
+                else: "$deletedBy",
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            deletedByUser: 0,
           },
         },
         {
