@@ -71,7 +71,7 @@ jobs:
       - name: Install dependencies & restart PM2 (prod)
         run: |
           cd /var/www/eventpass/backend
-          npm install --omit=dev
+          npm ci --omit=dev
           pm2 restart eventpass-backend || pm2 start npm --name "eventpass-backend" -- run start
           pm2 save
 
@@ -140,7 +140,7 @@ jobs:
       - name: Install dependencies & restart PM2 (uat)
         run: |
           cd /var/www/eventpass-uat/backend
-          npm install --omit=dev
+          npm ci --omit=dev
           pm2 restart eventpass-backend-uat || pm2 start npm --name "eventpass-backend-uat" -- run start
           pm2 save
  
