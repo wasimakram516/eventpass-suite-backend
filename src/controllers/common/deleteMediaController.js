@@ -1,7 +1,6 @@
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const { deleteFromS3 } = require("../../utils/s3Storage");
-const { deleteImage } = require("../../config/cloudinary");
 const mongoose = require("mongoose");
 
 /**
@@ -10,7 +9,6 @@ const mongoose = require("mongoose");
 exports.deleteMedia = asyncHandler(async (req, res) => {
   const {
     fileUrl,
-    storageType = "s3",
     eventId,
     mediaType,
     eventType = "public",
@@ -28,13 +26,7 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
 
   try {
     if (fileUrl) {
-      if (storageType === "s3") {
-        await deleteFromS3(fileUrl);
-      } else if (storageType === "cloudinary") {
-        await deleteImage(fileUrl);
-      } else {
-        return response(res, 400, "Invalid storage type. Use 's3' or 'cloudinary'");
-      }
+      await deleteFromS3(fileUrl);
     }
 
     if (eventId && mediaType && mongoose.Types.ObjectId.isValid(eventId)) {

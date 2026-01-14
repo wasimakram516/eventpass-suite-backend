@@ -17,7 +17,7 @@ const SpinWheelParticipant = require("../models/SpinWheelParticipant");
 const WallConfig = require("../models/WallConfig");
 const DisplayMedia = require("../models/DisplayMedia");
 
-const { deleteImage } = require("../config/cloudinary");
+const { deleteFromS3 } = require("../utils/s3Storage");
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
 const sanitizeUser = require("../utils/sanitizeUser");
@@ -175,7 +175,7 @@ async function cascadeDeleteUser(userId) {
 
       // Delete business logo if exists
       if (business.logoUrl) {
-        await deleteImage(business.logoUrl);
+        await deleteFromS3(business.logoUrl);
       }
 
       /** ===== Surveys ===== */
