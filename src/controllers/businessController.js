@@ -19,8 +19,7 @@ const DisplayMedia = require("../models/DisplayMedia");
 
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
-const { uploadToCloudinary } = require("../utils/uploadToCloudinary");
-const { deleteImage } = require("../config/cloudinary");
+const { uploadToS3, deleteFromS3 } = require("../utils/s3Storage");
 const { generateUniqueSlug } = require("../utils/slugGenerator");
 const { recomputeAndEmit } = require("../socket/dashboardSocket");
 
@@ -38,11 +37,13 @@ exports.createBusiness = asyncHandler(async (req, res) => {
 
   let logoUrl = "";
   if (req.file) {
-    const uploaded = await uploadToCloudinary(
-      req.file.buffer,
-      req.file.mimetype
+    const { fileUrl } = await uploadToS3(
+      req.file,
+      finalSlug,
+      "Business",
+      { inline: true }
     );
-    logoUrl = uploaded.secure_url;
+    logoUrl = fileUrl;
   }
 
   const structuredContact = {
@@ -122,12 +123,14 @@ exports.updateBusiness = asyncHandler(async (req, res) => {
 
   // Replace logo if a new file is uploaded
   if (req.file) {
-    if (business.logoUrl) await deleteImage(business.logoUrl);
-    const uploaded = await uploadToCloudinary(
-      req.file.buffer,
-      req.file.mimetype
+    if (business.logoUrl) await deleteFromS3(business.logoUrl);
+    const { fileUrl } = await uploadToS3(
+      req.file,
+      business.slug,
+      "Business",
+      { inline: true }
     );
-    business.logoUrl = uploaded.secure_url;
+    business.logoUrl = fileUrl;
   }
 
   await business.save();
@@ -149,7 +152,7 @@ async function cascadeDeleteBusiness(businessId) {
 
   // Delete logo
   if (business.logoUrl) {
-    await deleteImage(business.logoUrl);
+    await deleteFromS3(business.logoUrl);
   }
 
   /** ===== Surveys ===== */

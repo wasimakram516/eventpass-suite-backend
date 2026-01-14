@@ -1,8 +1,7 @@
 const GlobalConfig = require("../models/GlobalConfig");
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
-const { uploadToCloudinary } = require("../utils/uploadToCloudinary");
-const { deleteImage } = require("../config/cloudinary"); // NEW
+const { uploadToS3, deleteFromS3 } = require("../utils/s3Storage");
 
 // ---------- helpers ----------
 function parseJsonArray(raw) {
@@ -18,11 +17,11 @@ function stitchLogosFromFiles(files = [], meta = []) {
   });
 }
 
-async function uploadManyToCloudinary(files = []) {
+async function uploadManyToS3(files = [], businessSlug, moduleName) {
   const results = [];
   for (const f of files) {
-    const up = await uploadToCloudinary(f.buffer, f.mimetype);
-    results.push(up.secure_url);
+    const { fileUrl } = await uploadToS3(f, businessSlug, moduleName, { inline: true });
+    results.push(fileUrl);
   }
   return results;
 }
@@ -56,29 +55,38 @@ exports.createConfig = asyncHandler(async (req, res) => {
   let brandingMediaUrl = "";
   let poweredByMediaUrl = "";
 
+  const businessSlug = "global";
+  const moduleName = "GlobalConfig";
+
   // Upload single media (optional)
   if (req.files?.companyLogo) {
-    const uploaded = await uploadToCloudinary(
-      req.files.companyLogo[0].buffer,
-      req.files.companyLogo[0].mimetype
+    const { fileUrl } = await uploadToS3(
+      req.files.companyLogo[0],
+      businessSlug,
+      moduleName,
+      { inline: true }
     );
-    companyLogoUrl = uploaded.secure_url;
+    companyLogoUrl = fileUrl;
   }
 
   if (req.files?.brandingMedia) {
-    const uploaded = await uploadToCloudinary(
-      req.files.brandingMedia[0].buffer,
-      req.files.brandingMedia[0].mimetype
+    const { fileUrl } = await uploadToS3(
+      req.files.brandingMedia[0],
+      businessSlug,
+      moduleName,
+      { inline: true }
     );
-    brandingMediaUrl = uploaded.secure_url;
+    brandingMediaUrl = fileUrl;
   }
 
   if (req.files?.poweredByMedia) {
-    const uploaded = await uploadToCloudinary(
-      req.files.poweredByMedia[0].buffer,
-      req.files.poweredByMedia[0].mimetype
+    const { fileUrl } = await uploadToS3(
+      req.files.poweredByMedia[0],
+      businessSlug,
+      moduleName,
+      { inline: true }
     );
-    poweredByMediaUrl = uploaded.secure_url;
+    poweredByMediaUrl = fileUrl;
   }
 
   // ---- client logos (files and/or direct URLs) ----
@@ -88,7 +96,7 @@ exports.createConfig = asyncHandler(async (req, res) => {
 
   let uploadedLogoUrls = [];
   if (clientLogoFiles.length) {
-    uploadedLogoUrls = await uploadManyToCloudinary(clientLogoFiles);
+    uploadedLogoUrls = await uploadManyToS3(clientLogoFiles, businessSlug, moduleName);
   }
   const clientLogosFromUrls = parseJsonArray(req.body.clientLogosUrls); // [{logoUrl, name?, website?}, ...]
 
@@ -165,51 +173,60 @@ exports.updateConfig = asyncHandler(async (req, res) => {
     website: website ?? "",
   };
 
+  const businessSlug = "global";
+  const moduleName = "GlobalConfig";
+
   // --- Replace uploads: delete old first, then upload new ---
   if (req.files?.companyLogo) {
     if (config.companyLogoUrl) {
-      try { await deleteImage(config.companyLogoUrl); } catch {}
+      try { await deleteFromS3(config.companyLogoUrl); } catch {}
     }
-    const uploaded = await uploadToCloudinary(
-      req.files.companyLogo[0].buffer,
-      req.files.companyLogo[0].mimetype
+    const { fileUrl } = await uploadToS3(
+      req.files.companyLogo[0],
+      businessSlug,
+      moduleName,
+      { inline: true }
     );
-    config.companyLogoUrl = uploaded.secure_url;
+    config.companyLogoUrl = fileUrl;
   }
 
   if (req.files?.brandingMedia) {
     if (config.brandingMediaUrl) {
-      try { await deleteImage(config.brandingMediaUrl); } catch {}
+      try { await deleteFromS3(config.brandingMediaUrl); } catch {}
     }
-    const uploaded = await uploadToCloudinary(
-      req.files.brandingMedia[0].buffer,
-      req.files.brandingMedia[0].mimetype
+    const { fileUrl } = await uploadToS3(
+      req.files.brandingMedia[0],
+      businessSlug,
+      moduleName,
+      { inline: true }
     );
-    config.brandingMediaUrl = uploaded.secure_url;
+    config.brandingMediaUrl = fileUrl;
   }
 
   if (req.files?.poweredByMedia) {
     if (config.poweredBy?.mediaUrl) {
-      try { await deleteImage(config.poweredBy.mediaUrl); } catch {}
+      try { await deleteFromS3(config.poweredBy.mediaUrl); } catch {}
     }
-    const uploaded = await uploadToCloudinary(
-      req.files.poweredByMedia[0].buffer,
-      req.files.poweredByMedia[0].mimetype
+    const { fileUrl } = await uploadToS3(
+      req.files.poweredByMedia[0],
+      businessSlug,
+      moduleName,
+      { inline: true }
     );
-    config.poweredBy.mediaUrl = uploaded.secure_url;
+    config.poweredBy.mediaUrl = fileUrl;
   }
 
   // --- Removals via flags (only if NOT replaced above) ---
   if (!req.files?.companyLogo && toBool(removeCompanyLogo) && config.companyLogoUrl) {
-    try { await deleteImage(config.companyLogoUrl); } catch {}
+    try { await deleteFromS3(config.companyLogoUrl); } catch {}
     config.companyLogoUrl = "";
   }
   if (!req.files?.brandingMedia && toBool(removeBrandingMedia) && config.brandingMediaUrl) {
-    try { await deleteImage(config.brandingMediaUrl); } catch {}
+    try { await deleteFromS3(config.brandingMediaUrl); } catch {}
     config.brandingMediaUrl = "";
   }
   if (!req.files?.poweredByMedia && toBool(removePoweredByMedia) && config.poweredBy?.mediaUrl) {
-    try { await deleteImage(config.poweredBy.mediaUrl); } catch {}
+    try { await deleteFromS3(config.poweredBy.mediaUrl); } catch {}
     config.poweredBy.mediaUrl = "";
   }
 
@@ -219,7 +236,7 @@ exports.updateConfig = asyncHandler(async (req, res) => {
   if (addLogoFiles.length && !toBool(clearAllClientLogos)) {
     const addMeta = parseJsonArray(req.body.clientLogosMeta);
     const base = stitchLogosFromFiles(addLogoFiles, addMeta);
-    const urls = await uploadManyToCloudinary(addLogoFiles);
+    const urls = await uploadManyToS3(addLogoFiles, businessSlug, moduleName);
     base.forEach((b, i) => { b.logoUrl = urls[i] || ""; });
     config.clientLogos = [...(config.clientLogos || []), ...base];
   }
@@ -233,14 +250,14 @@ exports.updateConfig = asyncHandler(async (req, res) => {
     config.clientLogos = [...(config.clientLogos || []), ...normalized];
   }
 
-  // (C) REMOVE specific _ids → also delete from Cloudinary
+  // (C) REMOVE specific _ids → also delete from S3
   const removeLogoIds = parseJsonArray(req.body.removeLogoIds);
   if (removeLogoIds.length && Array.isArray(config.clientLogos)) {
     const toRemove = new Set(removeLogoIds.map(String));
     const remaining = [];
     for (const l of config.clientLogos) {
       if (toRemove.has(String(l._id))) {
-        if (l.logoUrl) { try { await deleteImage(l.logoUrl); } catch {} }
+        if (l.logoUrl) { try { await deleteFromS3(l.logoUrl); } catch {} }
         // skip (removed)
       } else {
         remaining.push(l);
@@ -249,10 +266,10 @@ exports.updateConfig = asyncHandler(async (req, res) => {
     config.clientLogos = remaining;
   }
 
-  // (D) CLEAR all client logos → delete all from Cloudinary
+  // (D) CLEAR all client logos → delete all from S3
   if (toBool(clearAllClientLogos) && Array.isArray(config.clientLogos) && config.clientLogos.length) {
     for (const l of config.clientLogos) {
-      if (l?.logoUrl) { try { await deleteImage(l.logoUrl); } catch {} }
+      if (l?.logoUrl) { try { await deleteFromS3(l.logoUrl); } catch {} }
     }
     config.clientLogos = [];
   }
