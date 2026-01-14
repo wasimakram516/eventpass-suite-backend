@@ -22,7 +22,7 @@ const allowedOrigins = [
   "https://uat-eventpass-whitewall.vercel.app",
   "https://uat.eventpass.whitewall.solutions",
 ];
- 
+
 app.use(
   cors({
     origin: (origin, callback) => {
