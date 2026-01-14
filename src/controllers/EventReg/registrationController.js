@@ -1356,15 +1356,21 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const { type, subject, body, statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
 
-  let mediaUrl = null;
-  if (req.file) {
-    const { uploadToCloudinary } = require("../../utils/uploadToCloudinary");
-    const uploadResult = await uploadToCloudinary(req.file.buffer, req.file.mimetype, "Eventreg/custom-attachments");
-    mediaUrl = uploadResult.secure_url;
-  }
-
   const event = await Event.findOne({ slug }).lean();
   if (!event) return response(res, 404, "Event not found");
+
+  const business = await Business.findById(event.businessId).lean();
+
+  let mediaUrl = null;
+  if (req.file) {
+    const { fileUrl } = await uploadToS3(
+      req.file,
+      business.slug,
+      "EventReg/custom-attachments",
+      { inline: true }
+    );
+    mediaUrl = fileUrl;
+  }
 
   let filterQuery = {
     eventId: event._id,
