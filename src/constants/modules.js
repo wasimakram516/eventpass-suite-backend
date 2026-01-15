@@ -47,13 +47,19 @@ const BASE = [
   {
     key: "eventreg",
     labels: { en: "Event Reg", ar: "Event Reg" },
-    descriptions: {
-      en: "Build custom registration forms for events.",
-      ar: "إنشاء نماذج مخصصة لتسجيل الحضور.",
+    descriptionsByRole: {
+      admin: {
+        en: "Build custom registration forms for events.",
+        ar: "إنشاء نماذج مخصصة لتسجيل الحضور.",
+      },
+      staff: {
+        en: "Verify and manage event registrations.",
+        ar: "التحقق من وإدارة تسجيلات الفعاليات.",
+      },
     },
     buttonsByRole: {
       admin: { en: "Manage Forms", ar: "إدارة النماذج" },
-      staff: { en: "View Registrations", ar: "عرض التسجيلات" },
+      staff: { en: "Verify Registrations", ar: "التحقق من التسجيلات" },
     },
     icon: "assignment",
     color: "#006064",
@@ -79,9 +85,15 @@ const BASE = [
   {
     key: "checkin",
     labels: { en: "Check-In", ar: "Check-In" },
-    descriptions: {
-      en: "Track and verify guest entries.",
-      ar: "تتبع وتأكيد دخول الضيوف.",
+    descriptionsByRole: {
+      admin: {
+        en: "Track and verify guest entries.",
+        ar: "تتبع وتأكيد دخول الضيوف.",
+      },
+      staff: {
+        en: "Verify and check-in guests at events.",
+        ar: "التحقق من وتسجيل دخول الضيوف في الفعاليات.",
+      },
     },
     buttonsByRole: {
       admin: { en: "Start Check-In", ar: "بدء تسجيل الدخول" },
@@ -152,6 +164,27 @@ const BASE = [
     color: "#c62828",
     routes: { admin: "/cms/modules/eventwheel", staff: null },
   },
+  // {
+  //   key: "digipass",
+  //   labels: { en: "DigiPass", ar: "DigiPass" },
+  //   descriptionsByRole: {
+  //     admin: {
+  //       en: "Manage digital passes and track user activity completion.",
+  //       ar: "إدارة التذاكر الرقمية وتتبع إتمام أنشطة المستخدمين.",
+  //     },
+  //     staff: {
+  //       en: "Scan QR codes to verify users and track their activity completion.",
+  //       ar: "امسح رموز QR للتحقق من المستخدمين وتتبع إتمام أنشطتهم.",
+  //     },
+  //   },
+  //   buttonsByRole: {
+  //     admin: { en: "Manage Passes", ar: "إدارة التذاكر" },
+  //     staff: { en: "Scan QR Code", ar: "مسح رمز QR" },
+  //   },
+  //   icon: "badge",
+  //   color: "#2e7d32",
+  //   routes: { admin: "/cms/modules/digipass", staff: "/staff/digipass/verify" },
+  // },
 ];
 
 // ---- helpers ----
@@ -177,10 +210,15 @@ function getModulesForRole(role = "admin") {
     const buttons = m.buttonsByRole?.[rk] ||
       m.buttonsByRole?.admin || { en: "Open", ar: "فتح" };
 
+    const descriptions = m.descriptionsByRole?.[rk] ||
+      m.descriptionsByRole?.admin ||
+      m.descriptions ||
+      { en: "", ar: "" };
+
     return {
       key: m.key,
       labels: m.labels,
-      descriptions: m.descriptions,
+      descriptions,
       buttons,
       icon: m.icon,
       color: m.color,
