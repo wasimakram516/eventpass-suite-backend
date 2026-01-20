@@ -798,8 +798,8 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     row.push(`"${reg.approvalStatus || "pending"}"`);
     row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
     row.push(
-      `"${reg.confirmedAt
-        ? formatLocalDateTime(reg.confirmedAt, timezone || null)
+      `"${reg.respondedAt
+        ? formatLocalDateTime(reg.respondedAt, timezone || null)
         : "N/A"
       }"`
     );
@@ -844,8 +844,8 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
       row.push(`"${reg?.approvalStatus || "pending"}"`);
       row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
       row.push(
-        `"${reg?.confirmedAt
-          ? formatLocalDateTime(reg.confirmedAt, timezone || null)
+        `"${reg?.respondedAt
+          ? formatLocalDateTime(reg.respondedAt, timezone || null)
           : "N/A"
         }"`
       );
@@ -1222,8 +1222,8 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
 
   reg.approvalStatus = status;
 
-  if (status === "confirmed" && !reg.confirmedAt) {
-    reg.confirmedAt = new Date();
+  if ((status === "confirmed" || status === "not_attending") && !reg.respondedAt) {
+    reg.respondedAt = new Date();
   }
 
   await reg.save();
@@ -1495,8 +1495,8 @@ exports.confirmPresence = asyncHandler(async (req, res) => {
   }
 
   registration.approvalStatus = "confirmed";
-  if (!registration.confirmedAt) {
-    registration.confirmedAt = new Date();
+  if (!registration.respondedAt) {
+    registration.respondedAt = new Date();
   }
   await registration.save();
 
@@ -1512,7 +1512,7 @@ exports.confirmPresence = asyncHandler(async (req, res) => {
     company: registration.company,
     customFields: registration.customFields || {},
     createdAt: registration.createdAt,
-    confirmedAt: registration.confirmedAt,
+    respondedAt: registration.respondedAt,
   });
 
   return response(res, 200, "Presence confirmed successfully", {
@@ -1548,8 +1548,8 @@ exports.updateAttendanceStatus = asyncHandler(async (req, res) => {
   }
 
   registration.approvalStatus = status;
-  if (status === "confirmed" && !registration.confirmedAt) {
-    registration.confirmedAt = new Date();
+  if ((status === "confirmed" || status === "not_attending") && !registration.respondedAt) {
+    registration.respondedAt = new Date();
   }
   await registration.save();
 
@@ -1565,7 +1565,7 @@ exports.updateAttendanceStatus = asyncHandler(async (req, res) => {
     company: registration.company,
     customFields: registration.customFields || {},
     createdAt: registration.createdAt,
-    confirmedAt: registration.confirmedAt,
+    respondedAt: registration.respondedAt,
   });
 
   return response(res, 200, "Attendance status updated successfully", {

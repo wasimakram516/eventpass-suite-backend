@@ -44,6 +44,10 @@ const surveyGuruInsightsRoutes = require("./surveyguru/insightsRoutes");
 const checkInEventRoutes = require("./CheckIn/eventRoutes");
 const checkInRegistrationRoutes = require("./CheckIn/registrationRoutes");
 
+// DigiPass
+const digiPassEventRoutes = require("./DigiPass/eventRoutes");
+const digiPassRegistrationRoutes = require("./DigiPass/registrationRoutes");
+
 // StageQ
 const stageqQuestionRoutes = require("./stageq/questionRoutes");
 const stageqVisitorRoutes = require("./stageq/visitorRoutes");
@@ -112,6 +116,10 @@ router.use("/surveyguru", surveyGuruInsightsRoutes);
 // ------------------ CheckIn ------------------
 router.use("/checkin/events", checkInEventRoutes);
 router.use("/checkin/registrations", checkInRegistrationRoutes);
+
+// ------------------ DigiPass ------------------
+router.use("/digipass/events", digiPassEventRoutes);
+router.use("/digipass/registrations", digiPassRegistrationRoutes);
 
 // ------------------ StageQ ------------------
 router.use("/stageq/questions", stageqQuestionRoutes);

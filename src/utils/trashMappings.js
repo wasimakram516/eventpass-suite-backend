@@ -20,6 +20,8 @@ const checkInEventController = require("../controllers/CheckIn/eventController")
 const checkInRegistrationController = require("../controllers/CheckIn/registrationController");
 const eventRegEventController = require("../controllers/EventReg/eventController");
 const eventRegRegistrationController = require("../controllers/EventReg/registrationController");
+const digiPassEventController = require("../controllers/DigiPass/eventController");
+const digiPassRegistrationController = require("../controllers/DigiPass/registrationController");
 const pollController = require("../controllers/votecast/pollController");
 const spinWheelController = require("../controllers/EventWheel/spinWheelController");
 const spinWheelParticipantController = require("../controllers/EventWheel/spinWheelParticipantController");
@@ -72,6 +74,16 @@ const moduleMapping = {
     },
     condition: { eventType: "closed" },
   },
+  "event-digipass": {
+    model: Event,
+    controller: {
+      restore: digiPassEventController.restoreEvent,
+      permanentDelete: digiPassEventController.permanentDeleteEvent,
+      restoreAll: digiPassEventController.restoreAllEvents,
+      permanentDeleteAll: digiPassEventController.permanentDeleteAllEvents,
+    },
+    condition: { eventType: "digipass" },
+  },
 
   // Registrations
   "registration-eventreg": {
@@ -98,6 +110,18 @@ const moduleMapping = {
         checkInRegistrationController.permanentDeleteAllRegistrations,
     },
     condition: { "event.eventType": "closed" },
+  },
+  "registration-digipass": {
+    model: Registration,
+    controller: {
+      restore: digiPassRegistrationController.restoreRegistration,
+      permanentDelete:
+        digiPassRegistrationController.permanentDeleteRegistration,
+      restoreAll: digiPassRegistrationController.restoreAllRegistrations,
+      permanentDeleteAll:
+        digiPassRegistrationController.permanentDeleteAllRegistrations,
+    },
+    condition: { "event.eventType": "digipass" },
   },
 
   // Other modules
