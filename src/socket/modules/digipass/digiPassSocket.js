@@ -17,8 +17,25 @@ function emitUploadProgress(eventId, uploaded, total) {
     });
 }
 
+function emitNewRegistration(eventId, registrationData) {
+    emitUpdate("digipassRegistrationNew", {
+        eventId,
+        registration: registrationData,
+    });
+}
+
+function emitWalkInNew(eventId, registrationId, walkInData) {
+    emitUpdate("digipassWalkInNew", {
+        eventId,
+        registrationId,
+        walkIn: walkInData,
+    });
+}
+
 module.exports = {
     emitTaskCompletedUpdate,
     emitUploadProgress,
+    emitNewRegistration,
+    emitWalkInNew,
 };
 
