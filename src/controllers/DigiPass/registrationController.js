@@ -9,7 +9,7 @@ const Business = require("../../models/Business");
 const response = require("../../utils/response");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const recountEventRegistrations = require("../../utils/recountEventRegistrations");
-const { emitTaskCompletedUpdate } = require("../../socket/modules/digipass/digiPassSocket");
+const { emitTaskCompletedUpdate, emitNewRegistration, emitWalkInNew } = require("../../socket/modules/digipass/digiPassSocket");
 const { formatLocalDateTime } = require("../../utils/dateUtils");
 const { pickFullName, pickEmail, pickPhone } = require("../../utils/customFieldUtils");
 const { normalizePhone } = require("../../utils/whatsappProcessorUtils");
@@ -188,7 +188,7 @@ async function checkIdentityUniqueness(event, customFields, excludeRegistrationI
         if (existingReg) {
             return {
                 valid: false,
-                error: `The value "${fieldValue}" for field "${field.inputName}" already exists. Identity fields must be unique.`,
+                error: "User already exists. Please try to sign in instead.",
             };
         }
     }
@@ -372,6 +372,18 @@ exports.createRegistration = asyncHandler(async (req, res) => {
         console.error("Background recompute failed:", err.message)
     );
 
+    const enhancedRegistration = {
+        _id: registration._id,
+        token: registration.token,
+        createdAt: registration.createdAt,
+        customFields: registration.customFields || {},
+        isoCode: registration.isoCode || null,
+        tasksCompleted: registration.tasksCompleted || 0,
+        walkIns: [],
+    };
+
+    emitNewRegistration(event._id.toString(), enhancedRegistration);
+
     return response(res, 201, "Registration created successfully", registration);
 });
 
@@ -461,10 +473,10 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
         const phoneRaw = fields.phone ?? fields.Phone;
         if (phoneRaw !== undefined) {
             registration.phone = phoneRaw;
-                }
+        }
         registration.company = fields.company ?? fields.Company ?? registration.company;
         registration.customFields = {};
-        }
+    }
 
     const extractedEmail = hasCustomFields
         ? pickEmail(registration.customFields)
@@ -536,7 +548,7 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
             }
             if (phoneIsoCode) {
                 registration.isoCode = phoneIsoCode;
-        }
+            }
         }
     } else {
         if (!hasCustomFields && fields.isoCode) {
@@ -846,6 +858,23 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
         maxTasksForEmit
     );
 
+    const populatedWalkIn = await WalkIn.findById(walkin._id)
+        .populate("scannedBy", "name email staffType")
+        .lean();
+
+    const walkInData = {
+        _id: populatedWalkIn._id,
+        scannedAt: populatedWalkIn.scannedAt,
+        scannedBy: {
+            _id: populatedWalkIn.scannedBy._id,
+            name: populatedWalkIn.scannedBy.name || null,
+            email: populatedWalkIn.scannedBy.email || null,
+            staffType: populatedWalkIn.scannedBy.staffType || null,
+        },
+    };
+
+    emitWalkInNew(eventIdStr, registrationIdStr, walkInData);
+
     recomputeAndEmit(eventBusinessId || null).catch((err) =>
         console.error("Background recompute failed:", err.message)
     );
@@ -1030,6 +1059,23 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
         registration.tasksCompleted,
         maxTasksForEmit
     );
+
+    const populatedWalkIn = await WalkIn.findById(walkin._id)
+        .populate("scannedBy", "name email staffType")
+        .lean();
+
+    const walkInData = {
+        _id: populatedWalkIn._id,
+        scannedAt: populatedWalkIn.scannedAt,
+        scannedBy: {
+            _id: populatedWalkIn.scannedBy._id,
+            name: populatedWalkIn.scannedBy.name || null,
+            email: populatedWalkIn.scannedBy.email || null,
+            staffType: populatedWalkIn.scannedBy.staffType || null,
+        },
+    };
+
+    emitWalkInNew(eventIdStr, registrationIdStr, walkInData);
 
     recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
         console.error("Background recompute failed:", err.message)
@@ -1617,6 +1663,8 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     lines.push(`Business Name,${business?.name || "N/A"}`);
     lines.push(`Logo URL,${event.logoUrl || "N/A"}`);
     lines.push(`Event Slug,${event.slug || "N/A"}`);
+    lines.push(`Min Tasks Per User,${event.minTasksPerUser ?? "N/A"}`);
+    lines.push(`Max Tasks Per User,${event.maxTasksPerUser ?? "N/A"}`);
     lines.push(`Total Registrations,${event.registrations || 0}`);
     lines.push(`Exported Registrations,${regs.length}`);
     lines.push(`Exported At,"${exportedAt}"`);
@@ -1625,7 +1673,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
     lines.push("=== Registrations ===");
 
-    const regHeaders = [...dynamicFields, "Token", "Registered At"];
+    const regHeaders = [...dynamicFields, "Token", "Registered At", "Completed Activities"];
     lines.push(regHeaders.join(","));
 
     regs.forEach((reg) => {
@@ -1639,6 +1687,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
         row.push(`"${reg.token}"`);
         row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
+        row.push(`"${reg.tasksCompleted || 0}"`);
 
         lines.push(row.join(","));
     });
