@@ -231,7 +231,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     }
 
     if (name) event.name = name;
-    if (slug) {
+    if (slug && slug !== event.slug) {
         const uniqueSlug = await generateUniqueSlug(Event, "slug", slug, id);
         event.slug = uniqueSlug;
     }
