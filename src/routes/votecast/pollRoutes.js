@@ -41,6 +41,6 @@ router.post("/:id/vote", pollController.voteOnPoll);
 
 // PUBLIC results and public polls
 router.get("/results", pollController.getPollResults);
-router.get("/public/:businessSlug", pollController.getActivePollsByBusiness);
+router.get("/public/:eventSlug", pollController.getActivePollsByEvent);
 
 module.exports = router;

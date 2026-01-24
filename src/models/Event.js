@@ -11,17 +11,17 @@ const EventSchema = new mongoose.Schema({
   startDate: {
     type: Date,
     required: function () {
-      return this.eventType !== "digipass";
+      return this.eventType === "closed" || this.eventType === "public";
     },
   },
   endDate: {
     type: Date,
     required: function () {
-      return this.eventType !== "digipass";
+      return this.eventType === "closed" || this.eventType === "public";
     },
     validate: {
       validator: function (value) {
-        if (this.eventType === "digipass") return true;
+        if (this.eventType !== "closed" && this.eventType !== "public") return true;
         return value >= this.startDate;
       },
       message: "End date must be greater than or equal to start date.",
@@ -30,7 +30,7 @@ const EventSchema = new mongoose.Schema({
   venue: {
     type: String,
     required: function () {
-      return this.eventType !== "digipass";
+      return this.eventType === "closed" || this.eventType === "public";
     },
   },
   description: { type: String },
@@ -71,7 +71,7 @@ const EventSchema = new mongoose.Schema({
   registrations: { type: Number, default: 0 },
   eventType: {
     type: String,
-    enum: ["closed", "public", "digipass"],
+    enum: ["closed", "public", "digipass", "votecast"],
     required: true,
     default: "public",
   },
