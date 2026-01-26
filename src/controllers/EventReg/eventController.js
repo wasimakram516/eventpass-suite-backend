@@ -120,6 +120,8 @@ exports.createEvent = asyncHandler(async (req, res) => {
     organizerName,
     organizerEmail,
     organizerPhone,
+    useCustomEmailTemplate,
+    emailTemplate,
   } = req.body;
 
   let { capacity, formFields } = req.body;
@@ -238,6 +240,17 @@ exports.createEvent = asyncHandler(async (req, res) => {
     organizerName: organizerName || "",
     organizerEmail: organizerEmail || "",
     organizerPhone: organizerPhone || "",
+    useCustomEmailTemplate: useCustomEmailTemplate === true || useCustomEmailTemplate === "true",
+    ...(useCustomEmailTemplate === true || useCustomEmailTemplate === "true"
+      ? {
+        emailTemplate: emailTemplate
+          ? {
+            subject: emailTemplate.subject || "",
+            body: emailTemplate.body || "",
+          }
+          : { subject: "", body: "" },
+      }
+      : {}),
   });
 
   recomputeAndEmit(businessId || null).catch((err) =>
@@ -275,6 +288,8 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     organizerName,
     organizerEmail,
     organizerPhone,
+    useCustomEmailTemplate,
+    emailTemplate,
   } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -520,6 +535,31 @@ exports.updateEvent = asyncHandler(async (req, res) => {
       }
     }
     updates.organizerPhone = organizerPhone || "";
+  }
+
+  if (
+    typeof useCustomEmailTemplate === "boolean" ||
+    useCustomEmailTemplate === "true" ||
+    useCustomEmailTemplate === "false"
+  ) {
+    updates.useCustomEmailTemplate =
+      useCustomEmailTemplate === "true" || useCustomEmailTemplate === true;
+  }
+
+  if (emailTemplate !== undefined) {
+    let parsedEmailTemplate = {};
+    try {
+      parsedEmailTemplate =
+        typeof emailTemplate === "string"
+          ? JSON.parse(emailTemplate)
+          : emailTemplate;
+    } catch {
+      parsedEmailTemplate = {};
+    }
+    updates.emailTemplate = {
+      subject: parsedEmailTemplate.subject || "",
+      body: parsedEmailTemplate.body || "",
+    };
   }
 
   const updatedEvent = await Event.findByIdAndUpdate(id, updates, {

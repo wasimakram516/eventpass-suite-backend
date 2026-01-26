@@ -80,6 +80,13 @@ const EventSchema = new mongoose.Schema({
       visible: { type: Boolean, default: true },
     },
   ],
+
+  /** ===== Custom Email Template ===== */
+  useCustomEmailTemplate: { type: Boolean, default: false },
+  emailTemplate: {
+    subject: { type: String },
+    body: { type: String },
+  },
 });
 
 EventSchema.index({ businessId: 1, isDeleted: 1 });
