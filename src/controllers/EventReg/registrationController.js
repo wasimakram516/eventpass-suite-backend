@@ -312,6 +312,10 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
     headers = ["Full Name", "Email", "Phone", "Company"];
     phoneFields.push({ name: "Phone", index: 2 });
   }
+
+  if (event.requiresApproval) {
+    headers.push("Approved");
+  }
   headers.push("Token");
 
   phoneFields.reverse().forEach((phoneField) => {
@@ -368,6 +372,10 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
       row.push(dummy.phoneIsoCode);
       row.push(dummy.phone);
       row.push(dummy.company);
+    }
+    if (event.requiresApproval) {
+      const approvedValues = ["yes", "no", ""];
+      row.push(approvedValues[rows.length - 1] || "");
     }
     row.push("");
     rows.push(row);

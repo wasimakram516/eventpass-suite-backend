@@ -32,6 +32,24 @@ module.exports = async function uploadProcessor(event, rows) {
             token: row["Token"] || undefined,
           };
 
+          if (event.requiresApproval) {
+            const approvedValue = row["Approved"];
+            if (approvedValue) {
+              const normalizedApproved = String(approvedValue).trim().toLowerCase();
+              if (normalizedApproved === "yes") {
+                registrationData.approvalStatus = "approved";
+              } else if (normalizedApproved === "no") {
+                registrationData.approvalStatus = "rejected";
+              } else {
+                registrationData.approvalStatus = "pending";
+              }
+            } else {
+              registrationData.approvalStatus = "pending";
+            }
+          } else {
+            registrationData.approvalStatus = "approved";
+          }
+
           let phoneIsoCode = null;
           let phoneLocalNumber = null;
 
