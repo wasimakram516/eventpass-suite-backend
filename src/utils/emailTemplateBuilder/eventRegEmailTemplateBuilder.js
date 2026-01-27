@@ -8,16 +8,33 @@ async function buildRegistrationEmail({
   isReminder = false,
   customFields = {},
 }) {
-  if (event.useCustomEmailTemplate && event.emailTemplate?.subject && event.emailTemplate?.body) {
+  const qrCodeDataUrl = await QRCode.toDataURL(registration.token);
+
+  if (
+    event.useCustomEmailTemplate &&
+    event.emailTemplate?.subject &&
+    event.emailTemplate?.body
+  ) {
     const targetLang = event.defaultLanguage || "en";
     const emailDir = targetLang === "ar" ? "rtl" : "ltr";
+    const textsToTranslate = [
+      "Welcome to",
+      "Please present this QR at check-in:",
+      "Your Token:",
+      "Reminder: ",
+      event.name,
+    ];
 
-    const textsToTranslate = ["Welcome to", event.name];
     const results = await translateText(textsToTranslate, targetLang);
     const tr = (t) => {
       const index = textsToTranslate.indexOf(t);
-      return index >= 0 ? (results[index] || t) : t;
+      return index >= 0 ? results[index] || t : t;
     };
+
+    const baseSubject = event.emailTemplate.subject;
+    const subject = isReminder
+      ? `${tr("Reminder: ")}${baseSubject}`
+      : baseSubject;
 
     const html = `
   <div dir="${emailDir}" style="font-family:'Segoe UI',Arial,sans-serif;background:#f6f8fa;padding:20px;">
@@ -25,12 +42,24 @@ async function buildRegistrationEmail({
       
       <!-- HEADER -->
       <div style="background:#004aad;padding:24px;text-align:center;">
-        ${event.logoUrl
-        ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;" />`
-        : ""
-      }
+        ${
+          event.logoUrl
+            ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;" />`
+            : ""
+        }
         <h2 style="color:#fff;font-size:22px;margin:0;">${tr("Welcome to")} ${tr(event.name)}</h2>
       </div>
+
+      <!-- QR Code Section -->
+        <p style="padding:24px 28px 28px; font-size:15px;color:#333;line-height:1.6;margin-top:24px;">
+          ${tr("Please present this QR at check-in:")}
+        </p>
+        <div style="text-align:center;margin:20px 0;">
+          {{qrImage}}
+        </div>
+        <p style="font-size:15px;color:#333;line-height:1.6;text-align:center;">
+          ${tr("Your Token:")} <strong>${registration.token}</strong>
+        </p>
 
       <!-- CONTENT BODY -->
       <div style="padding:24px 28px 28px;">
@@ -40,15 +69,14 @@ async function buildRegistrationEmail({
   </div>`;
 
     return {
-      subject: event.emailTemplate.subject,
+      subject: subject,
       html,
-      qrCodeDataUrl: null,
+      qrCodeDataUrl,
     };
   }
 
   const targetLang = event.defaultLanguage || "en";
   const emailDir = targetLang === "ar" ? "rtl" : "ltr";
-  const qrCodeDataUrl = await QRCode.toDataURL(registration.token);
 
   // Arabic/English date formatter helper
   const formatDate = (date) => {
@@ -114,7 +142,7 @@ async function buildRegistrationEmail({
   let customFieldHtml = "";
   if (Object.keys(customFields).length && Array.isArray(event.formFields)) {
     const filledFields = event.formFields.filter(
-      (f) => customFields[f.inputName]
+      (f) => customFields[f.inputName],
     );
     const items = filledFields
       .map((f) => {
@@ -140,10 +168,11 @@ async function buildRegistrationEmail({
       
       <!-- HEADER -->
       <div style="background:#004aad;padding:24px;text-align:center;">
-        ${event.logoUrl
-      ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;" />`
-      : ""
-    }
+        ${
+          event.logoUrl
+            ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;" />`
+            : ""
+        }
         <h2 style="color:#fff;font-size:22px;margin:0;">${tr("Welcome to")} ${tr(event.name)}</h2>
       </div>
 
@@ -180,10 +209,11 @@ async function buildRegistrationEmail({
             <td style="padding:4px 0;"><strong>${tr("Venue:")}</strong></td>
             <td style="padding:4px 0;">${tr(event.venue)}</td>
           </tr>
-          ${event.description
-      ? `<tr><td style="padding:4px 0;"><strong>${tr("About:")}</strong></td><td style="padding:4px 0;">${tr(event.description)}</td></tr>`
-      : ""
-    }
+          ${
+            event.description
+              ? `<tr><td style="padding:4px 0;"><strong>${tr("About:")}</strong></td><td style="padding:4px 0;">${tr(event.description)}</td></tr>`
+              : ""
+          }
         </table>
 
         ${customFieldHtml}
@@ -201,7 +231,9 @@ async function buildRegistrationEmail({
   </div>`;
 
   const baseSubject = `${tr("Registration Confirmed:")} ${tr(event.name)}`;
-  const subject = isReminder ? `${tr("Reminder: ")}${baseSubject}` : baseSubject;
+  const subject = isReminder
+    ? `${tr("Reminder: ")}${baseSubject}`
+    : baseSubject;
 
   return { subject, html, qrCodeDataUrl };
 }
