@@ -51,9 +51,37 @@ exports.getAllSpinWheels = asyncHandler(async (req, res) => {
   const wheels = await SpinWheel.find()
     .notDeleted()
     .populate("business", "name slug")
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
 
-  return response(res, 200, "Fetched all spin wheels", wheels);
+  // Get participant counts for each wheel
+  const wheelIds = wheels.map((w) => w._id);
+  const participantCounts = await SpinWheelParticipant.aggregate([
+    {
+      $match: {
+        spinWheel: { $in: wheelIds },
+        isDeleted: { $ne: true },
+      },
+    },
+    {
+      $group: {
+        _id: "$spinWheel",
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const countMap = {};
+  participantCounts.forEach((pc) => {
+    countMap[pc._id.toString()] = pc.count;
+  });
+
+  const wheelsWithCounts = wheels.map((wheel) => ({
+    ...wheel,
+    participantCount: countMap[wheel._id.toString()] || 0,
+  }));
+
+  return response(res, 200, "Fetched all spin wheels", wheelsWithCounts);
 });
 
 // Get SpinWheel by ID

@@ -7,6 +7,16 @@ function emitSpinWheelSync(spinWheelId, payload) {
   });
 }
 
+// Emit upload progress for participants
+function emitUploadProgress(spinWheelId, uploaded, total) {
+  emitUpdate("spinWheelUploadProgress", {
+    spinWheelId,
+    uploaded,
+    total,
+  });
+}
+
 module.exports = {
   emitSpinWheelSync,
+  emitUploadProgress,
 };
