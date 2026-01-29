@@ -66,6 +66,14 @@ RegistrationSchema.pre("validate", async function (next) {
 
 RegistrationSchema.index({ eventId: 1, isDeleted: 1 });
 
+RegistrationSchema.index({
+  fullName: "text",
+  email: "text",
+  company: "text",
+  phone: "text",
+  token: "text",
+});
+
 // Soft delete support
 RegistrationSchema.plugin(require("../db/plugins/softDelete"));
 

@@ -34,7 +34,9 @@ const {
   COUNTRY_CODES,
 } = require("../../utils/countryCodes");
 
-const { buildRegistrationEmail } = require("../../utils/emailTemplateBuilder/eventRegEmailTemplateBuilder");
+const {
+  buildRegistrationEmail,
+} = require("../../utils/emailTemplateBuilder/eventRegEmailTemplateBuilder");
 const sendEmail = require("../../services/emailService");
 
 // PROCESSORS
@@ -59,13 +61,13 @@ function validateUploadedFileFields(event, rows) {
       .map((f) => f.inputName);
 
     const missingRequiredFields = requiredFields.filter(
-      (field) => !uploadedFields.includes(field)
+      (field) => !uploadedFields.includes(field),
     );
     if (missingRequiredFields.length > 0) {
       return {
         valid: false,
         error: `Uploaded file is missing required fields: ${missingRequiredFields.join(
-          ", "
+          ", ",
         )}`,
       };
     }
@@ -75,13 +77,13 @@ function validateUploadedFileFields(event, rows) {
     const classicRequiredFields = ["Full Name", "Email"];
 
     const missingRequiredFields = classicRequiredFields.filter(
-      (field) => !uploadedFields.includes(field)
+      (field) => !uploadedFields.includes(field),
     );
     if (missingRequiredFields.length > 0) {
       return {
         valid: false,
         error: `Uploaded file is missing required fields: ${missingRequiredFields.join(
-          ", "
+          ", ",
         )}`,
       };
     }
@@ -186,26 +188,31 @@ async function validateAllRows(event, rows) {
   if (invalidRowNumbers.length > 0) {
     return {
       valid: false,
-      error: `Cannot upload file. Row${invalidRowNumbers.length > 1 ? "s" : ""
-        } ${formatRowNumbers(invalidRowNumbers)} ${invalidRowNumbers.length > 1 ? "have" : "has"
-        } missing required fields: ${allRequiredFields.join(", ")}.`,
+      error: `Cannot upload file. Row${
+        invalidRowNumbers.length > 1 ? "s" : ""
+      } ${formatRowNumbers(invalidRowNumbers)} ${
+        invalidRowNumbers.length > 1 ? "have" : "has"
+      } missing required fields: ${allRequiredFields.join(", ")}.`,
     };
   }
 
   if (invalidEmailRowNumbers.length > 0) {
     return {
       valid: false,
-      error: `Cannot upload file. Row${invalidEmailRowNumbers.length > 1 ? "s" : ""
-        } ${formatRowNumbers(invalidEmailRowNumbers)} ${invalidEmailRowNumbers.length > 1 ? "have" : "has"
-        } invalid email format.`,
+      error: `Cannot upload file. Row${
+        invalidEmailRowNumbers.length > 1 ? "s" : ""
+      } ${formatRowNumbers(invalidEmailRowNumbers)} ${
+        invalidEmailRowNumbers.length > 1 ? "have" : "has"
+      } invalid email format.`,
     };
   }
 
   if (duplicateEmailRowNumbers.length > 0) {
     return {
       valid: false,
-      error: `Cannot upload file. Duplicate email(s) found at row${duplicateEmailRowNumbers.length > 1 ? "s" : ""
-        } ${formatRowNumbers(duplicateEmailRowNumbers)}. Each email must be unique.`,
+      error: `Cannot upload file. Duplicate email(s) found at row${
+        duplicateEmailRowNumbers.length > 1 ? "s" : ""
+      } ${formatRowNumbers(duplicateEmailRowNumbers)}. Each email must be unique.`,
     };
   }
 
@@ -230,20 +237,18 @@ async function validateAllRows(event, rows) {
       existing.forEach((reg) => {
         if (reg.email && emailOccurrences[reg.email.toLowerCase()]) {
           emailOccurrences[reg.email.toLowerCase()].forEach((r) =>
-            conflictRows.add(r)
+            conflictRows.add(r),
           );
         }
         if (reg.phone && phoneOccurrences[reg.phone]) {
-          phoneOccurrences[reg.phone].forEach((r) =>
-            conflictRows.add(r)
-          );
+          phoneOccurrences[reg.phone].forEach((r) => conflictRows.add(r));
         }
       });
 
       return {
         valid: false,
         error: `Some rows are already registered for this event: rows ${formatRowNumbers(
-          [...conflictRows]
+          [...conflictRows],
         )}`,
       };
     }
@@ -257,8 +262,8 @@ async function validateAllRows(event, rows) {
     warning:
       invalidPhoneRowNumbers.length > 0
         ? `Some rows have invalid phone numbers and may not receive WhatsApp messages: rows ${formatRowNumbers(
-          invalidPhoneRowNumbers
-        )}`
+            invalidPhoneRowNumbers,
+          )}`
         : null,
   };
 }
@@ -304,7 +309,10 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
   if (hasCustomFields) {
     formFields.forEach((f) => {
       headers.push(f.inputName);
-      if (f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")) {
+      if (
+        f.inputType === "phone" ||
+        f.inputName?.toLowerCase().includes("phone")
+      ) {
         phoneFields.push({ name: f.inputName, index: headers.length - 1 });
       }
     });
@@ -353,12 +361,21 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
     const row = [];
     if (hasCustomFields) {
       formFields.forEach((f) => {
-        if (f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")) {
+        if (
+          f.inputType === "phone" ||
+          f.inputName?.toLowerCase().includes("phone")
+        ) {
           row.push(dummy.phoneIsoCode);
           row.push(dummy.phone);
-        } else if (f.inputName?.toLowerCase().includes("name") || f.inputName?.toLowerCase().includes("full")) {
+        } else if (
+          f.inputName?.toLowerCase().includes("name") ||
+          f.inputName?.toLowerCase().includes("full")
+        ) {
           row.push(dummy.fullName);
-        } else if (f.inputType === "email" || f.inputName?.toLowerCase().includes("email")) {
+        } else if (
+          f.inputType === "email" ||
+          f.inputName?.toLowerCase().includes("email")
+        ) {
           row.push(dummy.email);
         } else if (f.inputName?.toLowerCase().includes("company")) {
           row.push(dummy.company);
@@ -389,11 +406,11 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
 
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename=${slug}_registrations_template.xlsx`
+    `attachment; filename=${slug}_registrations_template.xlsx`,
   );
   res.setHeader(
     "Content-Type",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   );
   res.send(sampleBuffer);
 });
@@ -410,7 +427,9 @@ exports.downloadCountryReference = asyncHandler(async (req, res) => {
     return "";
   };
 
-  const countryHeaders = [["Country Name", "ISO Code", "Country Code", "No. of Digits"]];
+  const countryHeaders = [
+    ["Country Name", "ISO Code", "Country Code", "No. of Digits"],
+  ];
   const countryRows = COUNTRY_CODES.map((cc) => [
     cc.country,
     cc.isoCode,
@@ -421,15 +440,18 @@ exports.downloadCountryReference = asyncHandler(async (req, res) => {
   const countryWs = XLSX.utils.aoa_to_sheet(countryData);
   const countryWb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(countryWb, countryWs, "Countries");
-  const countryBuffer = XLSX.write(countryWb, { type: "buffer", bookType: "xlsx" });
+  const countryBuffer = XLSX.write(countryWb, {
+    type: "buffer",
+    bookType: "xlsx",
+  });
 
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename=country_reference.xlsx`
+    `attachment; filename=country_reference.xlsx`,
   );
   res.setHeader(
     "Content-Type",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   );
   res.send(countryBuffer);
 });
@@ -461,7 +483,8 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
     return response(
       res,
       400,
-      fieldValidation.error || "Uploaded file does not contain required fields."
+      fieldValidation.error ||
+        "Uploaded file does not contain required fields.",
     );
   }
 
@@ -476,7 +499,7 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
 
   setImmediate(() => {
     uploadProcessor(event, rows).catch((err) =>
-      console.error("UPLOAD PROCESSOR FAILED:", err)
+      console.error("UPLOAD PROCESSOR FAILED:", err),
     );
   });
 });
@@ -539,13 +562,13 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   // Dynamic field filters
   const classicFieldsMap = {
     "Full Name": "fullName",
-    "Email": "email",
-    "Phone": "phone",
-    "Company": "company",
-    "fullName": "fullName",
-    "email": "email",
-    "phone": "phone",
-    "company": "company",
+    Email: "email",
+    Phone: "phone",
+    Company: "company",
+    fullName: "fullName",
+    email: "email",
+    phone: "phone",
+    company: "company",
   };
 
   const dynamicFilters = Object.entries(dynamicFiltersRaw)
@@ -668,23 +691,39 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   if (search) activeFilters.push(`Search: "${search}"`);
   if (token) activeFilters.push(`Token: "${token}"`);
   if (status && status !== "all") {
-    const statusLabels = { pending: "Pending", approved: "Approved", rejected: "Rejected" };
+    const statusLabels = {
+      pending: "Pending",
+      approved: "Approved",
+      rejected: "Rejected",
+    };
     activeFilters.push(`Status: ${statusLabels[status] || status}`);
   }
   if (emailSent && emailSent !== "all") {
-    activeFilters.push(`Email Status: ${emailSent === "sent" ? "Sent" : "Not Sent"}`);
+    activeFilters.push(
+      `Email Status: ${emailSent === "sent" ? "Sent" : "Not Sent"}`,
+    );
   }
   if (whatsappSent && whatsappSent !== "all") {
-    activeFilters.push(`WhatsApp Status: ${whatsappSent === "sent" ? "Sent" : "Not Sent"}`);
+    activeFilters.push(
+      `WhatsApp Status: ${whatsappSent === "sent" ? "Sent" : "Not Sent"}`,
+    );
   }
   if (createdFrom || createdTo) {
-    const fromStr = createdFrom ? formatLocalDateTime(Number(createdFrom), timezone || null) : "—";
-    const toStr = createdTo ? formatLocalDateTime(Number(createdTo), timezone || null) : "—";
+    const fromStr = createdFrom
+      ? formatLocalDateTime(Number(createdFrom), timezone || null)
+      : "—";
+    const toStr = createdTo
+      ? formatLocalDateTime(Number(createdTo), timezone || null)
+      : "—";
     activeFilters.push(`Registered At: ${fromStr} to ${toStr}`);
   }
   if (scannedFrom || scannedTo) {
-    const fromStr = scannedFrom ? formatLocalDateTime(Number(scannedFrom), timezone || null) : "—";
-    const toStr = scannedTo ? formatLocalDateTime(Number(scannedTo), timezone || null) : "—";
+    const fromStr = scannedFrom
+      ? formatLocalDateTime(Number(scannedFrom), timezone || null)
+      : "—";
+    const toStr = scannedTo
+      ? formatLocalDateTime(Number(scannedTo), timezone || null)
+      : "—";
     activeFilters.push(`Scanned At: ${fromStr} to ${toStr}`);
   }
   if (scannedBy) activeFilters.push(`Scanned By: "${scannedBy}"`);
@@ -697,7 +736,8 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
       activeFilters.push(`${fieldName}: "${val}"`);
     });
 
-  const filtersString = activeFilters.length > 0 ? activeFilters.join("; ") : "None";
+  const filtersString =
+    activeFilters.length > 0 ? activeFilters.join("; ") : "None";
 
   // HEADER SECTION (RESTORED)
   lines.push(`Event Name,${event.name || "N/A"}`);
@@ -723,8 +763,8 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
       (f) =>
         `"${((reg.customFields?.[f] ?? reg[f] ?? "") + "").replace(
           /"/g,
-          '""'
-        )}"`
+          '""',
+        )}"`,
     );
 
     row.push(`"${reg.token}"`);
@@ -737,7 +777,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   // WALK-INS SECTION
   // -------------------------
   const allWalkins = walkins.filter((w) =>
-    regs.some((r) => r._id.toString() === w.registrationId.toString())
+    regs.some((r) => r._id.toString() === w.registrationId.toString()),
   );
 
   if (allWalkins.length > 0) {
@@ -756,15 +796,15 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
     allWalkins.forEach((w) => {
       const reg = regs.find(
-        (r) => r._id.toString() === w.registrationId.toString()
+        (r) => r._id.toString() === w.registrationId.toString(),
       );
 
       const row = dynamicFields.map(
         (f) =>
           `"${((reg?.customFields?.[f] ?? reg?.[f] ?? "") + "").replace(
             /"/g,
-            '""'
-          )}"`
+            '""',
+          )}"`,
       );
 
       row.push(`"${reg.token}"`);
@@ -784,7 +824,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename=${event.slug}_filtered_registrations.csv`
+    `attachment; filename=${event.slug}_filtered_registrations.csv`,
   );
   res.setHeader("Content-Type", "text/csv;charset=utf-8");
 
@@ -827,8 +867,8 @@ exports.createRegistration = asyncHandler(async (req, res) => {
           res,
           400,
           `Invalid value for ${field.inputName}. Allowed: ${field.values.join(
-            ", "
-          )}`
+            ", ",
+          )}`,
         );
       }
       if (value != null) {
@@ -838,7 +878,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
             return response(
               res,
               400,
-              `Invalid email format for ${field.inputName}`
+              `Invalid email format for ${field.inputName}`,
             );
           }
         }
@@ -883,7 +923,10 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     phoneForValidation = normalizedPhone;
 
     if (!normalizedPhone.startsWith("+") && phoneIsoCode) {
-      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode);
+      phoneForValidation = combinePhoneWithCountryCode(
+        normalizedPhone,
+        phoneIsoCode,
+      );
     } else if (normalizedPhone.startsWith("+")) {
       const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
       if (extracted.isoCode) {
@@ -894,14 +937,20 @@ exports.createRegistration = asyncHandler(async (req, res) => {
         phoneForValidation = normalizedPhone;
       } else if (!phoneIsoCode) {
         phoneIsoCode = DEFAULT_ISO_CODE;
-        phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+        phoneForValidation =
+          combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) ||
+          normalizedPhone;
       }
     } else if (!phoneIsoCode) {
       phoneIsoCode = DEFAULT_ISO_CODE;
-      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+      phoneForValidation =
+        combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) ||
+        normalizedPhone;
     } else {
       phoneLocalNumber = normalizedPhone;
-      phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
+      phoneForValidation =
+        combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) ||
+        normalizedPhone;
     }
 
     const phoneCheck = validatePhoneNumberByCountry(phoneForValidation);
@@ -914,8 +963,9 @@ exports.createRegistration = asyncHandler(async (req, res) => {
 
   let phoneField = null;
   if (hasCustomFields) {
-    phoneField = formFields.find((f) =>
-      f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+    phoneField = formFields.find(
+      (f) =>
+        f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone"),
     );
     if (phoneField && customFields[phoneField.inputName]) {
       customFields[phoneField.inputName] = phoneLocalNumber;
@@ -929,10 +979,18 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     const emailField = formFields.find((f) => f.inputType === "email");
 
     if (emailField && extractedEmail && String(extractedEmail).trim()) {
-      duplicateOr.push({ [`customFields.${emailField.inputName}`]: extractedEmail });
+      duplicateOr.push({
+        [`customFields.${emailField.inputName}`]: extractedEmail,
+      });
     }
-    if (phoneField && phoneForDuplicateCheck && String(phoneForDuplicateCheck).trim()) {
-      duplicateOr.push({ [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck });
+    if (
+      phoneField &&
+      phoneForDuplicateCheck &&
+      String(phoneForDuplicateCheck).trim()
+    ) {
+      duplicateOr.push({
+        [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck,
+      });
       if (phoneLocalNumber && phoneIsoCode) {
         duplicateOr.push({
           $and: [
@@ -943,11 +1001,14 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       }
     }
   } else {
-    if (extractedEmail && String(extractedEmail).trim()) duplicateOr.push({ email: extractedEmail });
+    if (extractedEmail && String(extractedEmail).trim())
+      duplicateOr.push({ email: extractedEmail });
     if (phoneForDuplicateCheck && String(phoneForDuplicateCheck).trim()) {
       duplicateOr.push({ phone: phoneForDuplicateCheck });
       if (phoneLocalNumber && phoneIsoCode) {
-        duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
+        duplicateOr.push({
+          $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }],
+        });
       }
     }
   }
@@ -986,7 +1047,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   const displayNameForEmail =
     formFields.length > 0
       ? pickFullName(customFields) ||
-      (event.defaultLanguage === "ar" ? "ضيف" : "Guest")
+        (event.defaultLanguage === "ar" ? "ضيف" : "Guest")
       : extractedFullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
   const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
@@ -1002,7 +1063,9 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       subject,
       html,
       qrCodeDataUrl,
-      event.agendaUrl ? [{ filename: "Agenda.pdf", path: event.agendaUrl }] : []
+      event.agendaUrl
+        ? [{ filename: "Agenda.pdf", path: event.agendaUrl }]
+        : [],
     );
     if (result.success) {
       newRegistration.emailSent = true;
@@ -1010,14 +1073,14 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     } else {
       console.error(
         `Email failed for ${emailForSending}:`,
-        result.response || result.error
+        result.response || result.error,
       );
     }
   }
 
   // Fire background recompute
   recomputeAndEmit(event.businessId || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   const enhancedRegistration = {
@@ -1053,8 +1116,9 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
 
   // ---------- APPLY UPDATES ----------
   if (hasCustomFields) {
-    const phoneField = event.formFields.find((f) =>
-      f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+    const phoneField = event.formFields.find(
+      (f) =>
+        f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone"),
     );
 
     const updatedCustomFields = {
@@ -1063,7 +1127,9 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     };
 
     if (phoneField && updatedCustomFields[phoneField.inputName]) {
-      const phoneValue = normalizePhone(updatedCustomFields[phoneField.inputName]);
+      const phoneValue = normalizePhone(
+        updatedCustomFields[phoneField.inputName],
+      );
       if (phoneValue && phoneValue.startsWith("+")) {
         const extracted = extractCountryCodeAndIsoCode(phoneValue);
         if (extracted.isoCode) {
@@ -1117,7 +1183,10 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
 
     if (!normalizedPhone.startsWith("+") && phoneIsoCode) {
       phoneLocalNumber = normalizedPhone;
-      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode);
+      phoneForValidation = combinePhoneWithCountryCode(
+        normalizedPhone,
+        phoneIsoCode,
+      );
     } else if (normalizedPhone.startsWith("+")) {
       const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
       if (extracted.isoCode) {
@@ -1128,15 +1197,21 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
         phoneForValidation = normalizedPhone;
       } else if (!phoneIsoCode) {
         phoneIsoCode = DEFAULT_ISO_CODE;
-        phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+        phoneForValidation =
+          combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) ||
+          normalizedPhone;
       }
     } else if (!phoneIsoCode) {
       phoneIsoCode = reg.isoCode || DEFAULT_ISO_CODE;
       phoneLocalNumber = normalizedPhone;
-      phoneForValidation = combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) || normalizedPhone;
+      phoneForValidation =
+        combinePhoneWithCountryCode(normalizedPhone, phoneIsoCode) ||
+        normalizedPhone;
     } else {
       phoneLocalNumber = normalizedPhone;
-      phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
+      phoneForValidation =
+        combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) ||
+        normalizedPhone;
     }
 
     const phoneCheck = validatePhoneNumberByCountry(phoneForValidation);
@@ -1154,8 +1229,10 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
         reg.isoCode = phoneIsoCode;
       }
     } else {
-      const phoneField = event.formFields.find((f) =>
-        f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+      const phoneField = event.formFields.find(
+        (f) =>
+          f.inputType === "phone" ||
+          f.inputName?.toLowerCase().includes("phone"),
       );
       if (phoneField && phoneLocalNumber !== null) {
         const updatedCustomFields = {
@@ -1180,15 +1257,21 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
 
     if (hasCustomFields) {
       const emailField = event.formFields.find((f) => f.inputType === "email");
-      const phoneField = event.formFields.find((f) =>
-        f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
+      const phoneField = event.formFields.find(
+        (f) =>
+          f.inputType === "phone" ||
+          f.inputName?.toLowerCase().includes("phone"),
       );
 
       if (emailField && extractedEmail) {
-        duplicateOr.push({ [`customFields.${emailField.inputName}`]: extractedEmail });
+        duplicateOr.push({
+          [`customFields.${emailField.inputName}`]: extractedEmail,
+        });
       }
       if (phoneField && phoneForDuplicateCheck) {
-        duplicateOr.push({ [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck });
+        duplicateOr.push({
+          [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck,
+        });
         if (phoneLocalNumber && phoneIsoCode) {
           duplicateOr.push({
             $and: [
@@ -1202,7 +1285,9 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
       if (phoneForDuplicateCheck) {
         duplicateOr.push({ phone: phoneForDuplicateCheck });
         if (phoneLocalNumber && phoneIsoCode) {
-          duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
+          duplicateOr.push({
+            $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }],
+          });
         }
       }
     } else {
@@ -1210,7 +1295,9 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
       if (phoneForDuplicateCheck) {
         duplicateOr.push({ phone: phoneForDuplicateCheck });
         if (phoneLocalNumber && phoneIsoCode) {
-          duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
+          duplicateOr.push({
+            $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }],
+          });
         }
       }
     }
@@ -1231,7 +1318,6 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
   return response(res, 200, "Registration updated successfully", reg);
 });
 
-
 // UPDATE registration approval status
 exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -1246,7 +1332,7 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
     return response(
       res,
       400,
-      `Status must be one of: ${validStatuses.join(", ")}`
+      `Status must be one of: ${validStatuses.join(", ")}`,
     );
   }
 
@@ -1263,41 +1349,29 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
   await registration.save();
 
   recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(
     res,
     200,
     "Registration approval status updated",
-    registration
+    registration,
   );
 });
 
 // BULK update registration approval status
 exports.bulkUpdateRegistrationApproval = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const { status, ids } = req.body;
+  const { status, filters = {} } = req.body;
 
   const validStatuses = ["pending", "approved", "rejected"];
   if (!status || !validStatuses.includes(status)) {
     return response(
       res,
       400,
-      `Status must be one of: ${validStatuses.join(", ")}`
+      `Status must be one of: ${validStatuses.join(", ")}`,
     );
-  }
-
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return response(res, 400, "ids array is required");
-  }
-
-  const validIds = ids
-    .filter((id) => mongoose.Types.ObjectId.isValid(id))
-    .map((id) => new mongoose.Types.ObjectId(id));
-
-  if (validIds.length === 0) {
-    return response(res, 400, "No valid registration IDs provided");
   }
 
   const event = await Event.findOne({ slug }).notDeleted();
@@ -1307,17 +1381,124 @@ exports.bulkUpdateRegistrationApproval = asyncHandler(async (req, res) => {
     return response(res, 400, "This event does not require approval");
   }
 
-  const result = await Registration.updateMany(
-    {
-      _id: { $in: validIds },
-      eventId: event._id,
-      isDeleted: { $ne: true },
-    },
-    { $set: { approvalStatus: status } }
-  );
+  // ------------------------------------------------
+  // Build Mongo query from filters (same as export)
+  // ------------------------------------------------
+  const query = {
+    eventId: event._id,
+    isDeleted: { $ne: true },
+  };
+
+  // Text search
+  if (filters.search) {
+    const search = filters.search;
+    const regex = new RegExp(search, "i");
+
+    query.$or = [
+      // Fixed schema fields
+      { fullName: regex },
+      { email: regex },
+      { phone: regex },
+      { company: regex },
+      { token: regex },
+
+      // Dynamic custom fields
+      {
+        $expr: {
+          $gt: [
+            {
+              $size: {
+                $filter: {
+                  input: { $objectToArray: "$customFields" },
+                  as: "cf",
+                  cond: {
+                    $regexMatch: {
+                      input: { $toString: "$$cf.v" },
+                      regex: search,
+                      options: "i",
+                    },
+                  },
+                },
+              },
+            },
+            0,
+          ],
+        },
+      },
+    ];
+  }
+
+  // Token
+  if (filters.token) {
+    query.token = filters.token;
+  }
+
+  // Approval status
+  if (filters.status) {
+    query.approvalStatus = filters.status;
+  }
+
+  // Email / WhatsApp status
+  if (filters.emailSent !== undefined) {
+    query.emailSent = filters.emailSent === "sent";
+  }
+  if (filters.whatsappSent !== undefined) {
+    query.whatsappSent = filters.whatsappSent === "sent";
+  }
+
+  // Created date range
+  if (filters.createdFrom || filters.createdTo) {
+    query.createdAt = {};
+    if (filters.createdFrom)
+      query.createdAt.$gte = new Date(Number(filters.createdFrom));
+    if (filters.createdTo)
+      query.createdAt.$lte = new Date(Number(filters.createdTo));
+  }
+
+  // Walk-in filters
+  if (filters.scannedBy) {
+    query["walkIns.scannedBy.name"] = {
+      $regex: filters.scannedBy,
+      $options: "i",
+    };
+  }
+
+  if (filters.scannedFrom || filters.scannedTo) {
+    query.walkIns = {
+      $elemMatch: {},
+    };
+
+    if (filters.scannedFrom) {
+      query.walkIns.$elemMatch.scannedAt = {
+        $gte: new Date(Number(filters.scannedFrom)),
+      };
+    }
+    if (filters.scannedTo) {
+      query.walkIns.$elemMatch.scannedAt = {
+        ...(query.walkIns.$elemMatch.scannedAt || {}),
+        $lte: new Date(Number(filters.scannedTo)),
+      };
+    }
+  }
+
+  // Dynamic custom fields: field_<name>
+  Object.entries(filters).forEach(([key, value]) => {
+    if (!key.startsWith("field_")) return;
+    if (!value) return;
+
+    const fieldName = key.replace("field_", "");
+    query[`customFields.${fieldName}`] = value;
+  });
+
+  // ------------------------------------------------
+  // Perform bulk update
+  // ------------------------------------------------
+  const result = await Registration.updateMany(query, {
+    $set: { approvalStatus: status },
+  });
 
   recomputeAndEmit(event.businessId || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(res, 200, "Bulk approval status updated", {
@@ -1346,17 +1527,22 @@ exports.unsentCount = asyncHandler(async (req, res) => {
 // -------------------------------------------
 exports.sendBulkEmails = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const { subject, body, statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
+  const { subject, body, statusFilter, emailSentFilter, whatsappSentFilter } =
+    req.body;
   const event = await Event.findOne({ slug }).lean();
   if (!event) return response(res, 404, "Event not found");
 
   const business = await Business.findById(event.businessId).lean();
 
-
   let mediaUrl = null;
   let originalFilename = null;
   if (req.file) {
-    const { fileUrl } = await uploadToS3(req.file, business.slug, "EventReg/custom-attachments", { inline: true });
+    const { fileUrl } = await uploadToS3(
+      req.file,
+      business.slug,
+      "EventReg/custom-attachments",
+      { inline: true },
+    );
     mediaUrl = fileUrl;
     originalFilename = req.file.originalname;
   }
@@ -1393,7 +1579,9 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
   }
 
   const regs = await Registration.find(filterQuery)
-    .select("fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus")
+    .select(
+      "fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus",
+    )
     .lean();
 
   // Early response immediately
@@ -1403,9 +1591,10 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
 
   // Background processor
   setImmediate(() => {
-    const customEmail = subject && body ? { subject, body, mediaUrl, originalFilename } : null;
+    const customEmail =
+      subject && body ? { subject, body, mediaUrl, originalFilename } : null;
     emailProcessor(event, regs, customEmail).catch((err) =>
-      console.error("EMAIL PROCESSOR FAILED:", err)
+      console.error("EMAIL PROCESSOR FAILED:", err),
     );
   });
 });
@@ -1415,7 +1604,14 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
 // -------------------------------------------
 exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const { type, subject, body, statusFilter, emailSentFilter, whatsappSentFilter } = req.body;
+  const {
+    type,
+    subject,
+    body,
+    statusFilter,
+    emailSentFilter,
+    whatsappSentFilter,
+  } = req.body;
 
   const event = await Event.findOne({ slug }).lean();
   if (!event) return response(res, 404, "Event not found");
@@ -1428,7 +1624,7 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
       req.file,
       business.slug,
       "EventReg/custom-attachments",
-      { inline: true }
+      { inline: true },
     );
     mediaUrl = fileUrl;
   }
@@ -1468,7 +1664,9 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
   }
 
   const regs = await Registration.find(filterQuery)
-    .select("fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus isoCode")
+    .select(
+      "fullName email phone company customFields token emailSent whatsappSent createdAt approvalStatus isoCode",
+    )
     .lean();
 
   response(res, 200, "Bulk notification job started", {
@@ -1478,12 +1676,13 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
   setImmediate(() => {
     if (type === "custom") {
       const customWhatsAppProcessor = require("../../processors/eventreg/customWhatsAppProcessor");
-      customWhatsAppProcessor(event, regs, { subject, body, mediaUrl }).catch((err) =>
-        console.error("EVENTREG CUSTOM WHATSAPP PROCESSOR FAILED:", err)
+      customWhatsAppProcessor(event, regs, { subject, body, mediaUrl }).catch(
+        (err) =>
+          console.error("EVENTREG CUSTOM WHATSAPP PROCESSOR FAILED:", err),
       );
     } else {
       whatsappProcessor(event, regs).catch((err) =>
-        console.error("EVENTREG WHATSAPP PROCESSOR FAILED:", err)
+        console.error("EVENTREG WHATSAPP PROCESSOR FAILED:", err),
       );
     }
   });
@@ -1543,7 +1742,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
           scannedBy: w.scannedBy,
         })),
       };
-    })
+    }),
   );
 
   return response(res, 200, "Registrations fetched", {
@@ -1599,7 +1798,7 @@ async function loadRemainingRecords(eventId, total) {
               scannedBy: w.scannedBy,
             })),
           };
-        })
+        }),
       );
 
       const currentLoaded = skip + enhanced.length;
@@ -1664,7 +1863,7 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
           scannedBy: w.scannedBy,
         })),
       };
-    })
+    }),
   );
 
   // Start background loading if more records exist
@@ -1702,7 +1901,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     return response(
       res,
       403,
-      "You are not authorized to scan registrations for this business"
+      "You are not authorized to scan registrations for this business",
     );
   }
 
@@ -1745,7 +1944,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   });
 
   recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(res, 200, "Registration verified and walk-in recorded", {
@@ -1785,7 +1984,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
     return response(
       res,
       403,
-      `Only admin or business users can create walk-in records. Your role: ${userDoc.role}`
+      `Only admin or business users can create walk-in records. Your role: ${userDoc.role}`,
     );
   }
 
@@ -1811,7 +2010,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
   await walkin.save();
 
   recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(res, 200, "Walk-in record created successfully", {
@@ -1819,7 +2018,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
     scannedAt: walkin.scannedAt,
     scannedBy: {
       name: adminUser.name || adminUser.email,
-      id: adminUser.id
+      id: adminUser.id,
     },
   });
 });
@@ -1846,7 +2045,7 @@ exports.deleteRegistration = asyncHandler(async (req, res) => {
 
   // Fire background recompute
   recomputeAndEmit(businessId || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(res, 200, "Registration moved to recycle bin");
@@ -1865,7 +2064,7 @@ exports.restoreRegistration = asyncHandler(async (req, res) => {
 
   // Fire background recompute
   recomputeAndEmit(event.businessId || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(res, 200, "Registration restored successfully", reg);
@@ -1885,7 +2084,7 @@ exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
 
   // Fire background recompute
   recomputeAndEmit(null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(res, 200, `Restored ${regs.length} registrations`);
@@ -1906,7 +2105,7 @@ exports.permanentDeleteRegistration = asyncHandler(async (req, res) => {
 
   // Fire background recompute
   recomputeAndEmit(businessId || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(res, 200, "Registration permanently deleted");
@@ -1929,12 +2128,12 @@ exports.permanentDeleteAllRegistrations = asyncHandler(async (req, res) => {
   await recountEventRegistrations(eventId);
   // Fire background recompute
   recomputeAndEmit(null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(
     res,
     200,
-    `Permanently deleted ${result.deletedCount} registrations and their walk-ins`
+    `Permanently deleted ${result.deletedCount} registrations and their walk-ins`,
   );
 });
