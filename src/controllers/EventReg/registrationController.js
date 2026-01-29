@@ -1274,6 +1274,59 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
   );
 });
 
+// BULK update registration approval status
+exports.bulkUpdateRegistrationApproval = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+  const { status, ids } = req.body;
+
+  const validStatuses = ["pending", "approved", "rejected"];
+  if (!status || !validStatuses.includes(status)) {
+    return response(
+      res,
+      400,
+      `Status must be one of: ${validStatuses.join(", ")}`
+    );
+  }
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return response(res, 400, "ids array is required");
+  }
+
+  const validIds = ids
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+
+  if (validIds.length === 0) {
+    return response(res, 400, "No valid registration IDs provided");
+  }
+
+  const event = await Event.findOne({ slug }).notDeleted();
+  if (!event) return response(res, 404, "Event not found");
+
+  if (!event.requiresApproval) {
+    return response(res, 400, "This event does not require approval");
+  }
+
+  const result = await Registration.updateMany(
+    {
+      _id: { $in: validIds },
+      eventId: event._id,
+      isDeleted: { $ne: true },
+    },
+    { $set: { approvalStatus: status } }
+  );
+
+  recomputeAndEmit(event.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(res, 200, "Bulk approval status updated", {
+    matched: result.matchedCount ?? result.n ?? 0,
+    modified: result.modifiedCount ?? result.nModified ?? 0,
+    status,
+  });
+});
+
 exports.unsentCount = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const event = await Event.findOne({ slug }).notDeleted();

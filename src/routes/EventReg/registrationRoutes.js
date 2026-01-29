@@ -17,6 +17,7 @@ const {
   unsentCount,
   updateRegistration,
   updateRegistrationApproval,
+  bulkUpdateRegistrationApproval,
   exportRegistrations,
   createWalkIn,
 } = require("../../controllers/EventReg/registrationController");
@@ -31,6 +32,13 @@ router.put("/:id", eventRegAccess, updateRegistration);
 
 // Update registration approval status
 router.patch("/:id/approval", eventRegAccess, updateRegistrationApproval);
+
+// Bulk update approval status
+router.patch(
+  "/event/:slug/approval/bulk",
+  eventRegAccess,
+  bulkUpdateRegistrationApproval
+);
 
 // Create walkin record for a registration (protected)
 router.post("/:id/walkin", eventRegAccess, createWalkIn);
