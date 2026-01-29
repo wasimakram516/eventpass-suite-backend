@@ -1,5 +1,6 @@
 const XLSX = require("xlsx");
 const SpinWheelParticipant = require("../../models/SpinWheelParticipant");
+const SpinWheelWinner = require("../../models/SpinWheelWinner");
 const WalkIn = require("../../models/WalkIn");
 const SpinWheel = require("../../models/SpinWheel");
 const response = require("../../utils/response");
@@ -9,10 +10,19 @@ const Event = require("../../models/Event");
 const Registration = require("../../models/Registration");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const { runSpinWheelSync } = require("../../processors/eventwheel/spinWheelSyncProcessor");
+const uploadProcessor = require("../../processors/eventwheel/uploadProcessor");
+const { normalizePhone } = require("../../utils/whatsappProcessorUtils");
+const {
+  extractCountryCodeAndIsoCode,
+  combinePhoneWithCountryCode,
+  DEFAULT_ISO_CODE,
+  COUNTRY_CODES,
+} = require("../../utils/countryCodes");
+const { validatePhoneNumberByCountry } = require("../../utils/phoneValidation");
 
 // Add Participant (Only Admin for "admin" SpinWheels)
 exports.addParticipant = asyncHandler(async (req, res) => {
-  const { name, phone, company, spinWheelId } = req.body;
+  const { name, phone, company, spinWheelId, isoCode } = req.body;
 
   if (!name || !spinWheelId)
     return response(res, 400, "Name and SpinWheel ID are required");
@@ -39,9 +49,42 @@ exports.addParticipant = asyncHandler(async (req, res) => {
     );
   }
 
+  // Phone normalization and isoCode handling
+  let phoneLocalNumber = phone;
+  let phoneIsoCode = isoCode || DEFAULT_ISO_CODE;
+  let phoneForValidation = null;
+
+  if (phone) {
+    const normalizedPhone = normalizePhone(phone);
+
+    if (normalizedPhone.startsWith("+")) {
+      const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
+      if (extracted.isoCode) {
+        phoneLocalNumber = extracted.localNumber;
+        phoneIsoCode = extracted.isoCode;
+        phoneForValidation = normalizedPhone;
+      } else {
+        phoneLocalNumber = normalizedPhone;
+        phoneIsoCode = phoneIsoCode || DEFAULT_ISO_CODE;
+        phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
+      }
+    } else {
+      phoneLocalNumber = normalizedPhone;
+      phoneIsoCode = phoneIsoCode || DEFAULT_ISO_CODE;
+      phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
+    }
+
+    // Validate phone number with digit count check
+    const phoneCheck = validatePhoneNumberByCountry(phoneForValidation, phoneIsoCode);
+    if (!phoneCheck.valid) {
+      return response(res, 400, phoneCheck.error);
+    }
+  }
+
   const newParticipant = await SpinWheelParticipant.create({
     name,
-    phone,
+    phone: phoneLocalNumber,
+    isoCode: phoneIsoCode,
     company,
     spinWheel: spinWheelId,
   });
@@ -152,17 +195,71 @@ exports.getSpinWheelSyncFilters = asyncHandler(async (req, res) => {
   });
 });
 
-// Get Participants by Slug
+// Helper function to build participants query
+function buildParticipantsQuery(wheelId, options = {}) {
+  const {
+    visibleOnly = false,
+    page = null,
+    limit = null,
+    selectFields = "_id name phone isoCode company",
+    sortByName = true,
+  } = options;
+
+  const query = { spinWheel: wheelId };
+  if (visibleOnly) {
+    query.visible = true;
+  }
+
+  let baseQuery = SpinWheelParticipant.find(query).notDeleted();
+  if (sortByName) {
+    baseQuery = baseQuery.sort({ name: 1 });
+  }
+
+  if (page !== null && limit !== null) {
+    baseQuery = baseQuery.skip((page - 1) * limit).limit(limit);
+  }
+
+  const finalSelectFields = visibleOnly
+    ? selectFields
+    : `${selectFields}${selectFields.includes("visible") ? "" : " visible"}`;
+
+  return baseQuery.select(finalSelectFields);
+}
+
+// Helper function to enrich participants with winner status
+async function enrichWithWinnerStatus(participants) {
+  if (!participants || participants.length === 0) return participants;
+
+  const participantIds = participants.map((p) => p._id || p);
+  const winners = await SpinWheelWinner.find({
+    participant: { $in: participantIds },
+  }).select("participant");
+
+  const winnerMap = {};
+  winners.forEach((w) => {
+    winnerMap[w.participant.toString()] = true;
+  });
+
+  return participants.map((p) => ({
+    ...(p.toObject ? p.toObject() : p),
+    isWinner: !!winnerMap[(p._id || p).toString()],
+  }));
+}
+
+// Get Participants by Slug (for public spin wheel - only visible participants)
 exports.getParticipantsBySlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const wheel = await SpinWheel.findOne({ slug }).select("_id").notDeleted();
+  const wheel = await SpinWheel.findOne({ slug })
+    .select("_id type")
+    .notDeleted();
   if (!wheel) return response(res, 404, "SpinWheel not found");
 
-  const participants = await SpinWheelParticipant.find({ spinWheel: wheel._id })
-    .notDeleted()
-    .sort({ name: 1 })
-    .select("name phone company");
+  const participants = await buildParticipantsQuery(wheel._id, {
+    visibleOnly: true,
+    selectFields: "_id name phone isoCode company",
+    sortByName: wheel.type !== "onspot",
+  });
 
   return response(
     res,
@@ -170,6 +267,38 @@ exports.getParticipantsBySlug = asyncHandler(async (req, res) => {
     "Participants retrieved successfully",
     participants
   );
+});
+
+// Get Participants for CMS (all participants with pagination and winner status)
+exports.getParticipantsForCMS = asyncHandler(async (req, res) => {
+  const { spinWheelId } = req.params;
+  const page = Number(req.query.page) || 1;
+  const limit = Number(req.query.limit) || 10;
+
+  const wheel = await SpinWheel.findById(spinWheelId).notDeleted();
+  if (!wheel) return response(res, 404, "SpinWheel not found");
+
+  const countQuery = { spinWheel: wheel._id, isDeleted: { $ne: true } };
+  const totalParticipants = await SpinWheelParticipant.countDocuments(countQuery);
+
+  const participants = await buildParticipantsQuery(wheel._id, {
+    visibleOnly: false,
+    page,
+    limit,
+    selectFields: "_id name phone isoCode company visible",
+  });
+
+  const participantsWithWinnerStatus = await enrichWithWinnerStatus(participants);
+
+  return response(res, 200, "Participants retrieved successfully", {
+    data: participantsWithWinnerStatus,
+    pagination: {
+      totalParticipants,
+      totalPages: Math.max(1, Math.ceil(totalParticipants / limit)),
+      currentPage: page,
+      perPage: limit,
+    },
+  });
 });
 
 // Get Single Participant by ID
@@ -184,7 +313,7 @@ exports.getParticipantById = asyncHandler(async (req, res) => {
 
 // Update Participant
 exports.updateParticipant = asyncHandler(async (req, res) => {
-  const { name, phone, company } = req.body;
+  const { name, phone, company, isoCode } = req.body;
   const participant = await SpinWheelParticipant.findById(
     req.params.id
   ).populate("spinWheel", "business");
@@ -195,14 +324,52 @@ exports.updateParticipant = asyncHandler(async (req, res) => {
     return response(res, 403, "Cannot update participants of a synced wheel");
   }
 
-  participant.name = name || participant.name;
-  participant.phone = phone || participant.phone;
-  participant.company = company || participant.company;
+  participant.name = name !== undefined ? name : participant.name;
+  participant.company = company !== undefined ? company : participant.company;
+
+  // Phone normalization and isoCode handling
+  if (phone !== undefined) {
+    let phoneLocalNumber = phone;
+    let phoneIsoCode = isoCode !== undefined ? isoCode : participant.isoCode || DEFAULT_ISO_CODE;
+    let phoneForValidation = null;
+
+    if (phone) {
+      const normalizedPhone = normalizePhone(phone);
+
+      if (normalizedPhone.startsWith("+")) {
+        const extracted = extractCountryCodeAndIsoCode(normalizedPhone);
+        if (extracted.isoCode) {
+          phoneLocalNumber = extracted.localNumber;
+          phoneIsoCode = extracted.isoCode;
+          phoneForValidation = normalizedPhone;
+        } else {
+          phoneLocalNumber = normalizedPhone;
+          phoneIsoCode = phoneIsoCode || DEFAULT_ISO_CODE;
+          phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
+        }
+      } else {
+        phoneLocalNumber = normalizedPhone;
+        phoneIsoCode = phoneIsoCode || DEFAULT_ISO_CODE;
+        phoneForValidation = combinePhoneWithCountryCode(phoneLocalNumber, phoneIsoCode) || normalizedPhone;
+      }
+
+      // Validate phone number with digit count check
+      const phoneCheck = validatePhoneNumberByCountry(phoneForValidation, phoneIsoCode);
+      if (!phoneCheck.valid) {
+        return response(res, 400, phoneCheck.error);
+      }
+    }
+
+    participant.phone = phoneLocalNumber;
+    participant.isoCode = phoneIsoCode;
+  } else if (isoCode !== undefined) {
+    participant.isoCode = isoCode;
+  }
 
   await participant.save();
 
   // Fire background recompute
-  recomputeAndEmit(participant.spinwheel.business || null).catch((err) =>
+  recomputeAndEmit(participant.spinWheel.business || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
@@ -361,7 +528,7 @@ exports.exportSpinWheelParticipantsXlsx = asyncHandler(async (req, res) => {
      PARTICIPANT TABLE
   =============================== */
 
-  let tableHeaders = ["Name", "Phone", "Company"];
+  let tableHeaders = ["Name", "isoCode", "Phone", "Company"];
   let tableRows = [];
 
   // ===============================
@@ -375,6 +542,7 @@ exports.exportSpinWheelParticipantsXlsx = asyncHandler(async (req, res) => {
     if (!scannedByIds.length) {
       tableRows = participants.map((p) => [
         p.name,
+        p.isoCode || "",
         p.phone || "",
         p.company || "",
       ]);
@@ -429,6 +597,7 @@ exports.exportSpinWheelParticipantsXlsx = asyncHandler(async (req, res) => {
 
         const row = [
           p.name,
+          p.isoCode || "",
           reg?.phone || "",
           reg?.company || "",
         ];
@@ -448,6 +617,7 @@ exports.exportSpinWheelParticipantsXlsx = asyncHandler(async (req, res) => {
     // ===============================
     tableRows = participants.map((p) => [
       p.name,
+      p.isoCode || "",
       p.phone || "",
       p.company || "",
     ]);
@@ -494,4 +664,236 @@ exports.exportSpinWheelParticipantsXlsx = asyncHandler(async (req, res) => {
   );
 
   return res.send(buffer);
+});
+
+// Download sample Excel template (for admin type SpinWheels)
+exports.downloadSampleExcel = asyncHandler(async (req, res) => {
+  const { spinWheelId } = req.params;
+
+  if (!spinWheelId) {
+    return response(res, 400, "SpinWheel ID is required");
+  }
+
+  const wheel = await SpinWheel.findById(spinWheelId).notDeleted();
+  if (!wheel) {
+    return response(res, 404, "SpinWheel not found");
+  }
+
+  if (wheel.type !== "admin") {
+    return response(
+      res,
+      403,
+      "Sample Excel download is only available for admin type SpinWheels"
+    );
+  }
+
+  const headers = ["Name", "isoCode", "Phone", "Company"];
+
+  // Dummy rows with sample data
+  const dummyRows = [
+    ["John Doe", "us", "1234567890", "Acme Corp"],
+    ["Jane Smith", "uk", "9876543210", "Tech Solutions"],
+    ["Ahmed Ali", "ae", "5551234567", "Global Industries"],
+  ];
+
+  const rows = [headers, ...dummyRows];
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  const headerRange = XLSX.utils.decode_range(ws["!ref"]);
+  for (let c = headerRange.s.c; c <= headerRange.e.c; c++) {
+    const cellAddress = XLSX.utils.encode_cell({ r: 0, c });
+    if (!ws[cellAddress]) continue;
+    if (!ws[cellAddress].s) ws[cellAddress].s = {};
+    if (!ws[cellAddress].s.font) ws[cellAddress].s.font = {};
+    ws[cellAddress].s.font.bold = true;
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Participants");
+  const sampleBuffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=spinwheel_${wheel.slug}_participants_template.xlsx`
+  );
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.send(sampleBuffer);
+});
+
+// Download country reference Excel file
+exports.downloadCountryReference = asyncHandler(async (req, res) => {
+  const formatDigits = (digits) => {
+    if (typeof digits === "number") {
+      return digits.toString();
+    }
+    if (typeof digits === "object" && digits.min && digits.max) {
+      return `${digits.min}-${digits.max}`;
+    }
+    return "";
+  };
+
+  const countryHeaders = [["Country Name", "ISO Code", "Country Code", "No. of Digits"]];
+  const countryRows = COUNTRY_CODES.map((cc) => [
+    cc.country,
+    cc.isoCode,
+    cc.code,
+    formatDigits(cc.digits),
+  ]);
+  const countryData = [...countryHeaders, ...countryRows];
+  const countryWs = XLSX.utils.aoa_to_sheet(countryData);
+  const countryWb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(countryWb, countryWs, "Countries");
+  const countryBuffer = XLSX.write(countryWb, { type: "buffer", bookType: "xlsx" });
+
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=country_reference.xlsx`
+  );
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.send(countryBuffer);
+});
+
+// Upload Participants from Excel file (for admin type SpinWheels)
+exports.uploadParticipants = asyncHandler(async (req, res) => {
+  const { spinWheelId } = req.params;
+
+  if (!spinWheelId) {
+    return response(res, 400, "SpinWheel ID is required");
+  }
+
+  const wheel = await SpinWheel.findById(spinWheelId).notDeleted();
+  if (!wheel) {
+    return response(res, 404, "SpinWheel not found");
+  }
+
+  if (wheel.type !== "admin") {
+    return response(
+      res,
+      403,
+      "Upload participants is only available for admin type SpinWheels"
+    );
+  }
+
+  if (
+    !req.user ||
+    (req.user.role !== "admin" && req.user.role !== "business")
+  ) {
+    return response(
+      res,
+      403,
+      "Only admins or business users can upload participants for this SpinWheel."
+    );
+  }
+
+  if (!req.file) {
+    return response(res, 400, "Excel file is required");
+  }
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+  const sheetName = workbook.SheetNames[0];
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+    defval: "",
+  });
+
+  if (!rows.length) {
+    return response(res, 400, "Uploaded file is empty");
+  }
+
+  const hasValidName = rows.some(
+    (row) =>
+      (row["Name"] && String(row["Name"]).trim()) ||
+      (row["name"] && String(row["name"]).trim())
+  );
+
+  if (!hasValidName) {
+    return response(
+      res,
+      400,
+      "Uploaded file must contain a 'Name' column with at least one participant name"
+    );
+  }
+
+  response(res, 200, "Upload started", {
+    total: rows.length,
+  });
+
+  setImmediate(() => {
+    uploadProcessor(wheel, rows).catch((err) =>
+      console.error("SPINWHEEL UPLOAD PROCESSOR FAILED:", err)
+    );
+  });
+});
+
+// Save Winner
+exports.saveWinner = asyncHandler(async (req, res) => {
+  const { spinWheelId, participantId } = req.body;
+
+  if (!spinWheelId || !participantId) {
+    return response(res, 400, "SpinWheel ID and Participant ID are required");
+  }
+
+  const wheel = await SpinWheel.findById(spinWheelId).notDeleted();
+  if (!wheel) {
+    return response(res, 404, "SpinWheel not found");
+  }
+
+  const participant = await SpinWheelParticipant.findById(participantId).notDeleted();
+  if (!participant) {
+    return response(res, 404, "Participant not found");
+  }
+
+  if (participant.spinWheel.toString() !== spinWheelId) {
+    return response(res, 400, "Participant does not belong to this SpinWheel");
+  }
+
+  const winner = await SpinWheelWinner.create({
+    spinWheel: spinWheelId,
+    participant: participantId,
+    name: participant.name,
+    phone: participant.phone,
+    isoCode: participant.isoCode,
+    company: participant.company,
+  });
+
+  return response(res, 201, "Winner saved successfully", winner);
+});
+
+// Remove Winner (set visible to false)
+exports.removeWinner = asyncHandler(async (req, res) => {
+  const { participantId } = req.params;
+
+  if (!participantId) {
+    return response(res, 400, "Participant ID is required");
+  }
+
+  const participant = await SpinWheelParticipant.findById(participantId).notDeleted();
+  if (!participant) {
+    return response(res, 404, "Participant not found");
+  }
+
+  participant.visible = false;
+  await participant.save();
+
+  return response(res, 200, "Winner removed from wheel successfully", participant);
+});
+
+// Get Winners for a SpinWheel
+exports.getWinners = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+
+  const wheel = await SpinWheel.findOne({ slug }).select("_id").notDeleted();
+  if (!wheel) return response(res, 404, "SpinWheel not found");
+
+  const winners = await SpinWheelWinner.find({ spinWheel: wheel._id })
+    .select("name phone isoCode company createdAt")
+    .sort({ createdAt: -1 });
+
+  return response(res, 200, "Winners retrieved successfully", winners);
 });
