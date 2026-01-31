@@ -1949,6 +1949,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
 
   return response(res, 200, "Registration verified and walk-in recorded", {
     ...normalized,
+    customFields: cf,
     eventName: registration.eventId?.name || "Unknown Event",
     eventId: registration.eventId?._id,
     showQrOnBadge: registration.eventId?.showQrOnBadge,
@@ -1958,6 +1959,9 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     scannedAt: walkin.scannedAt,
     scannedBy: { name: staffUser.name || staffUser.email },
     zpl,
+    eventDetails: {
+      customizations: registration.eventId?.customizations || {},
+    },
   });
 });
 

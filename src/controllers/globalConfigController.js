@@ -290,6 +290,36 @@ exports.updateConfig = asyncHandler(async (req, res) => {
   return response(res, 200, "Global configuration updated", config);
 });
 
+// Sync fonts from frontend
+exports.syncFonts = asyncHandler(async (req, res) => {
+  const { fonts } = req.body;
+  
+  if (!fonts || !Array.isArray(fonts)) {
+    return response(res, 400, "Fonts array is required");
+  }
+
+  let config = await GlobalConfig.findOne({ isDeleted: false });
+  
+  if (!config) {
+    config = await GlobalConfig.create({
+      appName: "EventPass Suite",
+      fonts: fonts
+    });
+  } else {
+    config.fonts = fonts;
+    await config.save();
+  }
+
+  return response(res, 200, "Fonts synced successfully", { fonts: config.fonts });
+});
+
+// Get fonts
+exports.getFonts = asyncHandler(async (req, res) => {
+  const config = await GlobalConfig.findOne({ isDeleted: false });
+  const fonts = config?.fonts || [];
+  return response(res, 200, "Fonts fetched successfully", { fonts });
+});
+
 // Soft delete (move to Recycle Bin) — keep assets; cleanup handled elsewhere if needed
 exports.deleteConfig = asyncHandler(async (req, res) => {
   const config = await GlobalConfig.findOne({ isDeleted: false });

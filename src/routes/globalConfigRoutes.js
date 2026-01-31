@@ -15,5 +15,7 @@ router.post("/", protect, adminOnly, multiUpload, controller.createConfig);
 router.get("/", controller.getConfig);
 router.put("/", protect, adminOnly, multiUpload, controller.updateConfig);
 router.delete("/", protect, adminOnly, controller.deleteConfig);
+router.post("/fonts/sync", controller.syncFonts);
+router.get("/fonts", controller.getFonts);
 
 module.exports = router;

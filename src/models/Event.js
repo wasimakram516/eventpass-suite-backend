@@ -87,6 +87,12 @@ const EventSchema = new mongoose.Schema({
     subject: { type: String },
     body: { type: String },
   },
+
+  /** ===== Badge Customizations ===== */
+  customizations: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
 });
 
 EventSchema.index({ businessId: 1, isDeleted: 1 });
