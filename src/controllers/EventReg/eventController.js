@@ -122,6 +122,8 @@ exports.createEvent = asyncHandler(async (req, res) => {
     organizerPhone,
     useCustomEmailTemplate,
     emailTemplate,
+    badgeFields,
+    badgeCustomizations,
   } = req.body;
 
   let { capacity, formFields } = req.body;
@@ -251,6 +253,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
           : { subject: "", body: "" },
       }
       : {}),
+    customizations: badgeCustomizations || {},
   });
 
   recomputeAndEmit(businessId || null).catch((err) =>
@@ -290,6 +293,8 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     organizerPhone,
     useCustomEmailTemplate,
     emailTemplate,
+    badgeFields,
+    badgeCustomizations,
   } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -481,6 +486,10 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     }
   }
   updates.formFields = parsedFormFields;
+
+  if (badgeCustomizations !== undefined) {
+    updates.customizations = badgeCustomizations || {};
+  }
 
   if (
     typeof showQrAfterRegistration === "boolean" ||

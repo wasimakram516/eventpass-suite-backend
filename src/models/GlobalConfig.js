@@ -57,7 +57,17 @@ const GlobalConfigSchema = new mongoose.Schema({
     instagram: { type: String },
     linkedin: { type: String },
     website: { type: String }
-  }
+  },
+
+  fonts: [{
+    name: { type: String, required: true },
+    family: { type: String, required: true },
+    files: [{
+      path: { type: String, required: true },
+      weight: { type: Number },
+      style: { type: String, default: 'normal' }
+    }]
+  }]
 
 }, { timestamps: true });
 
