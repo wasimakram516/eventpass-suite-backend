@@ -1044,20 +1044,22 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   // --- Generate and send email using util ---
   const emailForSending =
     formFields.length > 0 ? pickEmail(customFields) : extractedEmail;
+
   const displayNameForEmail =
     formFields.length > 0
       ? pickFullName(customFields) ||
         (event.defaultLanguage === "ar" ? "ضيف" : "Guest")
       : extractedFullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
-  const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
-    event,
-    registration: newRegistration,
-    displayName: displayNameForEmail,
-    customFields,
-  });
+  // ONLY send email if event does NOT require approval
+  if (!event.requiresApproval && emailForSending) {
+    const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
+      event,
+      registration: newRegistration,
+      displayName: displayNameForEmail,
+      customFields,
+    });
 
-  if (emailForSending) {
     const result = await sendEmail(
       emailForSending,
       subject,
@@ -1067,6 +1069,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
         ? [{ filename: "Agenda.pdf", path: event.agendaUrl }]
         : [],
     );
+
     if (result.success) {
       newRegistration.emailSent = true;
       await newRegistration.save();
@@ -1348,6 +1351,44 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
   registration.approvalStatus = status;
   await registration.save();
 
+  if (status === "approved") {
+    const event = registration.eventId;
+
+    const cf = registration.customFields
+      ? Object.fromEntries(registration.customFields)
+      : {};
+
+    const emailForSending = pickEmail(cf) || registration.email;
+    const displayName =
+      pickFullName(cf) ||
+      registration.fullName ||
+      (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
+
+    if (emailForSending) {
+      const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
+        event,
+        registration,
+        displayName,
+        customFields: cf,
+      });
+
+      const result = await sendEmail(
+        emailForSending,
+        subject,
+        html,
+        qrCodeDataUrl,
+        event.agendaUrl
+          ? [{ filename: "Agenda.pdf", path: event.agendaUrl }]
+          : [],
+      );
+
+      if (result.success) {
+        registration.emailSent = true;
+        await registration.save();
+      }
+    }
+  }
+
   recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message),
   );
@@ -1493,9 +1534,61 @@ exports.bulkUpdateRegistrationApproval = asyncHandler(async (req, res) => {
   // ------------------------------------------------
   // Perform bulk update
   // ------------------------------------------------
+  const regs = await Registration.find(query).populate("eventId");
+
   const result = await Registration.updateMany(query, {
     $set: { approvalStatus: status },
   });
+
+  // ------------------------------------------------
+  // Send approval emails (ONLY when approved)
+  // ------------------------------------------------
+  if (status === "approved") {
+    for (const registration of regs) {
+      const event = registration.eventId;
+
+      const cf = registration.customFields
+        ? Object.fromEntries(registration.customFields)
+        : {};
+
+      const emailForSending = pickEmail(cf) || registration.email;
+      const displayName =
+        pickFullName(cf) ||
+        registration.fullName ||
+        (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
+
+      if (!emailForSending) continue;
+
+      try {
+        const { subject, html, qrCodeDataUrl } = await buildRegistrationEmail({
+          event,
+          registration,
+          displayName,
+          customFields: cf,
+        });
+
+        const result = await sendEmail(
+          emailForSending,
+          subject,
+          html,
+          qrCodeDataUrl,
+          event.agendaUrl
+            ? [{ filename: "Agenda.pdf", path: event.agendaUrl }]
+            : [],
+        );
+
+        if (result.success) {
+          registration.emailSent = true;
+          await registration.save();
+        }
+      } catch (err) {
+        console.error(
+          `Bulk approval email failed for ${emailForSending}:`,
+          err.message,
+        );
+      }
+    }
+  }
 
   recomputeAndEmit(event.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message),
