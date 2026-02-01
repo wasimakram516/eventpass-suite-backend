@@ -5,20 +5,21 @@ const BusinessSchema = new mongoose.Schema(
     name: { type: String, required: true },
     slug: { type: String, required: true },
     logoUrl: { type: String },
-    owner: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
+    owners: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
     contact: {
       email: { type: String, match: /.+\@.+\..+/ },
       phone: { type: String },
     },
     address: { type: String },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
-BusinessSchema.index({ owner: 1, isDeleted: 1 });
+BusinessSchema.index({ owners: 1, isDeleted: 1 });
 
 // Soft delete plugin
 BusinessSchema.plugin(require("../db/plugins/softDelete"));
