@@ -25,13 +25,18 @@ const { recomputeAndEmit } = require("../socket/dashboardSocket");
 
 // Create Business
 exports.createBusiness = asyncHandler(async (req, res) => {
-  const { name, slug, phone, email, address, ownerId } = req.body;
+  const { name, slug, phone, email, address, ownerIds } = req.body;
 
   if (!name) return response(res, 400, "Business name is required");
-  if (!ownerId) return response(res, 400, "Owner ID is required");
 
-  const owner = await User.findById(ownerId).notDeleted();
-  if (!owner) return response(res, 404, "Owner (user) not found");
+  if (!Array.isArray(ownerIds) || ownerIds.length === 0) {
+    return response(res, 400, "At least one owner is required");
+  }
+
+  const owners = await User.find({ _id: { $in: ownerIds } }).notDeleted();
+  if (owners.length !== ownerIds.length) {
+    return response(res, 404, "One or more owners not found");
+  }
 
   const finalSlug = await generateUniqueSlug(Business, "slug", slug || name);
 
@@ -46,27 +51,24 @@ exports.createBusiness = asyncHandler(async (req, res) => {
     logoUrl = fileUrl;
   }
 
-  const structuredContact = {
-    email: email || "",
-    phone: phone || "",
-  };
-
   const business = await Business.create({
     name,
     slug: finalSlug,
     logoUrl,
-    contact: structuredContact,
+    contact: {
+      email: email || "",
+      phone: phone || "",
+    },
     address,
-    owner: owner._id,
+    owners: owners.map((o) => o._id),
   });
 
-  owner.business = business._id;
-  await owner.save();
-
-  // Fire background recompute
-  recomputeAndEmit(owner.business || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+  await User.updateMany(
+    { _id: { $in: ownerIds } },
+    { $set: { business: business._id } }
   );
+
+  recomputeAndEmit(business._id).catch(() => {});
 
   return response(res, 201, "Business created successfully", business);
 });
@@ -75,8 +77,15 @@ exports.createBusiness = asyncHandler(async (req, res) => {
 exports.getAllBusinesses = asyncHandler(async (req, res) => {
   const businesses = await Business.find()
     .notDeleted()
-    .populate("owner", "name email role")
+    .populate("owners", "name email role")
     .sort({ createdAt: -1 });
+
+  // normalize legacy records
+  for (const b of businesses) {
+    if (!Array.isArray(b.owners) && b.owner) {
+      b.owners = [b.owner];
+    }
+  }
 
   return response(res, 200, "Fetched all businesses", businesses);
 });
@@ -85,9 +94,14 @@ exports.getAllBusinesses = asyncHandler(async (req, res) => {
 exports.getBusinessById = asyncHandler(async (req, res) => {
   const business = await Business.findById(req.params.id)
     .notDeleted()
-    .populate("owner", "name email role");
+    .populate("owners", "name email role");
 
   if (!business) return response(res, 404, "Business not found");
+
+  if (!Array.isArray(business.owners) && business.owner) {
+    business.owners = [business.owner];
+  }
+
   return response(res, 200, "Business found", business);
 });
 
@@ -95,9 +109,14 @@ exports.getBusinessById = asyncHandler(async (req, res) => {
 exports.getBusinessBySlug = asyncHandler(async (req, res) => {
   const business = await Business.findOne({ slug: req.params.slug })
     .notDeleted()
-    .populate("owner", "name email role");
+    .populate("owners", "name email role");
 
   if (!business) return response(res, 404, "Business not found");
+
+  if (!Array.isArray(business.owners) && business.owner) {
+    business.owners = [business.owner];
+  }
+
   return response(res, 200, "Business found", business);
 });
 
@@ -146,16 +165,43 @@ exports.updateBusiness = asyncHandler(async (req, res) => {
 /* =========================================================
    Helper: Cascade delete everything linked to a business
    ========================================================= */
-async function cascadeDeleteBusiness(businessId) {
+async function cascadeDeleteBusiness(businessId, removingUserId = null) {
   const business = await Business.findById(businessId);
   if (!business) return;
 
-  // Delete logo
+  // 🔧 Normalize legacy schema
+  if (!Array.isArray(business.owners) && business.owner) {
+    business.owners = [business.owner];
+    business.owner = undefined;
+    await business.save();
+  }
+
+  // -----------------------------
+  // MULTI-OWNER SAFETY CHECK
+  // -----------------------------
+  if (business.owners.length > 1 && removingUserId) {
+    business.owners = business.owners.filter(
+      (id) => id.toString() !== removingUserId.toString()
+    );
+
+    await business.save();
+
+    await User.updateOne(
+      { _id: removingUserId },
+      { $set: { business: null } }
+    );
+
+    return; // ❗ STOP — do not delete business
+  }
+
+  // -----------------------------
+  // LAST OWNER → FULL CASCADE
+  // -----------------------------
+
   if (business.logoUrl) {
     await deleteFromS3(business.logoUrl);
   }
 
-  /** ===== Surveys ===== */
   const forms = await SurveyForm.find({ businessId });
   const formIds = forms.map((f) => f._id);
   if (formIds.length) {
@@ -164,16 +210,14 @@ async function cascadeDeleteBusiness(businessId) {
     await SurveyForm.deleteMany({ _id: { $in: formIds } });
   }
 
-  /** ===== Games & Sessions ===== */
   const games = await Game.find({ businessId });
   const gameIds = games.map((g) => g._id);
   if (gameIds.length) {
     await GameSession.deleteMany({ gameId: { $in: gameIds } });
-    await Player.deleteMany({}); // adjust if Player has businessId/gameId ref
+    await Player.deleteMany({ gameId: { $in: gameIds } });
     await Game.deleteMany({ _id: { $in: gameIds } });
   }
 
-  /** ===== Events ===== */
   const events = await Event.find({ businessId });
   const eventIds = events.map((e) => e._id);
   if (eventIds.length) {
@@ -182,18 +226,15 @@ async function cascadeDeleteBusiness(businessId) {
     await Event.deleteMany({ _id: { $in: eventIds } });
   }
 
-  /** ===== Polls & Questions ===== */
   await Poll.deleteMany({ business: businessId });
   await EventQuestion.deleteMany({ business: businessId });
 
-  /** ===== Visitors ===== */
   await Visitor.updateMany(
     {},
     { $pull: { eventHistory: { business: businessId } } }
   );
   await Visitor.deleteMany({ "eventHistory.business": businessId });
 
-  /** ===== SpinWheels ===== */
   const wheels = await SpinWheel.find({ business: businessId });
   const wheelIds = wheels.map((w) => w._id);
   if (wheelIds.length) {
@@ -201,7 +242,6 @@ async function cascadeDeleteBusiness(businessId) {
     await SpinWheel.deleteMany({ _id: { $in: wheelIds } });
   }
 
-  /** ===== Walls ===== */
   const walls = await WallConfig.find({ business: businessId });
   const wallIds = walls.map((w) => w._id);
   if (wallIds.length) {
@@ -209,14 +249,11 @@ async function cascadeDeleteBusiness(businessId) {
     await WallConfig.deleteMany({ _id: { $in: wallIds } });
   }
 
-  /** ===== Users ===== */
   await User.updateMany(
-    { business: businessId, role: { $ne: "staff" } },
+    { business: businessId },
     { $set: { business: null } }
   );
-  await User.deleteMany({ business: businessId, role: "staff" });
 
-  // Finally, delete business itself
   await business.deleteOne();
 }
 

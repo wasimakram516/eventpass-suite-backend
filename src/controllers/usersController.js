@@ -32,36 +32,50 @@ exports.getAllUsers = asyncHandler(async (req, res) => {
 
   const admins = [];
   const businessMap = new Map();
-  const orphanStaff = [];
+  const orphanUsers = [];
 
   for (const user of users) {
     if (user.role === "admin") {
       admins.push(user);
-    } else if (user.role === "business") {
-      businessMap.set(user._id.toString(), { owner: user, staff: [] });
+      continue;
+    }
+
+    const businessId = user.business?._id?.toString();
+
+    if (!businessId) {
+      orphanUsers.push(user);
+      continue;
+    }
+
+    if (!businessMap.has(businessId)) {
+      businessMap.set(businessId, {
+        owners: [],
+        staff: [],
+      });
+    }
+
+    if (user.role === "business") {
+      businessMap.get(businessId).owners.push(user);
     } else if (user.role === "staff") {
-      const businessId = user.business?._id?.toString();
-      if (businessId && businessMap.has(businessId)) {
-        businessMap.get(businessId).staff.push(user);
-      } else {
-        orphanStaff.push(user);
-      }
+      businessMap.get(businessId).staff.push(user);
     }
   }
 
-  // Now prepare final list
   const groupedUsers = [
     ...admins,
-    ...Array.from(businessMap.values()).flatMap((group) => [
-      group.owner,
-      ...group.staff,
+    ...Array.from(businessMap.values()).flatMap((g) => [
+      ...g.owners,
+      ...g.staff,
     ]),
-    ...orphanStaff,
+    ...orphanUsers,
   ];
 
-  const safeUsers = groupedUsers.map(sanitizeUser);
-
-  return response(res, 200, "All users fetched", safeUsers);
+  return response(
+    res,
+    200,
+    "All users fetched",
+    groupedUsers.map(sanitizeUser),
+  );
 });
 
 // Get all staff members of business (excluding logged in business user)
@@ -93,7 +107,7 @@ exports.getAllStaffUsersByBusiness = asyncHandler(async (req, res) => {
     res,
     200,
     "Business staff members fetched successfully",
-    safeUsers
+    safeUsers,
   );
 });
 
@@ -108,10 +122,109 @@ exports.getUnassignedUsers = asyncHandler(async (req, res) => {
 exports.getUserById = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id).populate(
     "business",
-    "name slug logoUrl contact address"
+    "name slug logoUrl contact address",
   );
   if (!user) return response(res, 404, "User not found");
   return response(res, 200, "User found", sanitizeUser(user));
+});
+
+// Create Business User
+exports.createBusinessUser = asyncHandler(async (req, res) => {
+  const {
+    name,
+    email,
+    password,
+    modulePermissions = [],
+    attachToExistingBusiness,
+    businessId,
+    business,
+  } = req.body;
+
+  // -------------------------
+  // Basic validation
+  // -------------------------
+  if (!name || !email || !password) {
+    return response(res, 400, "Name, email and password are required");
+  }
+
+  const existing = await User.findOne({
+    email: email.toLowerCase(),
+  }).notDeleted();
+  if (existing) {
+    return response(res, 409, "User with this email already exists");
+  }
+
+  // -------------------------
+  // Create user first
+  // -------------------------
+  const user = await User.create({
+    name,
+    email: email.toLowerCase(),
+    password,
+    role: "business",
+    modulePermissions,
+    business: null, // assigned below
+  });
+
+  let attachedBusiness = null;
+
+  // ======================================================
+  // CASE 1: Attach to existing business (multi-owner)
+  // ======================================================
+  if (attachToExistingBusiness) {
+    if (!businessId) {
+      return response(res, 400, "businessId is required");
+    }
+
+    const existingBusiness = await Business.findById(businessId);
+    if (!existingBusiness) {
+      return response(res, 404, "Business not found");
+    }
+
+    // add owner if not already present
+    if (!existingBusiness.owners.includes(user._id)) {
+      existingBusiness.owners.push(user._id);
+      await existingBusiness.save();
+    }
+
+    user.business = existingBusiness._id;
+    await user.save();
+
+    attachedBusiness = existingBusiness;
+  }
+
+  // ======================================================
+  // CASE 2: Create new business + owner
+  // ======================================================
+  else {
+    if (!business?.name || !business?.slug) {
+      return response(res, 400, "Business name and slug are required");
+    }
+
+    attachedBusiness = await Business.create({
+      name: business.name,
+      slug: business.slug,
+      contact: {
+        email: business.email || "",
+        phone: business.phone || "",
+      },
+      address: business.address || "",
+      owners: [user._id],
+    });
+
+    user.business = attachedBusiness._id;
+    await user.save();
+  }
+
+  // -------------------------
+  // Recompute dashboards
+  // -------------------------
+  recomputeAndEmit(attachedBusiness._id).catch(() => {});
+
+  return response(res, 201, "Business user created successfully", {
+    user: sanitizeUser(user),
+    business: attachedBusiness,
+  });
 });
 
 // Update user (admin)
@@ -155,7 +268,7 @@ exports.updateUser = asyncHandler(async (req, res) => {
   await user.save();
   // Fire background recompute
   recomputeAndEmit(user.business || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
   return response(res, 200, "User updated", sanitizeUser(user));
 });
@@ -168,17 +281,47 @@ async function cascadeDeleteUser(userId) {
   if (!user) return;
 
   if (user.role === "business") {
-    const businesses = await Business.find({ owner: userId });
+    const businesses = await Business.find({
+      $or: [
+        { owners: userId }, // new schema
+        { owner: userId }, // legacy schema
+      ],
+    });
 
     for (const business of businesses) {
       const businessId = business._id;
 
-      // Delete business logo if exists
+      // -----------------------------
+      // Normalize legacy schema
+      // -----------------------------
+      if (!Array.isArray(business.owners) && business.owner) {
+        business.owners = [business.owner];
+        business.owner = undefined;
+        await business.save();
+      }
+
+      // -----------------------------
+      // MULTI-OWNER SAFETY CHECK
+      // -----------------------------
+      if (business.owners.length > 1) {
+        business.owners = business.owners.filter(
+          (o) => o.toString() !== userId.toString(),
+        );
+        await business.save();
+
+        await User.updateOne({ _id: userId }, { $set: { business: null } });
+
+        continue; // ❗ do NOT delete business
+      }
+
+      // -----------------------------
+      // LAST OWNER → FULL CASCADE
+      // -----------------------------
+
       if (business.logoUrl) {
         await deleteFromS3(business.logoUrl);
       }
 
-      /** ===== Surveys ===== */
       const forms = await SurveyForm.find({ businessId });
       const formIds = forms.map((f) => f._id);
       if (formIds.length) {
@@ -187,16 +330,14 @@ async function cascadeDeleteUser(userId) {
         await SurveyForm.deleteMany({ _id: { $in: formIds } });
       }
 
-      /** ===== Games & Sessions ===== */
       const games = await Game.find({ businessId });
       const gameIds = games.map((g) => g._id);
       if (gameIds.length) {
         await GameSession.deleteMany({ gameId: { $in: gameIds } });
-        await Player.deleteMany({});
+        await Player.deleteMany({ gameId: { $in: gameIds } });
         await Game.deleteMany({ _id: { $in: gameIds } });
       }
 
-      /** ===== Events ===== */
       const events = await Event.find({ businessId });
       const eventIds = events.map((e) => e._id);
       if (eventIds.length) {
@@ -205,18 +346,15 @@ async function cascadeDeleteUser(userId) {
         await Event.deleteMany({ _id: { $in: eventIds } });
       }
 
-      /** ===== Polls & Event Questions ===== */
       await Poll.deleteMany({ business: businessId });
       await EventQuestion.deleteMany({ business: businessId });
 
-      /** ===== Visitors ===== */
       await Visitor.updateMany(
         {},
-        { $pull: { eventHistory: { business: businessId } } }
+        { $pull: { eventHistory: { business: businessId } } },
       );
       await Visitor.deleteMany({ "eventHistory.business": businessId });
 
-      /** ===== SpinWheels ===== */
       const wheels = await SpinWheel.find({ business: businessId });
       const wheelIds = wheels.map((w) => w._id);
       if (wheelIds.length) {
@@ -224,7 +362,6 @@ async function cascadeDeleteUser(userId) {
         await SpinWheel.deleteMany({ _id: { $in: wheelIds } });
       }
 
-      /** ===== Walls ===== */
       const walls = await WallConfig.find({ business: businessId });
       const wallIds = walls.map((w) => w._id);
       if (wallIds.length) {
@@ -232,22 +369,17 @@ async function cascadeDeleteUser(userId) {
         await WallConfig.deleteMany({ _id: { $in: wallIds } });
       }
 
-      /** ===== Users tied to this business ===== */
       await User.updateMany(
-        { business: businessId, role: { $ne: "staff" } },
-        { $set: { business: null } }
+        { business: businessId },
+        { $set: { business: null } },
       );
-      await User.deleteMany({ business: businessId, role: "staff" });
 
-      // Finally, delete business itself
       await business.deleteOne();
     }
   } else {
-    // staff → remove walk-ins they scanned
     await WalkIn.deleteMany({ scannedBy: user._id });
   }
 
-  // Delete the user itself
   await user.deleteOne();
 }
 
@@ -264,7 +396,7 @@ exports.deleteUser = asyncHandler(async (req, res) => {
 
   // Fire background recompute
   recomputeAndEmit(user.business || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(res, 200, "User moved to Recycle Bin", user);
@@ -289,7 +421,7 @@ exports.restoreUser = asyncHandler(async (req, res) => {
 
   // Fire background recompute
   recomputeAndEmit(user.business || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(res, 200, "User restored successfully", user);
@@ -304,7 +436,7 @@ exports.permanentDeleteUser = asyncHandler(async (req, res) => {
 
   // Fire background recompute
   recomputeAndEmit(user.business || null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(res, 200, "User and related data permanently deleted");
@@ -328,7 +460,7 @@ exports.restoreAllUsers = asyncHandler(async (req, res) => {
 
   // Fire background recompute
   recomputeAndEmit(null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(res, 200, `Restored ${users.length} users`);
@@ -345,7 +477,7 @@ exports.permanentDeleteAllUsers = asyncHandler(async (req, res) => {
 
   // Fire background recompute
   recomputeAndEmit(null).catch((err) =>
-    console.error("Background recompute failed:", err.message)
+    console.error("Background recompute failed:", err.message),
   );
 
   return response(res, 200, `Permanently deleted ${users.length} users`);
