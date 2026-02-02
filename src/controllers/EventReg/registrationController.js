@@ -1039,6 +1039,11 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     approvalStatus,
   });
 
+  if (hasCustomFields && phoneIsoCode) {
+    newRegistration.isoCode = phoneIsoCode;
+    await newRegistration.save();
+  }
+
   await recountEventRegistrations(eventId);
 
   // --- Generate and send email using util ---
