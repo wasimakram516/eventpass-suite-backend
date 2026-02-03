@@ -41,10 +41,14 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     eventCounts.find((e) => e._id === "public")?.count || 0;
   const closedEventsCount =
     eventCounts.find((e) => e._id === "closed")?.count || 0;
+  const digipassEventsCount =
+    eventCounts.find((e) => e._id === "digipass")?.count || 0;
   const trashPublicEvents =
     trashEventCounts.find((e) => e._id === "public")?.count || 0;
   const trashClosedEvents =
     trashEventCounts.find((e) => e._id === "closed")?.count || 0;
+  const trashDigipassEvents =
+    trashEventCounts.find((e) => e._id === "digipass")?.count || 0;
 
   // -------------------------------------------------------------------------
   // REGISTRATIONS + WALKINS
@@ -115,19 +119,27 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
     registrationCounts.find((r) => r._id === "public")?.count || 0;
   const closedRegs =
     registrationCounts.find((r) => r._id === "closed")?.count || 0;
+  const digipassRegs =
+    registrationCounts.find((r) => r._id === "digipass")?.count || 0;
   const trashPublicRegs =
     trashRegistrationCounts.find((r) => r._id === "public")?.count || 0;
   const trashClosedRegs =
     trashRegistrationCounts.find((r) => r._id === "closed")?.count || 0;
+  const trashDigipassRegs =
+    trashRegistrationCounts.find((r) => r._id === "digipass")?.count || 0;
 
   const publicWalkIns =
     walkinCounts.find((r) => r._id === "public")?.count || 0;
   const closedWalkIns =
     walkinCounts.find((r) => r._id === "closed")?.count || 0;
+  const digipassWalkIns =
+    walkinCounts.find((r) => r._id === "digipass")?.count || 0;
   const trashPublicWalkIns =
     trashWalkinCounts.find((r) => r._id === "public")?.count || 0;
   const trashClosedWalkIns =
     trashWalkinCounts.find((r) => r._id === "closed")?.count || 0;
+  const trashDigipassWalkIns =
+    trashWalkinCounts.find((r) => r._id === "digipass")?.count || 0;
 
   // -------------------------------------------------------------------------
   // GAMES (Existing behavior preserved exactly)
@@ -492,8 +504,8 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
   // -------------------------------------------------------------------------
   // USERS & BUSINESSES
   // -------------------------------------------------------------------------
-  let userStats = { admin: 0, business: 0, staff: 0 };
-  let trashUserStats = { admin: 0, business: 0, staff: 0 };
+  let userStats = { superadmin: 0, admin: 0, business: 0, staff: 0 };
+  let trashUserStats = { superadmin: 0, admin: 0, business: 0, staff: 0 };
   let totalBusinesses = 0;
   let trashBusinesses = 0;
 
@@ -529,8 +541,13 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
       role: "staff",
     });
 
-    userStats = { staff: staffCount };
-    trashUserStats = { staff: trashStaffCount };
+    userStats = { superadmin: 0, admin: 0, business: 0, staff: staffCount };
+    trashUserStats = {
+      superadmin: 0,
+      admin: 0,
+      business: 0,
+      staff: trashStaffCount,
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -587,6 +604,19 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
         events: trashClosedEvents,
         registrations: trashClosedRegs,
         walkins: trashClosedWalkIns,
+      },
+    },
+
+    digipass: {
+      totals: {
+        events: digipassEventsCount,
+        registrations: digipassRegs,
+        walkins: digipassWalkIns,
+      },
+      trash: {
+        events: trashDigipassEvents,
+        registrations: trashDigipassRegs,
+        walkins: trashDigipassWalkIns,
       },
     },
 

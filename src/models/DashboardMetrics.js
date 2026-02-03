@@ -68,6 +68,18 @@ const MetricsSchema = new mongoose.Schema(
           walkins: { type: Number, default: 0 },
         },
       },
+      digipass: {
+        totals: {
+          events: { type: Number, default: 0 },
+          registrations: { type: Number, default: 0 },
+          walkins: { type: Number, default: 0 },
+        },
+        trash: {
+          events: { type: Number, default: 0 },
+          registrations: { type: Number, default: 0 },
+          walkins: { type: Number, default: 0 },
+        },
+      },
       stageq: {
         totals: {
           answered: { type: Number, default: 0 },
@@ -124,6 +136,7 @@ const MetricsSchema = new mongoose.Schema(
         totals: {
           businesses: { type: Number, default: 0 },
           users: {
+            superadmin: { type: Number, default: 0 },
             admin: { type: Number, default: 0 },
             business: { type: Number, default: 0 },
             staff: { type: Number, default: 0 },
@@ -132,6 +145,7 @@ const MetricsSchema = new mongoose.Schema(
         trash: {
           businesses: { type: Number, default: 0 },
           users: {
+            superadmin: { type: Number, default: 0 },
             admin: { type: Number, default: 0 },
             business: { type: Number, default: 0 },
             staff: { type: Number, default: 0 },
