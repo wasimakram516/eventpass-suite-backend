@@ -17,6 +17,7 @@ const {
   pickTitle,
   pickBadgeIdentifier,
   pickWing,
+  pickRegistrationType,
 } = require("../../utils/customFieldUtils");
 const { buildBadgeZpl } = require("../../utils/zebraZpl");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
@@ -2032,6 +2033,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     title: pickTitle(cf) || null,
     badgeIdentifier: pickBadgeIdentifier(cf) || null,
     wing: pickWing(cf) || null,
+    registrationType: pickRegistrationType(cf) || null
   };
 
   const zpl = buildBadgeZpl({
