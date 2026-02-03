@@ -38,6 +38,17 @@ const adminOnly = (req, res, next) => {
 };
 
 /**
+ * Super Admin-Only Middleware
+ */
+const superAdminOnly = (req, res, next) => {
+  if (!req.user || req.user.role !== "superadmin") {
+    return response(res, 403, "Forbidden - Super Admin only");
+  }
+
+  next();
+};
+
+/**
  * Module Permission Middleware
  * Checks if user has access to a specific module
  */
@@ -69,5 +80,6 @@ MODULES.forEach(({ key }) => {
 module.exports = {
   protect,
   adminOnly,
+  superAdminOnly,
   checkPermission,
 };
