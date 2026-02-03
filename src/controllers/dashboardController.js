@@ -8,7 +8,8 @@ const { recalcMetrics } = require("../services/statsService");
  * Fetch precomputed metrics for superadmin or business
  */
 exports.getDashboardStats = asyncHandler(async (req, res) => {
-  const isAdmin = req.user.role === "admin";
+  const isAdmin =
+    req.user.role === "admin" || req.user.role === "superadmin";
   const scope = isAdmin ? "superadmin" : "business";
   const businessId = isAdmin ? null : req.user.business;
 
@@ -30,7 +31,8 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
  * Force refresh metrics for superadmin or business
  */
 exports.recalcDashboardStats = asyncHandler(async (req, res) => {
-  const isAdmin = req.user.role === "admin";
+  const isAdmin =
+    req.user.role === "admin" || req.user.role === "superadmin";
   const scope = isAdmin ? "superadmin" : "business";
   const businessId = isAdmin ? null : req.user.business;
 

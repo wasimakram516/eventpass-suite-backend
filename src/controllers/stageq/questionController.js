@@ -45,7 +45,7 @@ exports.submitQuestion = asyncHandler(async (req, res) => {
     const existing = visitor.eventHistory.find(
       (e) => e.business.toString() === business._id.toString()
     );
-    
+
     if (existing) {
       existing.count += 1;
       existing.lastInteraction = new Date();
@@ -85,7 +85,7 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
     .notDeleted();
   if (!question) return response(res, 404, "Question not found");
 
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "admin" || user.role === "superadmin";
   const isOwner = String(question.business.owner) === user.id;
 
   if (!isAdmin && !isOwner) return response(res, 403, "Not authorized");
@@ -113,7 +113,7 @@ exports.deleteQuestion = asyncHandler(async (req, res) => {
   );
   if (!question) return response(res, 404, "Question not found");
 
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "admin" || user.role === "superadmin";
   const isOwner = String(question.business.owner) === user.id;
   if (!isAdmin && !isOwner) return response(res, 403, "Not authorized");
 

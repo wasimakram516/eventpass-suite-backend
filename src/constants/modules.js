@@ -189,7 +189,7 @@ const BASE = [
 
 // ---- helpers ----
 function roleKey(role) {
-  return ["admin", "business"].includes((role || "").toLowerCase())
+  return ["admin", "business", "superadmin"].includes((role || "").toLowerCase())
     ? "admin"
     : "staff";
 }
