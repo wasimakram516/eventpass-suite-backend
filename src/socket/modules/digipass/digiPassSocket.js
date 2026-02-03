@@ -32,10 +32,20 @@ function emitWalkInNew(eventId, registrationId, walkInData) {
     });
 }
 
+function emitLoadingProgress(eventId, loaded, total, data = null) {
+    emitUpdate("digipassRegistrationLoadingProgress", {
+        eventId,
+        loaded,
+        total,
+        ...(data && { data }),
+    });
+}
+
 module.exports = {
     emitTaskCompletedUpdate,
     emitUploadProgress,
     emitNewRegistration,
     emitWalkInNew,
+    emitLoadingProgress,
 };
 
