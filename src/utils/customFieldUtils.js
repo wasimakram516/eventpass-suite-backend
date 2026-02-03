@@ -66,6 +66,17 @@ const pickBadgeIdentifier = (f) =>
 
 const pickWing = (f) => pick(f, "wing", ["wing name", "wing"]);
 
+const pickRegistrationType = (f) =>
+  pick(f, "registrationtype", [
+    "registration type",
+    "reg type",
+    "registration category",
+    "ticket type",
+    "pass type",
+    "attendee type",
+    "badge type",
+  ]);
+
 module.exports = {
   pickCustomFieldPairs,
   pickFullName,
@@ -75,4 +86,5 @@ module.exports = {
   pickTitle,
   pickBadgeIdentifier,
   pickWing,
+  pickRegistrationType,
 };
