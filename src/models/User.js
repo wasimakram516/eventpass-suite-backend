@@ -13,7 +13,7 @@ const userSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: ["admin", "business", "staff"],
+      enum: ["superadmin", "admin", "business", "staff"],
       default: "business",
     },
     
