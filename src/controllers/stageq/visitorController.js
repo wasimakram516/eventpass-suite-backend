@@ -6,7 +6,7 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 exports.getAllVisitors = asyncHandler(async (req, res) => {
   const user = req.user;
 
-  if (!["admin", "business"].includes(user.role)) {
+  if (!["admin", "superadmin", "business"].includes(user.role)) {
     return response(res, 403, "Unauthorized");
   }
 

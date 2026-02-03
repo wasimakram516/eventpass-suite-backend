@@ -35,7 +35,7 @@ exports.getAllUsers = asyncHandler(async (req, res) => {
   const orphanUsers = [];
 
   for (const user of users) {
-    if (user.role === "admin") {
+    if (user.role === "superadmin" || user.role === "admin") {
       admins.push(user);
       continue;
     }
@@ -219,11 +219,40 @@ exports.createBusinessUser = asyncHandler(async (req, res) => {
   // -------------------------
   // Recompute dashboards
   // -------------------------
-  recomputeAndEmit(attachedBusiness._id).catch(() => {});
+  recomputeAndEmit(attachedBusiness._id).catch(() => { });
 
   return response(res, 201, "Business user created successfully", {
     user: sanitizeUser(user),
     business: attachedBusiness,
+  });
+});
+
+// Create Admin User (superadmin only; name, email, password, modulePermissions)
+exports.createAdminUser = asyncHandler(async (req, res) => {
+  const { name, email, password, modulePermissions = [] } = req.body;
+
+  if (!name || !email || !password) {
+    return response(res, 400, "Name, email and password are required");
+  }
+
+  const existing = await User.findOne({
+    email: email.toLowerCase(),
+  }).notDeleted();
+  if (existing) {
+    return response(res, 409, "User with this email already exists");
+  }
+
+  const user = await User.create({
+    name,
+    email: email.toLowerCase(),
+    password,
+    role: "admin",
+    modulePermissions: Array.isArray(modulePermissions) ? modulePermissions : [],
+    business: null,
+  });
+
+  return response(res, 201, "Admin user created successfully", {
+    user: sanitizeUser(user),
   });
 });
 

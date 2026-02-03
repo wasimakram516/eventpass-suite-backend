@@ -40,7 +40,7 @@ exports.addParticipant = asyncHandler(async (req, res) => {
 
   if (
     wheel.type === "admin" &&
-    (!req.user || (req.user.role !== "admin" && req.user.role !== "business"))
+    (!req.user || (req.user.role !== "admin" && req.user.role !== "superadmin" && req.user.role !== "business"))
   ) {
     return response(
       res,
@@ -783,7 +783,7 @@ exports.uploadParticipants = asyncHandler(async (req, res) => {
 
   if (
     !req.user ||
-    (req.user.role !== "admin" && req.user.role !== "business")
+    (req.user.role !== "admin" && req.user.role !== "superadmin" && req.user.role !== "business")
   ) {
     return response(
       res,
