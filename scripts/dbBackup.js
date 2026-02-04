@@ -10,7 +10,7 @@ const fs = require("fs").promises;
 const path = require("path");
 const AWS = require("aws-sdk");
 
-const S3_PREFIX = "EventPassDB-Backup";
+const S3_PREFIX = "EventPassDB-Backup"; 
 const DB_NAME = "EventPassSuite-db";
 const BACKUP_INTERVAL_MS = 30 * 60 * 1000;
 const RETENTION_DAYS = 7;
