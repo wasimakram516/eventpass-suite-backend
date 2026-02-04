@@ -15,9 +15,16 @@ const DB_NAME = "EventPassSuite-db";
 const BACKUP_INTERVAL_MS = 30 * 60 * 1000;
 const RETENTION_DAYS = 7;
 
-function getTimestamp() {
-  const d = new Date();
-  return d.toISOString().replace(/[:.]/g, "-").slice(0, 19);
+function getDayFolder(d = new Date()) {
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = d.toLocaleDateString("en-US", { month: "short" });
+  const year = d.getFullYear();
+  const dayName = d.toLocaleDateString("en-US", { weekday: "short" });
+  return `${day}-${month}-${year}:${dayName}`;
+}
+
+function getTimeFolder(d = new Date()) {
+  return d.toLocaleTimeString("en-US", { hour12: false }).replace(/:/g, "-");
 }
 
 function runMongodump(uri, outPath) {
@@ -73,10 +80,13 @@ async function getS3Client() {
 }
 
 function parseTimestampFromKey(key) {
-  const match = key.match(/EventPassDB-Backup\/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})\//);
+  const match = key.match(/EventPassDB-Backup\/(\d{2})-([A-Za-z]{3})-(\d{4}):[A-Za-z]{3}\/(\d{2}-\d{2}-\d{2})\//);
   if (!match) return null;
-  const s = match[1].replace(/T(\d{2})-(\d{2})-(\d{2})$/, "T$1:$2:$3");
-  return new Date(s);
+  const day = match[1];
+  const monthName = match[2];
+  const year = match[3];
+  const timePart = match[4].replace(/-/g, ":");
+  return new Date(`${day} ${monthName} ${year} ${timePart}`);
 }
 
 async function deleteOldestBackupOlderThan(retentionDays) {
@@ -89,16 +99,15 @@ async function deleteOldestBackupOlderThan(retentionDays) {
     .listObjectsV2({
       Bucket: client.bucket,
       Prefix: `${S3_PREFIX}/`,
-      Delimiter: "/",
     })
     .promise();
 
-  const prefixes = list.CommonPrefixes || [];
-  const toDelete = prefixes
-    .map((p) => {
-      const key = p.Prefix + `${DB_NAME}.archive`;
-      const parsed = parseTimestampFromKey(key);
-      return { key, date: parsed };
+  const contents = list.Contents || [];
+  const toDelete = contents
+    .filter((o) => o.Key && o.Key.endsWith(`${DB_NAME}.archive`))
+    .map((o) => {
+      const parsed = parseTimestampFromKey(o.Key);
+      return { key: o.Key, date: parsed };
     })
     .filter((x) => x.date && x.date.getTime() < cutoff)
     .sort((a, b) => a.date - b.date);
@@ -120,7 +129,9 @@ async function runBackup() {
     throw new Error("MONGO_URI env var required");
   }
 
-  const timestamp = getTimestamp();
+  const now = new Date();
+  const dayFolder = getDayFolder(now);
+  const timeFolder = getTimeFolder(now);
   const tempDir = path.join(__dirname, "..", "tmp", "db-backup");
   const archivePath = path.join(tempDir, `${DB_NAME}.archive`);
 
@@ -130,7 +141,7 @@ async function runBackup() {
     console.log(`[${new Date().toISOString()}] Starting backup...`);
     await runMongodump(mongoUri, archivePath);
 
-    const s3Key = `${S3_PREFIX}/${timestamp}/${DB_NAME}.archive`;
+    const s3Key = `${S3_PREFIX}/${dayFolder}/${timeFolder}/${DB_NAME}.archive`;
     await uploadToS3(archivePath, s3Key);
 
     console.log(`[${new Date().toISOString()}] Backup uploaded to S3: ${s3Key}`);
