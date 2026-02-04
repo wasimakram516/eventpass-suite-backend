@@ -73,8 +73,8 @@ jobs:
           cd /var/www/eventpass/backend
           npm ci --omit=dev
           pm2 restart eventpass-backend --update-env || pm2 start npm --name "eventpass-backend" -- run start
+          pm2 restart eventpass-db-backup --update-env || pm2 start npm --name "eventpass-db-backup" -- run db:backup:daemon
           pm2 save
-
 
   deploy-uat:
     if: github.ref == 'refs/heads/uat'
@@ -142,4 +142,5 @@ jobs:
           cd /var/www/eventpass-uat/backend
           npm ci --omit=dev
           pm2 restart eventpass-backend-uat --update-env || pm2 start npm --name "eventpass-backend-uat" -- run start
+          pm2 restart eventpass-db-backup-uat --update-env || pm2 start npm --name "eventpass-db-backup-uat" -- run db:backup:daemon
           pm2 save

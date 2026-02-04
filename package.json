@@ -6,7 +6,9 @@
   "scripts": {
     "start": "nodemon server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "echo \"No build step required for Node.js backend\""
+    "build": "echo \"No build step required for Node.js backend\"",
+    "db:backup": "node scripts/dbBackup.js",
+    "db:backup:daemon": "node scripts/dbBackup.js --daemon"
   },
   "keywords": [
     "eventPass"
