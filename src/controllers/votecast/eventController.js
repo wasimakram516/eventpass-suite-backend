@@ -32,7 +32,9 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
     })
         .notDeleted()
         .sort({ createdAt: -1 })
-        .select("_id name slug defaultLanguage logoUrl description background");
+        .select("_id name slug defaultLanguage logoUrl description background createdAt updatedAt createdBy updatedBy")
+        .populate("createdBy", "name")
+        .populate("updatedBy", "name");
 
     const eventsWithPollCount = await Promise.all(
         events.map(async (event) => {
@@ -134,7 +136,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
         }
     }
 
-    const newEvent = await Event.create({
+    const eventPayload = {
         name,
         slug: uniqueSlug,
         businessId,
@@ -145,14 +147,19 @@ exports.createEvent = asyncHandler(async (req, res) => {
         ...(Object.keys(parsedBackground).length > 0
             ? { background: parsedBackground }
             : {}),
-    });
+    };
+    const newEvent = req.user
+        ? await Event.createWithAuditUser(eventPayload, req.user)
+        : await Event.create(eventPayload);
 
     recomputeAndEmit(businessId || null).catch((err) =>
         console.error("Background recompute failed:", err.message)
     );
 
     const eventResponse = await Event.findById(newEvent._id)
-        .select("_id name slug defaultLanguage logoUrl description background");
+        .select("_id name slug defaultLanguage logoUrl description background createdAt updatedAt createdBy updatedBy")
+        .populate("createdBy", "name")
+        .populate("updatedBy", "name");
 
     return response(res, 201, "VoteCast event created successfully", eventResponse);
 });
@@ -268,6 +275,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         }
     }
 
+    if (req.user) event.setAuditUser(req.user);
     await event.save();
 
     recomputeAndEmit(event.businessId || null).catch((err) =>
@@ -275,7 +283,9 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     );
 
     const eventResponse = await Event.findById(event._id)
-        .select("_id name slug defaultLanguage logoUrl description background");
+        .select("_id name slug defaultLanguage logoUrl description background createdAt updatedAt createdBy updatedBy")
+        .populate("createdBy", "name")
+        .populate("updatedBy", "name");
 
     return response(res, 200, "VoteCast event updated successfully", eventResponse);
 });

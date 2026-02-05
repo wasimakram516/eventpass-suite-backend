@@ -186,4 +186,6 @@ WhatsAppMessageLogSchema.index({ messageSid: 1 });
 WhatsAppMessageLogSchema.index({ status: 1, createdAt: -1 });
 WhatsAppMessageLogSchema.index({ direction: 1, createdAt: -1 });
 
+WhatsAppMessageLogSchema.plugin(require("../db/plugins/auditUser"));
+
 module.exports = mongoose.model("WhatsAppMessageLog", WhatsAppMessageLogSchema);

@@ -17,12 +17,12 @@ const {
     signIn,
 } = require("../../controllers/DigiPass/registrationController");
 
-const { protect, checkPermission } = require("../../middlewares/auth");
+const { protect, optionalProtect, checkPermission } = require("../../middlewares/auth");
 
 const digiPassAccess = [protect, checkPermission.digipass];
 
-// Create registration (public - no auth required)
-router.post("/", createRegistration);
+// Create registration: public (no auth) or CMS (token optional — sets createdBy when present)
+router.post("/", optionalProtect, createRegistration);
 
 // Sign in using identity fields (public - no auth required)
 router.post("/signin", signIn);

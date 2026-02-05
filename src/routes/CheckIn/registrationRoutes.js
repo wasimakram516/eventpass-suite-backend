@@ -22,11 +22,11 @@ const {
   sendBulkWhatsApp,
 } = require("../../controllers/CheckIn/registrationController");
 
-const { protect, checkPermission } = require("../../middlewares/auth");
+const { protect, optionalProtect, checkPermission } = require("../../middlewares/auth");
 const CheckInAccess = [protect, checkPermission.checkin];
 
-// Create a new public registration (no auth required)
-router.post("/", createRegistration);
+// Create registration: public (no auth) or CMS (token optional — sets createdBy when present)
+router.post("/", optionalProtect, createRegistration);
 
 // Public endpoints for token-based confirmation
 router.get("/by-token", getRegistrationByToken);

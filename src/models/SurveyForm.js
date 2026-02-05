@@ -8,7 +8,7 @@ const OptionSchema = new mongoose.Schema({
 const QuestionSchema = new mongoose.Schema({
   label: { type: String, required: true },
   helpText: { type: String, default: "" },
-  type: { type: String, enum: ["multi","text","rating","nps"], required: true },
+  type: { type: String, enum: ["multi", "text", "rating", "nps"], required: true },
   required: { type: Boolean, default: true },
   order: { type: Number, default: 0 },
   options: { type: [OptionSchema], default: [] },
@@ -33,6 +33,7 @@ SurveyFormSchema.index({ businessId: 1, isDeleted: 1 });
 
 // Soft delete support
 SurveyFormSchema.plugin(require("../db/plugins/softDelete"));
+SurveyFormSchema.plugin(require("../db/plugins/auditUser"));
 // Partial unique index for slug
 SurveyFormSchema.addPartialUnique({ slug: 1 });
 

@@ -33,7 +33,9 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
     })
         .notDeleted()
         .sort({ createdAt: -1 })
-        .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations");
+        .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
+        .populate("createdBy", "name")
+        .populate("updatedBy", "name");
 
     return response(res, 200, "DigiPass Events fetched successfully", {
         events,
@@ -177,7 +179,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
         );
     }
 
-    const newEvent = await Event.create({
+    const eventPayload = {
         name,
         slug: uniqueSlug,
         businessId,
@@ -191,16 +193,22 @@ exports.createEvent = asyncHandler(async (req, res) => {
         maxTasksPerUser: maxTasksPerUser !== undefined && maxTasksPerUser !== null ? Number(maxTasksPerUser) : null,
         minTasksPerUser: minTasksPerUser !== undefined && minTasksPerUser !== null ? Number(minTasksPerUser) : null,
         formFields: parsedFormFields,
-    });
+    };
+
+    const newEvent = req.user
+        ? await Event.createWithAuditUser(eventPayload, req.user)
+        : await Event.create(eventPayload);
 
     recomputeAndEmit(businessId || null).catch((err) =>
         console.error("Background recompute failed:", err.message)
     );
 
     const eventResponse = await Event.findById(newEvent._id)
-        .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations");
+        .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
+        .populate("createdBy", "name")
+        .populate("updatedBy", "name");
 
-    return response(res, 201, "DigiPass event created successfully", eventResponse);
+    return response(res, 201, "DigiPass event created successfully", eventResponse || newEvent);
 });
 
 // UPDATE digipass event
@@ -369,6 +377,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         }
     }
 
+    if (req.user) event.setAuditUser(req.user);
     await event.save();
 
     recomputeAndEmit(event.businessId || null).catch((err) =>
@@ -376,9 +385,11 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     );
 
     const eventResponse = await Event.findById(event._id)
-        .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations");
+        .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
+        .populate("createdBy", "name")
+        .populate("updatedBy", "name");
 
-    return response(res, 200, "DigiPass event updated successfully", eventResponse);
+    return response(res, 200, "DigiPass event updated successfully", eventResponse || event);
 });
 
 // DELETE digipass event

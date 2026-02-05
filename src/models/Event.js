@@ -110,7 +110,7 @@ const EventSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: {},
   },
-});
+}, { timestamps: true });
 
 EventSchema.index({ businessId: 1, isDeleted: 1 });
 EventSchema.index({ eventType: 1, startDate: 1, isDeleted: 1 });
@@ -118,6 +118,7 @@ EventSchema.index({ createdAt: 1, isDeleted: 1 });
 
 // Soft delete support
 EventSchema.plugin(require("../db/plugins/softDelete"));
+EventSchema.plugin(require("../db/plugins/auditUser"));
 // Partial unique index for slug
 EventSchema.addPartialUnique({ slug: 1 });
 

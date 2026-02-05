@@ -21,5 +21,6 @@ VisitorSchema.index({ "eventHistory.business": 1, isDeleted: 1 });
 
 // Soft delete support
 VisitorSchema.plugin(require("../db/plugins/softDelete"));
+VisitorSchema.plugin(require("../db/plugins/auditUser"));
 
 module.exports = mongoose.models.Visitor || mongoose.model("Visitor", VisitorSchema);

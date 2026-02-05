@@ -15,6 +15,8 @@ exports.getQuestionsByBusiness = asyncHandler(async (req, res) => {
   const questions = await EventQuestion.find({ business: business._id })
     .notDeleted()
     .populate("visitor", "name phone company")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .sort({ createdAt: -1 });
 
   return response(res, 200, "Questions fetched", questions);
@@ -93,6 +95,7 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
   if (answered !== undefined) question.answered = answered;
   if (text) question.text = text;
 
+  question.setAuditUser(req.user);
   await question.save();
 
   // Fire background recompute

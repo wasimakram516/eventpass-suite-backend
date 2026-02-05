@@ -94,6 +94,7 @@ GameSessionSchema.index({ createdAt: 1, isDeleted: 1 });
 
 // Soft delete plugin
 GameSessionSchema.plugin(require("../db/plugins/softDelete"));
+GameSessionSchema.plugin(require("../db/plugins/auditUser"));
 
 module.exports =
   mongoose.models.GameSession ||

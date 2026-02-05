@@ -421,7 +421,7 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
   });
 
   setImmediate(() => {
-    uploadProcessor(event, rows).catch((err) =>
+    uploadProcessor(event, rows, req.user).catch((err) =>
       console.error("CHECKIN UPLOAD PROCESSOR FAILED:", err)
     );
   });
@@ -442,6 +442,8 @@ exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
     .notDeleted()
     .sort({ createdAt: -1 })
     .limit(50)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .lean();
 
   const enhanced = await Promise.all(
@@ -479,6 +481,8 @@ exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(batchSize)
+        .populate("createdBy", "name")
+        .populate("updatedBy", "name")
         .lean();
 
       const enhancedRegs = await Promise.all(
@@ -529,6 +533,8 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
 
   const registrations = await Registration.find({ eventId })
     .notDeleted()
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .sort({ createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(Number(limit));
@@ -1042,7 +1048,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   }
 
   // ---------- CREATE ----------
-  const newRegistration = await Registration.create({
+  const regPayload = {
     eventId,
     fullName,
     email,
@@ -1051,7 +1057,10 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     company,
     customFields,
     approvalStatus: "pending",
-  });
+  };
+  const newRegistration = req.user
+    ? await Registration.createWithAuditUser(regPayload, req.user)
+    : await Registration.create(regPayload);
 
   if (formFields.length > 0 && phoneIsoCode) {
     newRegistration.isoCode = phoneIsoCode;
@@ -1060,13 +1069,21 @@ exports.createRegistration = asyncHandler(async (req, res) => {
 
   await recountEventRegistrations(event._id);
 
+  const populated = await Registration.findById(newRegistration._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  const regForResponse = populated || newRegistration;
+
   emitNewRegistration(event._id.toString(), {
-    _id: newRegistration._id,
-    token: newRegistration.token,
-    emailSent: newRegistration.emailSent,
-    whatsappSent: newRegistration.whatsappSent,
-    createdAt: newRegistration.createdAt,
-    approvalStatus: newRegistration.approvalStatus,
+    _id: regForResponse._id,
+    token: regForResponse.token,
+    emailSent: regForResponse.emailSent,
+    whatsappSent: regForResponse.whatsappSent,
+    createdAt: regForResponse.createdAt,
+    updatedAt: regForResponse.updatedAt,
+    createdBy: regForResponse.createdBy,
+    updatedBy: regForResponse.updatedBy,
+    approvalStatus: regForResponse.approvalStatus,
     fullName,
     email,
     phone: phoneForDuplicateCheck,
@@ -1075,7 +1092,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     walkIns: [],
   });
 
-  return response(res, 201, "Registration successful", newRegistration);
+  return response(res, 201, "Registration successful", regForResponse);
 });
 
 // UPDATE registration (Admin editable)
@@ -1203,6 +1220,7 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     reg.customFields = {};
   }
 
+  reg.setAuditUser(req.user);
   await reg.save();
 
   return response(res, 200, "Registration updated successfully", reg);
@@ -1226,9 +1244,13 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
     reg.respondedAt = new Date();
   }
 
+  reg.setAuditUser(req.user);
   await reg.save();
 
-  return response(res, 200, "Status updated", reg);
+  const populated = await Registration.findById(reg._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 200, "Status updated", populated || reg);
 });
 
 // VERIFY registration by QR token and create a WalkIn
@@ -1250,6 +1272,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     eventId: reg.eventId._id,
     scannedBy: staffUser.id,
   });
+  walkin.setAuditUser(req.user);
   await walkin.save();
 
   const zpl = buildBadgeZpl({
@@ -1331,6 +1354,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
     eventId: registration.eventId?._id,
     scannedBy: adminUser.id,
   });
+  walkin.setAuditUser(req.user);
   await walkin.save();
 
   recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
@@ -1498,6 +1522,7 @@ exports.confirmPresence = asyncHandler(async (req, res) => {
   if (!registration.respondedAt) {
     registration.respondedAt = new Date();
   }
+  registration.setAuditUser(req.user);
   await registration.save();
 
   const eventId = registration.eventId?._id || registration.eventId;
@@ -1551,6 +1576,7 @@ exports.updateAttendanceStatus = asyncHandler(async (req, res) => {
   if ((status === "confirmed" || status === "not_attending") && !registration.respondedAt) {
     registration.respondedAt = new Date();
   }
+  registration.setAuditUser(req.user);
   await registration.save();
 
   const eventId = registration.eventId?._id || registration.eventId;

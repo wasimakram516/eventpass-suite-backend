@@ -11,6 +11,7 @@ const questionSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+questionSchema.plugin(require("../db/plugins/auditUser"));
 
 const gameSchema = new mongoose.Schema(
   {
@@ -65,6 +66,7 @@ gameSchema.index({ createdAt: 1, isDeleted: 1 });
 // Soft delete plugins
 questionSchema.plugin(require("../db/plugins/softDelete"));
 gameSchema.plugin(require("../db/plugins/softDelete"));
+gameSchema.plugin(require("../db/plugins/auditUser"));
 
 // Partial unique index for slug
 gameSchema.addPartialUnique({ slug: 1 });

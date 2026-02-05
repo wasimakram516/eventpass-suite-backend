@@ -189,31 +189,26 @@ async function validateAllRows(event, rows) {
   if (invalidRowNumbers.length > 0) {
     return {
       valid: false,
-      error: `Cannot upload file. Row${
-        invalidRowNumbers.length > 1 ? "s" : ""
-      } ${formatRowNumbers(invalidRowNumbers)} ${
-        invalidRowNumbers.length > 1 ? "have" : "has"
-      } missing required fields: ${allRequiredFields.join(", ")}.`,
+      error: `Cannot upload file. Row${invalidRowNumbers.length > 1 ? "s" : ""
+        } ${formatRowNumbers(invalidRowNumbers)} ${invalidRowNumbers.length > 1 ? "have" : "has"
+        } missing required fields: ${allRequiredFields.join(", ")}.`,
     };
   }
 
   if (invalidEmailRowNumbers.length > 0) {
     return {
       valid: false,
-      error: `Cannot upload file. Row${
-        invalidEmailRowNumbers.length > 1 ? "s" : ""
-      } ${formatRowNumbers(invalidEmailRowNumbers)} ${
-        invalidEmailRowNumbers.length > 1 ? "have" : "has"
-      } invalid email format.`,
+      error: `Cannot upload file. Row${invalidEmailRowNumbers.length > 1 ? "s" : ""
+        } ${formatRowNumbers(invalidEmailRowNumbers)} ${invalidEmailRowNumbers.length > 1 ? "have" : "has"
+        } invalid email format.`,
     };
   }
 
   if (duplicateEmailRowNumbers.length > 0) {
     return {
       valid: false,
-      error: `Cannot upload file. Duplicate email(s) found at row${
-        duplicateEmailRowNumbers.length > 1 ? "s" : ""
-      } ${formatRowNumbers(duplicateEmailRowNumbers)}. Each email must be unique.`,
+      error: `Cannot upload file. Duplicate email(s) found at row${duplicateEmailRowNumbers.length > 1 ? "s" : ""
+        } ${formatRowNumbers(duplicateEmailRowNumbers)}. Each email must be unique.`,
     };
   }
 
@@ -263,8 +258,8 @@ async function validateAllRows(event, rows) {
     warning:
       invalidPhoneRowNumbers.length > 0
         ? `Some rows have invalid phone numbers and may not receive WhatsApp messages: rows ${formatRowNumbers(
-            invalidPhoneRowNumbers,
-          )}`
+          invalidPhoneRowNumbers,
+        )}`
         : null,
   };
 }
@@ -485,7 +480,7 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
       res,
       400,
       fieldValidation.error ||
-        "Uploaded file does not contain required fields.",
+      "Uploaded file does not contain required fields.",
     );
   }
 
@@ -499,7 +494,7 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
   });
 
   setImmediate(() => {
-    uploadProcessor(event, rows).catch((err) =>
+    uploadProcessor(event, rows, req.user).catch((err) =>
       console.error("UPLOAD PROCESSOR FAILED:", err),
     );
   });
@@ -1029,7 +1024,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   // ---------- CREATE ----------
   const approvalStatus = event.requiresApproval ? "pending" : "approved";
 
-  const newRegistration = await Registration.create({
+  const regPayload = {
     eventId,
     fullName: hasCustomFields ? null : extractedFullName,
     email: hasCustomFields ? null : extractedEmail,
@@ -1038,7 +1033,11 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     company: hasCustomFields ? null : extractedCompany,
     customFields,
     approvalStatus,
-  });
+  };
+
+  const newRegistration = req.user
+    ? await Registration.createWithAuditUser(regPayload, req.user)
+    : await Registration.create(regPayload);
 
   if (hasCustomFields && phoneIsoCode) {
     newRegistration.isoCode = phoneIsoCode;
@@ -1054,7 +1053,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   const displayNameForEmail =
     formFields.length > 0
       ? pickFullName(customFields) ||
-        (event.defaultLanguage === "ar" ? "ضيف" : "Guest")
+      (event.defaultLanguage === "ar" ? "ضيف" : "Guest")
       : extractedFullName || (event.defaultLanguage === "ar" ? "ضيف" : "Guest");
 
   // ONLY send email if event does NOT require approval
@@ -1092,24 +1091,32 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message),
   );
 
+  const populated = await Registration.findById(newRegistration._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  const regForResponse = populated || newRegistration;
+
   const enhancedRegistration = {
-    _id: newRegistration._id,
-    token: newRegistration.token,
-    emailSent: newRegistration.emailSent,
-    whatsappSent: newRegistration.whatsappSent,
-    createdAt: newRegistration.createdAt,
-    approvalStatus: newRegistration.approvalStatus,
-    fullName: newRegistration.fullName,
-    email: newRegistration.email,
-    phone: newRegistration.phone,
-    company: newRegistration.company,
-    customFields: newRegistration.customFields || {},
+    _id: regForResponse._id,
+    token: regForResponse.token,
+    emailSent: regForResponse.emailSent,
+    whatsappSent: regForResponse.whatsappSent,
+    createdAt: regForResponse.createdAt,
+    updatedAt: regForResponse.updatedAt,
+    createdBy: regForResponse.createdBy,
+    updatedBy: regForResponse.updatedBy,
+    approvalStatus: regForResponse.approvalStatus,
+    fullName: regForResponse.fullName,
+    email: regForResponse.email,
+    phone: regForResponse.phone,
+    company: regForResponse.company,
+    customFields: regForResponse.customFields || {},
     walkIns: [],
   };
 
   emitNewRegistration(event._id.toString(), enhancedRegistration);
 
-  return response(res, 201, "Registration successful", newRegistration);
+  return response(res, 201, "Registration successful", regForResponse);
 });
 
 // UPDATE registration (Admin/Staff editable)
@@ -1323,8 +1330,13 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     }
   }
 
+  reg.setAuditUser(req.user);
   await reg.save();
-  return response(res, 200, "Registration updated successfully", reg);
+
+  const populated = await Registration.findById(reg._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 200, "Registration updated successfully", populated || reg);
 });
 
 // UPDATE registration approval status
@@ -1355,6 +1367,7 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
   }
 
   registration.approvalStatus = status;
+  registration.setAuditUser(req.user);
   await registration.save();
 
   if (status === "approved") {
@@ -1390,6 +1403,7 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
 
       if (result.success) {
         registration.emailSent = true;
+        registration.setAuditUser(req.user);
         await registration.save();
       }
     }
@@ -1585,6 +1599,7 @@ exports.bulkUpdateRegistrationApproval = asyncHandler(async (req, res) => {
 
         if (result.success) {
           registration.emailSent = true;
+          registration.setAuditUser(req.user);
           await registration.save();
         }
       } catch (err) {
@@ -1812,6 +1827,8 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
 
   const registrations = await Registration.find({ eventId })
     .notDeleted()
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .skip((page - 1) * limit)
     .limit(limit);
 
@@ -1827,6 +1844,9 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
         emailSent: reg.emailSent,
         whatsappSent: reg.whatsappSent,
         createdAt: reg.createdAt,
+        updatedAt: reg.updatedAt,
+        createdBy: reg.createdBy,
+        updatedBy: reg.updatedBy,
 
         fullName: reg.fullName,
         email: reg.email,
@@ -1866,6 +1886,8 @@ async function loadRemainingRecords(eventId, total) {
       const registrations = await Registration.find({ eventId })
         .where("isDeleted")
         .ne(true)
+        .populate("createdBy", "name")
+        .populate("updatedBy", "name")
         .sort({ createdAt: 1, _id: 1 })
         .skip(skip)
         .limit(limit)
@@ -1886,6 +1908,9 @@ async function loadRemainingRecords(eventId, total) {
             emailSent: reg.emailSent,
             whatsappSent: reg.whatsappSent,
             createdAt: reg.createdAt,
+            updatedAt: reg.updatedAt,
+            createdBy: reg.createdBy,
+            updatedBy: reg.updatedBy,
             approvalStatus: reg.approvalStatus,
             fullName: reg.fullName,
             email: reg.email,
@@ -1933,6 +1958,8 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   const registrations = await Registration.find({ eventId })
     .where("isDeleted")
     .ne(true)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .sort({ createdAt: 1 })
     .limit(50)
     .lean();
@@ -1950,6 +1977,9 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
         emailSent: reg.emailSent,
         whatsappSent: reg.whatsappSent,
         createdAt: reg.createdAt,
+        updatedAt: reg.updatedAt,
+        createdBy: reg.createdBy,
+        updatedBy: reg.updatedBy,
         approvalStatus: reg.approvalStatus,
         fullName: reg.fullName,
         email: reg.email,
@@ -2018,6 +2048,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     eventId: registration.eventId?._id,
     scannedBy: staffUser.id,
   });
+  walkin.setAuditUser(req.user);
   await walkin.save();
 
   const cf = registration.customFields
@@ -2111,6 +2142,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
     eventId: registration.eventId?._id,
     scannedBy: adminUser.id,
   });
+  walkin.setAuditUser(req.user);
   await walkin.save();
 
   recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>

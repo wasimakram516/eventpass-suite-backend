@@ -30,7 +30,9 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
     eventType: "closed",
   })
     .notDeleted()
-    .sort({ startDate: -1 });
+    .sort({ startDate: -1 })
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   return response(res, 200, "CheckIn Events fetched successfully", {
     events,
@@ -201,7 +203,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     }
   }
 
-  const newEvent = await Event.create({
+  const eventPayload = {
     name,
     slug: uniqueSlug,
     startDate: parsedStartDate,
@@ -229,14 +231,20 @@ exports.createEvent = asyncHandler(async (req, res) => {
     organizerName: organizerName || "",
     organizerEmail: organizerEmail || "",
     organizerPhone: organizerPhone || "",
-  });
+  };
+  const newEvent = req.user
+    ? await Event.createWithAuditUser(eventPayload, req.user)
+    : await Event.create(eventPayload);
 
   // Fire background recompute
   recomputeAndEmit(businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 201, "Closed event created successfully", newEvent);
+  const populated = await Event.findById(newEvent._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 201, "Closed event created successfully", populated || newEvent);
 });
 
 // UPDATE closed event
@@ -549,6 +557,10 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     updates.timezone = timezone || "Asia/Muscat";
   }
 
+  if (req.user) {
+    updates.updatedBy = req.user._id ?? req.user.id;
+  }
+
   const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
     new: true,
   });
@@ -558,11 +570,14 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
+  const populated = await Event.findById(updatedEvent._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   return response(
     res,
     200,
     "Closed event updated successfully",
-    updatedEvent
+    populated || updatedEvent
   );
 });
 

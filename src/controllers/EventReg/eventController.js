@@ -22,7 +22,9 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
     eventType: "public",
   })
     .notDeleted()
-    .sort({ startDate: -1 });
+    .sort({ startDate: -1 })
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   return response(res, 200, "Events fetched successfully.", {
     events,
@@ -63,7 +65,9 @@ exports.getEventsByBusinessId = asyncHandler(async (req, res) => {
 
   const events = await Event.find({ businessId, eventType: "public" })
     .notDeleted()
-    .sort({ startDate: -1 });
+    .sort({ startDate: -1 })
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   return response(res, 200, "Events fetched successfully.", {
     events,
@@ -82,7 +86,9 @@ exports.getEventsByBusinessSlug = asyncHandler(async (req, res) => {
     eventType: "public",
   })
     .notDeleted()
-    .sort({ startDate: -1 });
+    .sort({ startDate: -1 })
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   return response(res, 200, "Events fetched successfully.", {
     events,
@@ -220,7 +226,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     }
   }
 
-  const newEvent = await Event.create({
+  const eventPayload = {
     name,
     slug: uniqueSlug,
     startDate: parsedStartDate,
@@ -254,13 +260,19 @@ exports.createEvent = asyncHandler(async (req, res) => {
       }
       : {}),
     customizations: badgeCustomizations || {},
-  });
+  };
+  const newEvent = req.user
+    ? await Event.createWithAuditUser(eventPayload, req.user)
+    : await Event.create(eventPayload);
 
   recomputeAndEmit(businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 201, "Event created successfully", newEvent);
+  const populated = await Event.findById(newEvent._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 201, "Event created successfully", populated || newEvent);
 });
 
 // UPDATE event (only public)
@@ -571,6 +583,10 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     };
   }
 
+  if (req.user) {
+    updates.updatedBy = req.user._id ?? req.user.id;
+  }
+
   const updatedEvent = await Event.findByIdAndUpdate(id, updates, {
     new: true,
   });
@@ -579,7 +595,10 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "Event updated successfully", updatedEvent);
+  const populated = await Event.findById(updatedEvent._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 200, "Event updated successfully", populated || updatedEvent);
 });
 
 // Soft delete event

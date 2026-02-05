@@ -103,7 +103,7 @@ exports.createForm = asyncHandler(async (req, res) => {
 
   body.questions = await processOptionImages(body.questions, null);
 
-  const form = await SurveyForm.create(body);
+  const form = await SurveyForm.createWithAuditUser(body, req.user);
 
   recomputeAndEmit(body.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
@@ -121,6 +121,8 @@ exports.listForms = asyncHandler(async (req, res) => {
 
   const forms = await SurveyForm.find(filter)
     .notDeleted()
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .sort({ createdAt: -1 });
 
   if (withCounts) {
@@ -157,7 +159,10 @@ exports.getForm = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id))
     return response(res, 400, "Invalid form id");
-  const form = await SurveyForm.findById(id).notDeleted();
+  const form = await SurveyForm.findById(id)
+    .notDeleted()
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   if (!form) return response(res, 404, "Survey form not found");
   return response(res, 200, "Survey form fetched", form);
 });
@@ -203,13 +208,17 @@ exports.updateForm = asyncHandler(async (req, res) => {
 
   patch.questions = await processOptionImages(patch.questions, prev);
 
-  const updated = await SurveyForm.findByIdAndUpdate(id, patch, { new: true });
+  const updateWithAudit = SurveyForm.addUpdatedByToUpdate(patch, req.user);
+  const updated = await SurveyForm.findByIdAndUpdate(id, updateWithAudit, { new: true });
 
   recomputeAndEmit(updated.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "Survey form updated", updated);
+  const populated = await SurveyForm.findById(updated._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 200, "Survey form updated", populated || updated);
 });
 
 // Soft delete form

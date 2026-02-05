@@ -45,6 +45,8 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
 
     const registrations = await Registration.find({ eventId })
         .notDeleted()
+        .populate("createdBy", "name")
+        .populate("updatedBy", "name")
         .skip((page - 1) * limit)
         .limit(limit);
 
@@ -58,6 +60,9 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
                 _id: reg._id,
                 token: reg.token,
                 createdAt: reg.createdAt,
+                updatedAt: reg.updatedAt,
+                createdBy: reg.createdBy,
+                updatedBy: reg.updatedBy,
                 isoCode: reg.isoCode,
                 customFields: reg.customFields || {},
                 walkIns: walkIns.map((w) => ({
@@ -93,6 +98,8 @@ async function loadRemainingRecords(eventId, total) {
                 .sort({ createdAt: 1, _id: 1 })
                 .skip(skip)
                 .limit(limit)
+                .populate("createdBy", "name")
+                .populate("updatedBy", "name")
                 .lean();
 
             if (!registrations.length) break;
@@ -108,6 +115,9 @@ async function loadRemainingRecords(eventId, total) {
                         _id: reg._id,
                         token: reg.token,
                         createdAt: reg.createdAt,
+                        updatedAt: reg.updatedAt,
+                        createdBy: reg.createdBy,
+                        updatedBy: reg.updatedBy,
                         isoCode: reg.isoCode,
                         customFields: reg.customFields || {},
                         walkIns: walkIns.map((w) => ({
@@ -151,6 +161,8 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
         .ne(true)
         .sort({ createdAt: 1 })
         .limit(50)
+        .populate("createdBy", "name")
+        .populate("updatedBy", "name")
         .lean();
 
     const enhanced = await Promise.all(
@@ -164,6 +176,9 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
                 _id: reg._id,
                 token: reg.token,
                 createdAt: reg.createdAt,
+                updatedAt: reg.updatedAt,
+                createdBy: reg.createdBy,
+                updatedBy: reg.updatedBy,
                 isoCode: reg.isoCode,
                 customFields: reg.customFields || {},
                 walkIns: walkIns.map((w) => ({
@@ -411,12 +426,15 @@ exports.createRegistration = asyncHandler(async (req, res) => {
         }
     }
 
-    const registration = await Registration.create({
+    const regPayload = {
         eventId: event._id,
         customFields,
         tasksCompleted: 0,
         isoCode: hasCustomFields ? null : phoneIsoCode,
-    });
+    };
+    const registration = req.user
+        ? await Registration.createWithAuditUser(regPayload, req.user)
+        : await Registration.create(regPayload);
 
     if (hasCustomFields && phoneIsoCode) {
         registration.isoCode = phoneIsoCode;
@@ -429,19 +447,27 @@ exports.createRegistration = asyncHandler(async (req, res) => {
         console.error("Background recompute failed:", err.message)
     );
 
+    const populated = await Registration.findById(registration._id)
+        .populate("createdBy", "name")
+        .populate("updatedBy", "name");
+    const regForResponse = populated || registration;
+
     const enhancedRegistration = {
-        _id: registration._id,
-        token: registration.token,
-        createdAt: registration.createdAt,
-        customFields: registration.customFields || {},
-        isoCode: registration.isoCode || null,
-        tasksCompleted: registration.tasksCompleted || 0,
+        _id: regForResponse._id,
+        token: regForResponse.token,
+        createdAt: regForResponse.createdAt,
+        updatedAt: regForResponse.updatedAt,
+        createdBy: regForResponse.createdBy,
+        updatedBy: regForResponse.updatedBy,
+        customFields: regForResponse.customFields || {},
+        isoCode: regForResponse.isoCode || null,
+        tasksCompleted: regForResponse.tasksCompleted || 0,
         walkIns: [],
     };
 
     emitNewRegistration(event._id.toString(), enhancedRegistration);
 
-    return response(res, 201, "Registration created successfully", registration);
+    return response(res, 201, "Registration created successfully", regForResponse);
 });
 
 // UPDATE registration
@@ -680,13 +706,18 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
         registration.tasksCompleted = tasksCompleted;
     }
 
+    registration.setAuditUser(req.user);
     await registration.save();
+
+    const populated = await Registration.findById(registration._id)
+        .populate("createdBy", "name")
+        .populate("updatedBy", "name");
 
     recomputeAndEmit(event.businessId || null).catch((err) =>
         console.error("Background recompute failed:", err.message)
     );
 
-    return response(res, 200, "Registration updated successfully", registration);
+    return response(res, 200, "Registration updated successfully", populated || registration);
 });
 
 // DELETE registration
@@ -899,9 +930,11 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
         eventId,
         scannedBy,
     });
+    walkin.setAuditUser(req.user);
     await walkin.save();
 
     registration.tasksCompleted = (registration.tasksCompleted || 0) + 1;
+    registration.setAuditUser(req.user);
     await registration.save();
 
     const eventIdStr = eventId.toString();
@@ -1101,9 +1134,11 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
         eventId,
         scannedBy,
     });
+    walkin.setAuditUser(req.user);
     await walkin.save();
 
     registration.tasksCompleted = (registration.tasksCompleted || 0) + 1;
+    registration.setAuditUser(req.user);
     await registration.save();
 
     const eventIdStr = eventId.toString();
@@ -1560,7 +1595,7 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
     });
 
     setImmediate(() => {
-        uploadProcessor(event, rows).catch((err) =>
+        uploadProcessor(event, rows, req.user).catch((err) =>
             console.error("UPLOAD PROCESSOR FAILED:", err)
         );
     });

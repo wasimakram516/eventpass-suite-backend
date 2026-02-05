@@ -1,4 +1,5 @@
 const Game = require("../../models/Game");
+const User = require("../../models/User");
 const Business = require("../../models/Business");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
@@ -91,15 +92,27 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
 
     const hint = row["Hint"]?.toString().trim() || "";
 
-    return {
+    const qDoc = {
       question: questionText,
       answers,
       correctAnswerIndex: correctIndex,
       hint,
     };
+    if (req.user) {
+      const uid = req.user._id || req.user.id;
+      if (uid) {
+        qDoc.createdBy = uid;
+        qDoc.updatedBy = uid;
+      }
+    }
+    return qDoc;
   });
 
   game.questions = questions;
+  for (let i = 0; i < game.questions.length; i++) {
+    if (req.user) game.questions[i].setAuditUser(req.user);
+  }
+  game.setAuditUser(req.user);
   await game.save();
 
   // Fire background recompute
@@ -110,7 +123,7 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
   return response(res, 200, "Questions uploaded", { count: questions.length });
 });
 
-// Get all questions for a game
+// Get all questions for a game (manually populate createdBy/updatedBy so names are returned)
 exports.getQuestions = asyncHandler(async (req, res) => {
   const { gameId } = req.params;
 
@@ -123,7 +136,31 @@ exports.getQuestions = asyncHandler(async (req, res) => {
 
   const activeQuestions = game.questions.filter((q) => !q.isDeleted);
 
-  return response(res, 200, "Questions fetched", activeQuestions);
+  const userIds = new Set();
+  activeQuestions.forEach((q) => {
+    if (q.createdBy) userIds.add(q.createdBy.toString());
+    if (q.updatedBy) userIds.add(q.updatedBy.toString());
+  });
+  const users =
+    userIds.size > 0
+      ? await User.find({ _id: { $in: [...userIds] } })
+        .select("name")
+        .lean()
+      : [];
+  const userMap = new Map(users.map((u) => [u._id.toString(), { _id: u._id, name: u.name }]));
+
+  const withUserNames = activeQuestions.map((q) => {
+    const plain = q.toObject ? q.toObject() : { ...q };
+    plain.createdBy = plain.createdBy
+      ? userMap.get(plain.createdBy.toString()) || { _id: plain.createdBy, name: null }
+      : null;
+    plain.updatedBy = plain.updatedBy
+      ? userMap.get(plain.updatedBy.toString()) || { _id: plain.updatedBy, name: null }
+      : null;
+    return plain;
+  });
+
+  return response(res, 200, "Questions fetched", withUserNames);
 });
 
 // Add a single question
@@ -168,7 +205,10 @@ exports.addQuestion = asyncHandler(async (req, res) => {
     correctAnswerIndex: parseInt(correctAnswerIndex),
     hint: hint || "",
   });
+  const lastQ = game.questions.at(-1);
+  if (lastQ && req.user) lastQ.setAuditUser(req.user);
 
+  game.setAuditUser(req.user);
   await game.save();
 
   // Fire background recompute
@@ -176,7 +216,16 @@ exports.addQuestion = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 201, "Question added", game.questions.at(-1));
+  const added = game.questions.at(-1);
+  const out = added.toObject ? added.toObject() : { ...added };
+  if (req.user) {
+    const userId = req.user._id || req.user.id;
+    const u = userId ? await User.findById(userId).select("name").lean() : null;
+    const userName = u?.name ?? req.user.name ?? null;
+    out.createdBy = { _id: userId, name: userName };
+    out.updatedBy = { _id: userId, name: userName };
+  }
+  return response(res, 201, "Question added", out);
 });
 
 // Update a question
@@ -260,14 +309,24 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
   q.answers = parsedAnswers || q.answers;
   q.correctAnswerIndex = correctAnswerIndex !== undefined ? parseInt(correctAnswerIndex) : q.correctAnswerIndex;
   q.hint = hint !== undefined ? hint : q.hint;
+  if (req.user) q.setAuditUser(req.user);
 
+  game.setAuditUser(req.user);
   await game.save();
 
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "Question updated", q);
+  const out = q.toObject ? q.toObject() : { ...q };
+  const ids = [out.createdBy, out.updatedBy].filter(Boolean).map((id) => (id && id.toString ? id.toString() : id));
+  if (ids.length > 0) {
+    const users = await User.find({ _id: { $in: ids } }).select("name").lean();
+    const map = new Map(users.map((u) => [u._id.toString(), { _id: u._id, name: u.name }]));
+    out.createdBy = out.createdBy ? (map.get(out.createdBy.toString()) || { _id: out.createdBy, name: null }) : null;
+    out.updatedBy = out.updatedBy ? (map.get(out.updatedBy.toString()) || { _id: out.updatedBy, name: null }) : null;
+  }
+  return response(res, 200, "Question updated", out);
 });
 
 // Delete Question
@@ -289,6 +348,7 @@ exports.deleteQuestion = asyncHandler(async (req, res) => {
   }
 
   await q.softDelete(req.user.id);
+  game.setAuditUser(req.user);
   await game.save();
 
   recomputeAndEmit(game.businessId || null).catch((err) =>
@@ -315,6 +375,7 @@ exports.restoreQuestion = asyncHandler(async (req, res) => {
     return response(res, 404, "Question not found in trash");
 
   await q.restore();
+  game.setAuditUser(req.user);
   await game.save();
 
   recomputeAndEmit(game.businessId || null).catch((err) =>
@@ -350,6 +411,7 @@ exports.permanentDeleteQuestion = asyncHandler(async (req, res) => {
   }
 
   game.questions.splice(questionIndex, 1);
+  game.setAuditUser(req.user);
   await game.save();
 
   recomputeAndEmit(game.businessId || null).catch((err) =>
@@ -370,6 +432,7 @@ exports.restoreAllQuestions = asyncHandler(async (req, res) => {
       for (const question of deletedQuestions) {
         await question.restore();
       }
+      game.setAuditUser(req.user);
       await game.save();
       restoredCount += deletedQuestions.length;
     }
@@ -400,6 +463,7 @@ exports.permanentDeleteAllQuestions = asyncHandler(async (req, res) => {
     const deletedQuestions = game.questions.filter((q) => q.isDeleted);
     if (deletedQuestions.length > 0) {
       game.questions = game.questions.filter((q) => !q.isDeleted);
+      game.setAuditUser(req.user);
       await game.save();
       deletedCount += deletedQuestions.length;
     }

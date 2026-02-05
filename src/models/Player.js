@@ -18,6 +18,7 @@ playerSchema.index({ company: 1 });
 
 // Soft delete support
 playerSchema.plugin(require("../db/plugins/softDelete"));
+playerSchema.plugin(require("../db/plugins/auditUser"));
 
 module.exports =
   mongoose.models.Player || mongoose.model("Player", playerSchema);

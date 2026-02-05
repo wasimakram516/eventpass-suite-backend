@@ -20,5 +20,6 @@ DisplayMediaSchema.index({ wall: 1, isDeleted: 1, createdAt: 1 });
 
 // Soft delete support
 DisplayMediaSchema.plugin(require("../db/plugins/softDelete"));
+DisplayMediaSchema.plugin(require("../db/plugins/auditUser"));
 
 module.exports = mongoose.models.DisplayMedia || mongoose.model("DisplayMedia", DisplayMediaSchema);

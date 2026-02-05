@@ -77,6 +77,7 @@ RegistrationSchema.index({
 
 // Soft delete support
 RegistrationSchema.plugin(require("../db/plugins/softDelete"));
+RegistrationSchema.plugin(require("../db/plugins/auditUser"));
 
 // Partial unique index for eventId and token
 RegistrationSchema.addPartialUnique({ eventId: 1, token: 1 });

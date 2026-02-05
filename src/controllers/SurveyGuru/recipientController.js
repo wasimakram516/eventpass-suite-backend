@@ -75,6 +75,8 @@ exports.listRecipients = asyncHandler(async (req, res) => {
 
   // Fetch paginated recipients
   const recipients = await SurveyRecipient.find(match)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .sort({ createdAt: -1 })
     .skip((_page - 1) * _limit)
     .limit(_limit)
@@ -214,9 +216,8 @@ exports.exportRecipients = asyncHandler(async (req, res) => {
 
     const surveyLink = isAnon
       ? `${base}${publicPath}/${targetLang}/${form.slug}`
-      : `${base}${publicPath}/${targetLang}/${
-          form.slug
-        }?token=${encodeURIComponent(r.token)}`;
+      : `${base}${publicPath}/${targetLang}/${form.slug
+      }?token=${encodeURIComponent(r.token)}`;
 
     return {
       "Full Name": isAnon ? "Anonymous" : r.fullName || "",
@@ -240,9 +241,9 @@ exports.exportRecipients = asyncHandler(async (req, res) => {
     ["Anonymous Form", form.isAnonymous ? "Yes" : "No"],
     form.isAnonymous
       ? [
-          "Note",
-          "This is an anonymous survey. Personal details are not collected.",
-        ]
+        "Note",
+        "This is an anonymous survey. Personal details are not collected.",
+      ]
       : [],
     ["Exported At", formatLocalLong(new Date())],
     [], // blank row before table

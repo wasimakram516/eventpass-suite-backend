@@ -16,7 +16,8 @@ const teamSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-teamSchema.index({ gameId: 1, name: 1 }, { unique: true }); 
+teamSchema.index({ gameId: 1, name: 1 }, { unique: true });
 teamSchema.plugin(require("../db/plugins/softDelete"));
+teamSchema.plugin(require("../db/plugins/auditUser"));
 
 module.exports = mongoose.models.Team || mongoose.model("Team", teamSchema);

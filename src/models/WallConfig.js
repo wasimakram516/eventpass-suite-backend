@@ -26,6 +26,7 @@ WallConfigSchema.index({ business: 1, isDeleted: 1 });
 
 // Soft delete support
 WallConfigSchema.plugin(require("../db/plugins/softDelete"));
+WallConfigSchema.plugin(require("../db/plugins/auditUser"));
 // Partial unique index for slug
 WallConfigSchema.addPartialUnique({ slug: 1 });
 
