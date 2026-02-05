@@ -1413,11 +1413,14 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message),
   );
 
+  const populated = await Registration.findById(registration._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   return response(
     res,
     200,
     "Registration approval status updated",
-    registration,
+    populated || registration,
   );
 });
 

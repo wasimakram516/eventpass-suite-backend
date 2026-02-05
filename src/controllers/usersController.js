@@ -28,7 +28,9 @@ const { recomputeAndEmit } = require("../socket/dashboardSocket");
 exports.getAllUsers = asyncHandler(async (req, res) => {
   const users = await User.find()
     .notDeleted()
-    .populate("business", "name slug logoUrl contact address");
+    .populate("business", "name slug logoUrl contact address")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   const admins = [];
   const businessMap = new Map();
@@ -100,6 +102,8 @@ exports.getAllStaffUsersByBusiness = asyncHandler(async (req, res) => {
     _id: { $ne: currentUserId }, // Exclude current user
   })
     .populate("business", "name slug logoUrl contact address")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .sort({ createdAt: -1 });
 
   const safeUsers = users.map((user) => sanitizeUser(user));
@@ -120,10 +124,10 @@ exports.getUnassignedUsers = asyncHandler(async (req, res) => {
 
 // Get user by ID
 exports.getUserById = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id).populate(
-    "business",
-    "name slug logoUrl contact address",
-  );
+  const user = await User.findById(req.params.id)
+    .populate("business", "name slug logoUrl contact address")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   if (!user) return response(res, 404, "User not found");
   return response(res, 200, "User found", sanitizeUser(user));
 });
@@ -154,17 +158,17 @@ exports.createBusinessUser = asyncHandler(async (req, res) => {
     return response(res, 409, "User with this email already exists");
   }
 
-  // -------------------------
-  // Create user first
-  // -------------------------
-  const user = await User.create({
+  const userPayload = {
     name,
     email: email.toLowerCase(),
     password,
     role: "business",
     modulePermissions,
-    business: null, // assigned below
-  });
+    business: null,
+  };
+  const user = req.user
+    ? await User.createWithAuditUser(userPayload, req.user)
+    : await User.create(userPayload);
 
   let attachedBusiness = null;
 
@@ -201,7 +205,7 @@ exports.createBusinessUser = asyncHandler(async (req, res) => {
       return response(res, 400, "Business name and slug are required");
     }
 
-    attachedBusiness = await Business.create({
+    const bizPayload = {
       name: business.name,
       slug: business.slug,
       contact: {
@@ -210,7 +214,10 @@ exports.createBusinessUser = asyncHandler(async (req, res) => {
       },
       address: business.address || "",
       owners: [user._id],
-    });
+    };
+    attachedBusiness = req.user
+      ? await Business.createWithAuditUser(bizPayload, req.user)
+      : await Business.create(bizPayload);
 
     user.business = attachedBusiness._id;
     await user.save();
@@ -221,8 +228,12 @@ exports.createBusinessUser = asyncHandler(async (req, res) => {
   // -------------------------
   recomputeAndEmit(attachedBusiness._id).catch(() => { });
 
+  const populatedUser = await User.findById(user._id)
+    .populate("business", "name slug logoUrl contact address")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   return response(res, 201, "Business user created successfully", {
-    user: sanitizeUser(user),
+    user: sanitizeUser(populatedUser || user),
     business: attachedBusiness,
   });
 });
@@ -242,17 +253,23 @@ exports.createAdminUser = asyncHandler(async (req, res) => {
     return response(res, 409, "User with this email already exists");
   }
 
-  const user = await User.create({
+  const adminPayload = {
     name,
     email: email.toLowerCase(),
     password,
     role: "admin",
     modulePermissions: Array.isArray(modulePermissions) ? modulePermissions : [],
     business: null,
-  });
+  };
+  const user = req.user
+    ? await User.createWithAuditUser(adminPayload, req.user)
+    : await User.create(adminPayload);
 
+  const populated = await User.findById(user._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   return response(res, 201, "Admin user created successfully", {
-    user: sanitizeUser(user),
+    user: sanitizeUser(populated || user),
   });
 });
 
@@ -294,12 +311,18 @@ exports.updateUser = asyncHandler(async (req, res) => {
     user.modulePermissions = modulePermissions;
   }
 
+  if (req.user) user.setAuditUser(req.user);
   await user.save();
-  // Fire background recompute
+
   recomputeAndEmit(user.business || null).catch((err) =>
     console.error("Background recompute failed:", err.message),
   );
-  return response(res, 200, "User updated", sanitizeUser(user));
+
+  const populated = await User.findById(user._id)
+    .populate("business", "name slug logoUrl contact address")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 200, "User updated", sanitizeUser(populated || user));
 });
 
 /* =========================================================

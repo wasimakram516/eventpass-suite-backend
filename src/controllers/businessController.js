@@ -51,7 +51,7 @@ exports.createBusiness = asyncHandler(async (req, res) => {
     logoUrl = fileUrl;
   }
 
-  const business = await Business.create({
+  const bizPayload = {
     name,
     slug: finalSlug,
     logoUrl,
@@ -61,16 +61,23 @@ exports.createBusiness = asyncHandler(async (req, res) => {
     },
     address,
     owners: owners.map((o) => o._id),
-  });
+  };
+  const business = req.user
+    ? await Business.createWithAuditUser(bizPayload, req.user)
+    : await Business.create(bizPayload);
 
   await User.updateMany(
     { _id: { $in: ownerIds } },
     { $set: { business: business._id } }
   );
 
-  recomputeAndEmit(business._id).catch(() => {});
+  recomputeAndEmit(business._id).catch(() => { });
 
-  return response(res, 201, "Business created successfully", business);
+  const populated = await Business.findById(business._id)
+    .populate("owners", "name email role")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 201, "Business created successfully", populated || business);
 });
 
 // Get All Businesses
@@ -78,6 +85,8 @@ exports.getAllBusinesses = asyncHandler(async (req, res) => {
   const businesses = await Business.find()
     .notDeleted()
     .populate("owners", "name email role")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .sort({ createdAt: -1 });
 
   // normalize legacy records
@@ -94,7 +103,9 @@ exports.getAllBusinesses = asyncHandler(async (req, res) => {
 exports.getBusinessById = asyncHandler(async (req, res) => {
   const business = await Business.findById(req.params.id)
     .notDeleted()
-    .populate("owners", "name email role");
+    .populate("owners", "name email role")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   if (!business) return response(res, 404, "Business not found");
 
@@ -109,7 +120,9 @@ exports.getBusinessById = asyncHandler(async (req, res) => {
 exports.getBusinessBySlug = asyncHandler(async (req, res) => {
   const business = await Business.findOne({ slug: req.params.slug })
     .notDeleted()
-    .populate("owners", "name email role");
+    .populate("owners", "name email role")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   if (!business) return response(res, 404, "Business not found");
 
@@ -152,14 +165,18 @@ exports.updateBusiness = asyncHandler(async (req, res) => {
     business.logoUrl = fileUrl;
   }
 
+  if (req.user) business.setAuditUser(req.user);
   await business.save();
 
-  // Fire background recompute
   recomputeAndEmit(req.params.id || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "Business updated successfully", business);
+  const populated = await Business.findById(business._id)
+    .populate("owners", "name email role")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 200, "Business updated successfully", populated || business);
 });
 
 /* =========================================================
