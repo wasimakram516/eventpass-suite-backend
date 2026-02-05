@@ -81,13 +81,16 @@ exports.addParticipant = asyncHandler(async (req, res) => {
     }
   }
 
-  const newParticipant = await SpinWheelParticipant.create({
-    name,
-    phone: phoneLocalNumber,
-    isoCode: phoneIsoCode,
-    company,
-    spinWheel: spinWheelId,
-  });
+  const newParticipant = await SpinWheelParticipant.createWithAuditUser(
+    {
+      name,
+      phone: phoneLocalNumber,
+      isoCode: phoneIsoCode,
+      company,
+      spinWheel: spinWheelId,
+    },
+    req.user
+  );
 
   // Fire background recompute
   recomputeAndEmit(wheel.business || null).catch((err) =>
@@ -123,7 +126,7 @@ exports.addParticipantsOnSpot = asyncHandler(async (req, res) => {
     spinWheel: wheel._id,
   }));
 
-  await SpinWheelParticipant.insertMany(newParticipants);
+  await SpinWheelParticipant.createWithAuditUser(newParticipants, req.user);
 
   // Fire background recompute
   recomputeAndEmit(wheel.business || null).catch((err) =>
@@ -210,7 +213,10 @@ function buildParticipantsQuery(wheelId, options = {}) {
     query.visible = true;
   }
 
-  let baseQuery = SpinWheelParticipant.find(query).notDeleted();
+  let baseQuery = SpinWheelParticipant.find(query)
+    .notDeleted()
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   if (sortByName) {
     baseQuery = baseQuery.sort({ name: 1 });
   }
@@ -285,7 +291,7 @@ exports.getParticipantsForCMS = asyncHandler(async (req, res) => {
     visibleOnly: false,
     page,
     limit,
-    selectFields: "_id name phone isoCode company visible",
+    selectFields: "_id name phone isoCode company visible createdAt updatedAt createdBy updatedBy",
   });
 
   const participantsWithWinnerStatus = await enrichWithWinnerStatus(participants);
@@ -303,9 +309,10 @@ exports.getParticipantsForCMS = asyncHandler(async (req, res) => {
 
 // Get Single Participant by ID
 exports.getParticipantById = asyncHandler(async (req, res) => {
-  const participant = await SpinWheelParticipant.findById(
-    req.params.id
-  ).notDeleted();
+  const participant = await SpinWheelParticipant.findById(req.params.id)
+    .notDeleted()
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   if (!participant) return response(res, 404, "Participant not found");
 
   return response(res, 200, "Participant retrieved successfully", participant);
@@ -366,6 +373,7 @@ exports.updateParticipant = asyncHandler(async (req, res) => {
     participant.isoCode = isoCode;
   }
 
+  participant.setAuditUser(req.user);
   await participant.save();
 
   // Fire background recompute
@@ -853,14 +861,17 @@ exports.saveWinner = asyncHandler(async (req, res) => {
     return response(res, 400, "Participant does not belong to this SpinWheel");
   }
 
-  const winner = await SpinWheelWinner.create({
-    spinWheel: spinWheelId,
-    participant: participantId,
-    name: participant.name,
-    phone: participant.phone,
-    isoCode: participant.isoCode,
-    company: participant.company,
-  });
+  const winner = await SpinWheelWinner.createWithAuditUser(
+    {
+      spinWheel: spinWheelId,
+      participant: participantId,
+      name: participant.name,
+      phone: participant.phone,
+      isoCode: participant.isoCode,
+      company: participant.company,
+    },
+    req.user
+  );
 
   return response(res, 201, "Winner saved successfully", winner);
 });
@@ -879,6 +890,7 @@ exports.removeWinner = asyncHandler(async (req, res) => {
   }
 
   participant.visible = false;
+  participant.setAuditUser(req.user);
   await participant.save();
 
   return response(res, 200, "Winner removed from wheel successfully", participant);

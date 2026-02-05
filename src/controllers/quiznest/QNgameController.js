@@ -53,26 +53,32 @@ exports.createGame = asyncHandler(async (req, res) => {
 
   const businessId = business._id;
 
-  const game = await Game.create({
-    businessId,
-    title,
-    slug: sanitizedSlug,
-    coverImage,
-    nameImage,
-    backgroundImage,
-    memoryImages: memoryImages || [],
-    choicesCount,
-    countdownTimer: countdownTimer || 3,
-    gameSessionTimer,
-    mode: "solo",
-    type: "quiz",
-  });
+  const game = await Game.createWithAuditUser(
+    {
+      businessId,
+      title,
+      slug: sanitizedSlug,
+      coverImage,
+      nameImage,
+      backgroundImage,
+      memoryImages: memoryImages || [],
+      choicesCount,
+      countdownTimer: countdownTimer || 3,
+      gameSessionTimer,
+      mode: "solo",
+      type: "quiz",
+    },
+    req.user
+  );
 
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 201, "Game created", game);
+  const populated = await Game.findById(game._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 201, "Game created", populated || game);
 });
 
 // Update Game
@@ -144,13 +150,17 @@ exports.updateGame = asyncHandler(async (req, res) => {
       : [];
   }
 
+  game.setAuditUser(req.user);
   await game.save();
 
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "Solo Game updated", game);
+  const populated = await Game.findById(game._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 200, "Solo Game updated", populated || game);
 });
 
 // Get Games by Business Slug
@@ -167,6 +177,8 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
   })
     .notDeleted()
     .populate("businessId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .sort({ createdAt: -1 });
 
   return response(
@@ -184,7 +196,9 @@ exports.getAllGames = asyncHandler(async (req, res) => {
     mode: "solo",
   })
     .notDeleted()
-    .populate("businessId", "name slug");
+    .populate("businessId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   return response(res, 200, "All solo quiz games fetched", games);
 });
@@ -197,7 +211,9 @@ exports.getGameById = asyncHandler(async (req, res) => {
     mode: "solo",
   })
     .notDeleted()
-    .populate("businessId", "name slug");
+    .populate("businessId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   if (!game) return response(res, 404, "Game not found");
 
@@ -212,7 +228,9 @@ exports.getGameBySlug = asyncHandler(async (req, res) => {
     mode: "solo",
   })
     .notDeleted()
-    .populate("businessId", "name slug");
+    .populate("businessId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   if (!game) return response(res, 404, "Game not found");
 

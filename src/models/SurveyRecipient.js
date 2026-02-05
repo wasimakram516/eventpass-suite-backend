@@ -29,6 +29,7 @@ SurveyRecipientSchema.index(
   { unique: true, collation: { locale: "en", strength: 2 } }
 );
 SurveyRecipientSchema.index({ businessId: 1, status: 1, createdAt: 1 });
+SurveyRecipientSchema.plugin(require("../db/plugins/auditUser"));
 
 module.exports =
   mongoose.models.SurveyRecipient ||

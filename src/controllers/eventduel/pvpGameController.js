@@ -60,34 +60,39 @@ exports.createGame = asyncHandler(async (req, res) => {
   const parsedMaxTeams = parseInt(maxTeams, 10) || 2;
   const parsedPlayersPerTeam = parseInt(playersPerTeam, 10) || 2;
 
-  const game = await Game.create({
-    businessId,
-    title,
-    slug: sanitizedSlug,
-    coverImage,
-    nameImage,
-    backgroundImage,
-    choicesCount: Number(choicesCount),
-    countdownTimer: Number(countdownTimer) || 3,
-    gameSessionTimer: Number(gameSessionTimer),
-    mode: "pvp",
-    type: "quiz",
-    isTeamMode: teamMode,
-    maxTeams: parsedMaxTeams,
-    playersPerTeam: parsedPlayersPerTeam,
-    teams: [],
-  });
+  const game = await Game.createWithAuditUser(
+    {
+      businessId,
+      title,
+      slug: sanitizedSlug,
+      coverImage,
+      nameImage,
+      backgroundImage,
+      choicesCount: Number(choicesCount),
+      countdownTimer: Number(countdownTimer) || 3,
+      gameSessionTimer: Number(gameSessionTimer),
+      mode: "pvp",
+      type: "quiz",
+      isTeamMode: teamMode,
+      maxTeams: parsedMaxTeams,
+      playersPerTeam: parsedPlayersPerTeam,
+      teams: [],
+    },
+    req.user
+  );
 
   // Create teams if team mode enabled
   if (teamMode && Array.isArray(teamNames) && teamNames.length > 0) {
     const validNames = teamNames.filter((name) => name && name.trim());
-    const newTeams = await Team.insertMany(
+    const newTeams = await Team.createWithAuditUser(
       validNames.map((name) => ({
         name: name.trim(),
         gameId: game._id,
-      }))
+      })),
+      req.user
     );
-    game.teams = newTeams.map((t) => t._id);
+    game.teams = Array.isArray(newTeams) ? newTeams.map((t) => t._id) : [newTeams._id];
+    game.setAuditUser(req.user);
     await game.save();
   }
 
@@ -101,7 +106,9 @@ exports.createGame = asyncHandler(async (req, res) => {
     type: "quiz",
   })
     .populate("teams", "name")
-    .populate("businessId", "name");
+    .populate("businessId", "name")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   return response(
     res,
@@ -165,6 +172,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
     for (let i = 0; i < Math.min(existingTeams.length, teamNames.length); i++) {
       if (existingTeams[i].name !== teamNames[i]) {
         existingTeams[i].name = teamNames[i].trim();
+        existingTeams[i].setAuditUser(req.user);
         await existingTeams[i].save();
       }
     }
@@ -172,13 +180,15 @@ exports.updateGame = asyncHandler(async (req, res) => {
     // Add new teams if count increased
     if (teamNames.length > existingTeams.length) {
       const toAdd = teamNames.slice(existingTeams.length);
-      const newTeams = await Team.insertMany(
+      const newTeams = await Team.createWithAuditUser(
         toAdd.map((name) => ({
           name: name.trim(),
           gameId: game._id,
-        }))
+        })),
+        req.user
       );
-      game.teams.push(...newTeams.map((t) => t._id));
+      const ids = Array.isArray(newTeams) ? newTeams.map((t) => t._id) : [newTeams._id];
+      game.teams.push(...ids);
     }
 
     // Remove extra teams if count decreased
@@ -216,6 +226,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
     game.backgroundImage = backgroundImage;
   }
 
+  game.setAuditUser(req.user);
   await game.save();
 
   const populatedGame = await Game.findOne({
@@ -224,7 +235,9 @@ exports.updateGame = asyncHandler(async (req, res) => {
     type: "quiz",
   })
     .populate("teams", "name")
-    .populate("businessId", "name");
+    .populate("businessId", "name")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
@@ -250,8 +263,10 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
     mode: "pvp",
     type: "quiz",
   })
+    .notDeleted()
     .populate("teams", "name")
-    .notDeleted();
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   return response(res, 200, `PvP Games fetched for ${business.name}`, games);
 });
 
@@ -264,6 +279,8 @@ exports.getGameById = asyncHandler(async (req, res) => {
   })
     .populate("teams", "name")
     .populate("businessId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .notDeleted();
 
   if (!game) return response(res, 404, "Game not found");
@@ -279,6 +296,8 @@ exports.getGameBySlug = asyncHandler(async (req, res) => {
   })
     .populate("teams", "name")
     .populate("businessId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .notDeleted();
 
   if (!game) return response(res, 404, "Game not found");

@@ -73,5 +73,6 @@ const GlobalConfigSchema = new mongoose.Schema({
 
 // Soft delete support
 GlobalConfigSchema.plugin(require("../db/plugins/softDelete"));
+GlobalConfigSchema.plugin(require("../db/plugins/auditUser"));
 
 module.exports = mongoose.models.GlobalConfig || mongoose.model('GlobalConfig', GlobalConfigSchema);

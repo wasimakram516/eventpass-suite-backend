@@ -23,6 +23,7 @@ BusinessSchema.index({ owners: 1, isDeleted: 1 });
 
 // Soft delete plugin
 BusinessSchema.plugin(require("../db/plugins/softDelete"));
+BusinessSchema.plugin(require("../db/plugins/auditUser"));
 
 // Slug should be unique only among active businesses
 BusinessSchema.addPartialUnique({ slug: 1 });

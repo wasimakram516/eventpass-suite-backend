@@ -9,7 +9,7 @@ const {
   DEFAULT_ISO_CODE,
 } = require("../../utils/countryCodes");
 
-module.exports = async function uploadProcessor(event, rows) {
+module.exports = async function uploadProcessor(event, rows, user) {
   const eventId = event._id.toString();
   const total = rows.length;
   let processed = 0;
@@ -162,7 +162,11 @@ module.exports = async function uploadProcessor(event, rows) {
             registrationData.customFields = {};
           }
 
-          await Registration.create(registrationData);
+          if (user) {
+            await Registration.createWithAuditUser(registrationData, user);
+          } else {
+            await Registration.create(registrationData);
+          }
           imported++;
         } catch (err) {
           skipped++;

@@ -22,11 +22,11 @@ const {
   createWalkIn,
 } = require("../../controllers/EventReg/registrationController");
 
-const { protect, checkPermission } = require("../../middlewares/auth");
+const { protect, optionalProtect, checkPermission } = require("../../middlewares/auth");
 const eventRegAccess = [protect, checkPermission.eventreg];
 
-// Create a new public registration (no auth required)
-router.post("/", createRegistration);
+// Create registration: public (no auth) or CMS (token optional — sets createdBy when present)
+router.post("/", optionalProtect, createRegistration);
 
 router.put("/:id", eventRegAccess, updateRegistration);
 

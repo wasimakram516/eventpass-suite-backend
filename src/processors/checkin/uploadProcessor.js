@@ -20,7 +20,7 @@ function formatRowNumbers(arr) {
   return `${arr.slice(0, -1).join(", ")}, and ${arr[arr.length - 1]}`;
 }
 
-module.exports = async function uploadProcessor(event, rows) {
+module.exports = async function uploadProcessor(event, rows, user) {
   const eventId = event._id.toString();
   const total = rows.length;
   let processed = 0;
@@ -220,7 +220,11 @@ module.exports = async function uploadProcessor(event, rows) {
             }
           }
 
-          await Registration.create(registrationData);
+          if (user) {
+            await Registration.createWithAuditUser(registrationData, user);
+          } else {
+            await Registration.create(registrationData);
+          }
           imported++;
         } catch (err) {
           skipped++;

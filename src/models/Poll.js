@@ -18,5 +18,6 @@ PollSchema.index({ createdAt: 1, isDeleted: 1 });
 
 // Soft delete support
 PollSchema.plugin(require('../db/plugins/softDelete'));
+PollSchema.plugin(require('../db/plugins/auditUser'));
 
 module.exports = mongoose.models.Poll || mongoose.model('Poll', PollSchema);

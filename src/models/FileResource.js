@@ -3,8 +3,8 @@ const mongoose = require("mongoose");
 const fileResourceSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
-    slug: { type: String, required: true, unique: true }, 
-    fileKey: { type: String, required: true }, 
+    slug: { type: String, required: true, unique: true },
+    fileKey: { type: String, required: true },
     fileUrl: { type: String, required: true },
     contentType: { type: String }, // e.g. application/pdf
     businessId: {
@@ -15,6 +15,8 @@ const fileResourceSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+fileResourceSchema.plugin(require("../db/plugins/auditUser"));
 
 module.exports =
   mongoose.models.FileResource ||

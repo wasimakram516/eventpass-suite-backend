@@ -28,15 +28,18 @@ exports.createSpinWheel = asyncHandler(async (req, res) => {
 
   const finalSlug = await generateUniqueSlug(SpinWheel, "slug", slug);
 
-  const spinWheel = await SpinWheel.create({
-    business,
-    title,
-    slug: finalSlug,
-    type,
-    logoUrl: logoUrl || null,
-    backgroundUrl: backgroundUrl || null,
-    eventSource: type === "synced" ? eventSource : undefined,
-  });
+  const spinWheel = await SpinWheel.createWithAuditUser(
+    {
+      business,
+      title,
+      slug: finalSlug,
+      type,
+      logoUrl: logoUrl || null,
+      backgroundUrl: backgroundUrl || null,
+      eventSource: type === "synced" ? eventSource : undefined,
+    },
+    req.user
+  );
 
   // Fire background recompute
   recomputeAndEmit(business || null).catch((err) =>
@@ -51,6 +54,8 @@ exports.getAllSpinWheels = asyncHandler(async (req, res) => {
   const wheels = await SpinWheel.find()
     .notDeleted()
     .populate("business", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .sort({ createdAt: -1 })
     .lean();
 
@@ -88,7 +93,9 @@ exports.getAllSpinWheels = asyncHandler(async (req, res) => {
 exports.getSpinWheelById = asyncHandler(async (req, res) => {
   const wheel = await SpinWheel.findById(req.params.id)
     .notDeleted()
-    .populate("business", "name slug");
+    .populate("business", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   if (!wheel) return response(res, 404, "SpinWheel not found");
   return response(res, 200, "SpinWheel found", wheel);
 });
@@ -97,7 +104,9 @@ exports.getSpinWheelById = asyncHandler(async (req, res) => {
 exports.getSpinWheelBySlug = asyncHandler(async (req, res) => {
   const wheel = await SpinWheel.findOne({ slug: req.params.slug })
     .notDeleted()
-    .populate("business", "name slug");
+    .populate("business", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   if (!wheel) return response(res, 404, "SpinWheel not found");
   return response(res, 200, "SpinWheel found", wheel);
 });
@@ -150,6 +159,7 @@ exports.updateSpinWheel = asyncHandler(async (req, res) => {
     wheel.backgroundUrl = backgroundUrl || null;
   }
 
+  wheel.setAuditUser(req.user);
   await wheel.save();
   // Fire background recompute
   recomputeAndEmit(wheel.business || null).catch((err) =>

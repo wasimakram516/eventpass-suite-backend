@@ -27,7 +27,13 @@ exports.getPolls = asyncHandler(async (req, res) => {
 
   const polls = await Poll.find(filter)
     .notDeleted()
+<<<<<<< HEAD
     .populate("business", "name slug");
+=======
+    .populate("eventId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+>>>>>>> 22eb57a (Feature/Added audit trails(#81))
   return response(res, 200, "Polls fetched", polls);
 });
 
@@ -79,6 +85,7 @@ exports.createPoll = asyncHandler(async (req, res) => {
     };
   });
 
+<<<<<<< HEAD
   const poll = await Poll.create({
     question,
     options: enrichedOptions,
@@ -86,13 +93,28 @@ exports.createPoll = asyncHandler(async (req, res) => {
     status: status || "active",
     type: type || "options",
   });
+=======
+  const poll = await Poll.createWithAuditUser(
+    {
+      question,
+      options: enrichedOptions,
+      business: event.businessId,
+      eventId: event._id,
+      type: type || "options",
+    },
+    req.user
+  );
+>>>>>>> 22eb57a (Feature/Added audit trails(#81))
 
   // Fire background recompute
   recomputeAndEmit(business._id || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 201, "Poll created", poll);
+  const populated = await Poll.findById(poll._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 201, "Poll created", populated || poll);
 });
 
 // PATCH update poll
@@ -163,6 +185,7 @@ exports.updatePoll = asyncHandler(async (req, res) => {
     );
   }
 
+  poll.setAuditUser(req.user);
   await poll.save();
 
   // Fire background recompute
@@ -170,7 +193,10 @@ exports.updatePoll = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, "Poll updated", poll);
+  const populated = await Poll.findById(poll._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 200, "Poll updated", populated || poll);
 });
 
 // Soft delete poll
@@ -291,7 +317,7 @@ exports.clonePoll = asyncHandler(async (req, res) => {
     status: existingPoll.status,
     type: existingPoll.type,
   });
-
+  clonedPoll.setAuditUser(req.user);
   await clonedPoll.save();
 
   // Fire background recompute
@@ -299,7 +325,10 @@ exports.clonePoll = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 201, "Poll cloned successfully", clonedPoll);
+  const populated = await Poll.findById(clonedPoll._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 201, "Poll cloned successfully", populated || clonedPoll);
 });
 
 // POST vote

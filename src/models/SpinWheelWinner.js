@@ -17,5 +17,7 @@ const winnerSchema = new mongoose.Schema({
     company: { type: String },
 }, { timestamps: true });
 
+winnerSchema.plugin(require("../db/plugins/auditUser"));
+
 module.exports = mongoose.models.SpinWheelWinner || mongoose.model("SpinWheelWinner", winnerSchema);
 

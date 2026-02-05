@@ -104,6 +104,7 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
               }
             }
             game.memoryImages = [];
+            if (game.setAuditUser && req.user) game.setAuditUser(req.user);
             await game.save();
             return response(res, 200, "All memory images deleted successfully", game);
           }
@@ -124,6 +125,7 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
                 }
               }
               game.memoryImages.splice(imageIndex, 1);
+              if (game.setAuditUser && req.user) game.setAuditUser(req.user);
               await game.save();
               return response(res, 200, "Memory image deleted successfully", game);
             }
@@ -147,6 +149,7 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
           }
         }
 
+        if (game.setAuditUser && req.user) game.setAuditUser(req.user);
         await game.save();
         return response(res, 200, "Media deleted successfully", question);
       }
@@ -167,6 +170,7 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
         const option = form.questions[questionIndex].options[optionIndex];
         if (option) {
           option.imageUrl = null;
+          if (form.setAuditUser && req.user) form.setAuditUser(req.user);
           await form.save();
           return response(res, 200, "Media deleted successfully", form);
         }
@@ -187,6 +191,7 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
 
       if (poll.options && poll.options[optionIndex]) {
         poll.options[optionIndex].imageUrl = null;
+        if (poll.setAuditUser && req.user) poll.setAuditUser(req.user);
         await poll.save();
         return response(res, 200, "Media deleted successfully", poll);
       }

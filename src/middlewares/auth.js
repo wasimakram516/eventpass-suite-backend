@@ -28,6 +28,23 @@ const protect = (req, res, next) => {
 };
 
 /**
+ * Optional Auth: if a valid JWT is present, set req.user; otherwise continue without it.
+ * Use for routes that work for both anonymous and logged-in users (e.g. create registration).
+ */
+const optionalProtect = (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) return next();
+
+    const decoded = jwt.verify(token, env.jwt.secret);
+    req.user = decoded;
+    next();
+  } catch {
+    next();
+  }
+};
+
+/**
  * Admin-Only Middleware (allows both superadmin and admin)
  */
 const adminOnly = (req, res, next) => {
@@ -100,6 +117,7 @@ MODULES.forEach(({ key }) => {
 
 module.exports = {
   protect,
+  optionalProtect,
   adminOnly,
   superAdminOnly,
   checkPermission,

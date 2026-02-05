@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const { MODULES } = require("../constants/modules");
 const softDelete = require("../db/plugins/softDelete");
+const auditUser = require("../db/plugins/auditUser");
 
 const VALID_MODULE_KEYS = MODULES.map((m) => m.key);
 
@@ -16,7 +17,7 @@ const userSchema = new mongoose.Schema(
       enum: ["superadmin", "admin", "business", "staff"],
       default: "business",
     },
-    
+
     staffType: {
       type: String,
       enum: ["door", "desk"],
@@ -41,6 +42,7 @@ const userSchema = new mongoose.Schema(
 
 // Soft delete support
 userSchema.plugin(softDelete);
+userSchema.plugin(auditUser);
 
 // Partial unique index for email
 userSchema.addPartialUnique({ email: 1 });

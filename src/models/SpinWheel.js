@@ -49,6 +49,7 @@ const spinWheelSchema = new mongoose.Schema(
 
 // Soft delete support
 spinWheelSchema.plugin(require("../db/plugins/softDelete"));
+spinWheelSchema.plugin(require("../db/plugins/auditUser"));
 // Partial unique index for slug
 spinWheelSchema.addPartialUnique({ slug: 1 });
 module.exports =

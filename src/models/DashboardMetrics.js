@@ -162,6 +162,7 @@ const MetricsSchema = new mongoose.Schema(
 
 // Unique per business or superadmin
 MetricsSchema.index({ scope: 1, businessId: 1 }, { unique: true });
+MetricsSchema.plugin(require("../db/plugins/auditUser"));
 
 module.exports =
   mongoose.models.Metrics || mongoose.model("Metrics", MetricsSchema);

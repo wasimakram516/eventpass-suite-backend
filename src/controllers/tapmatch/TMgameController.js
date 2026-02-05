@@ -1,4 +1,5 @@
 const Game = require("../../models/Game");
+const User = require("../../models/User");
 const Business = require("../../models/Business");
 const Player = require("../../models/Player");
 const GameSession = require("../../models/GameSession");
@@ -71,25 +72,36 @@ exports.createGame = asyncHandler(async (req, res) => {
     })
     : [];
 
-  const game = await Game.create({
-    businessId,
-    title,
-    slug: sanitizedSlug,
-    type: "memory",
-    coverImage,
-    nameImage,
-    backgroundImage,
-    memoryImages: processedMemoryImages,
-    countdownTimer: countdownTimer || 3,
-    gameSessionTimer,
-    mode: "solo",
-  });
+  const game = await Game.createWithAuditUser(
+    {
+      businessId,
+      title,
+      slug: sanitizedSlug,
+      type: "memory",
+      coverImage,
+      nameImage,
+      backgroundImage,
+      memoryImages: processedMemoryImages,
+      countdownTimer: countdownTimer || 3,
+      gameSessionTimer,
+      mode: "solo",
+    },
+    req.user
+  );
 
   recomputeAndEmit(businessId).catch((err) =>
     console.error("Dashboard recompute failed:", err.message)
   );
 
-  return response(res, 201, "TapMatch game created", game);
+  const out = game.toObject ? game.toObject() : { ...game };
+  if (req.user) {
+    const userId = req.user._id || req.user.id;
+    const u = userId ? await User.findById(userId).select("name").lean() : null;
+    const userName = u?.name ?? req.user.name ?? null;
+    out.createdBy = { _id: userId, name: userName };
+    out.updatedBy = { _id: userId, name: userName };
+  }
+  return response(res, 201, "TapMatch game created", out);
 });
 
 // ---------------------------------------------------------
@@ -188,12 +200,16 @@ exports.updateGame = asyncHandler(async (req, res) => {
     }
   }
 
+  game.setAuditUser(req.user);
   await game.save();
   recomputeAndEmit(game.businessId).catch((err) =>
     console.error("Dashboard recompute failed:", err.message)
   );
 
-  return response(res, 200, "TapMatch game updated", game);
+  const populated = await Game.findById(game._id)
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 200, "TapMatch game updated", populated || game);
 });
 
 // ---------------------------------------------------------
@@ -203,6 +219,8 @@ exports.getAllGames = asyncHandler(async (req, res) => {
   const games = await Game.find({ type: "memory", mode: "solo" })
     .notDeleted()
     .populate("businessId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .sort({ createdAt: -1 });
 
   return response(res, 200, "All TapMatch games fetched", games);
@@ -224,6 +242,8 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
   })
     .notDeleted()
     .populate("businessId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .sort({ createdAt: -1 });
 
   return response(res, 200, `TapMatch games for ${business.name}`, games);
@@ -237,7 +257,10 @@ exports.getGameById = asyncHandler(async (req, res) => {
     _id: req.params.id,
     type: "memory",
     mode: "solo",
-  }).notDeleted();
+  })
+    .notDeleted()
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   if (!game) return response(res, 404, "TapMatch game not found");
 
   return response(res, 200, "Game found", game);
@@ -251,7 +274,10 @@ exports.getGameBySlug = asyncHandler(async (req, res) => {
     slug: req.params.slug,
     type: "memory",
     mode: "solo",
-  }).notDeleted();
+  })
+    .notDeleted()
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   if (!game) return response(res, 404, "Game not found");
   return response(res, 200, "Game found", game);

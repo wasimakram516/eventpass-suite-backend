@@ -41,6 +41,7 @@ SurveyResponseSchema.index({ recipientId: 1, isDeleted: 1 });
 
 // Soft delete support
 SurveyResponseSchema.plugin(require("../db/plugins/softDelete"));
+SurveyResponseSchema.plugin(require("../db/plugins/auditUser"));
 
 module.exports =
   mongoose.models.SurveyResponse ||

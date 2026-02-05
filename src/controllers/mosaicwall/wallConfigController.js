@@ -20,12 +20,15 @@ exports.createWallConfig = asyncHandler(async (req, res) => {
 
   const finalSlug = await generateUniqueSlug(WallConfig, "slug", slug);
 
-  const wall = await WallConfig.create({
-    name,
-    slug: finalSlug,
-    mode,
-    business: business._id,
-  });
+  const wall = await WallConfig.createWithAuditUser(
+    {
+      name,
+      slug: finalSlug,
+      mode,
+      business: business._id,
+    },
+    req.user
+  );
 
   wall.business = businessId;
   await wall.populate("business");
@@ -63,6 +66,7 @@ exports.updateWallConfig = asyncHandler(async (req, res) => {
     wall.slug = await generateUniqueSlug(WallConfig, "slug", slug);
   }
 
+  wall.setAuditUser(req.user);
   await wall.save();
 
   // Fire background recompute
@@ -89,7 +93,9 @@ exports.getWallConfigs = asyncHandler(async (req, res) => {
   const configs = await WallConfig.find()
     .notDeleted()
     .sort({ createdAt: -1 })
-    .populate("business");
+    .populate("business")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
 
   const formatted = configs.map((wall) => ({
     _id: wall._id,
@@ -98,12 +104,15 @@ exports.getWallConfigs = asyncHandler(async (req, res) => {
     mode: wall.mode,
     business: wall.business
       ? {
-          _id: wall.business._id,
-          name: wall.business.name,
-          slug: wall.business.slug,
-        }
+        _id: wall.business._id,
+        name: wall.business.name,
+        slug: wall.business.slug,
+      }
       : null,
     createdAt: wall.createdAt,
+    updatedAt: wall.updatedAt,
+    createdBy: wall.createdBy,
+    updatedBy: wall.updatedBy,
   }));
 
   return response(res, 200, "Wall configurations fetched.", formatted);
@@ -113,7 +122,9 @@ exports.getWallConfigs = asyncHandler(async (req, res) => {
 exports.getWallConfigBySlug = asyncHandler(async (req, res) => {
   const wall = await WallConfig.findOne({ slug: req.params.slug })
     .notDeleted()
-    .populate("business");
+    .populate("business")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   if (!wall) return response(res, 404, "Wall configuration not found.");
 
   return response(res, 200, "Wall configuration retrieved.", {
@@ -123,12 +134,15 @@ exports.getWallConfigBySlug = asyncHandler(async (req, res) => {
     mode: wall.mode,
     business: wall.business
       ? {
-          _id: wall.business._id,
-          name: wall.business.name,
-          slug: wall.business.slug,
-        }
+        _id: wall.business._id,
+        name: wall.business.name,
+        slug: wall.business.slug,
+      }
       : null,
     createdAt: wall.createdAt,
+    updatedAt: wall.updatedAt,
+    createdBy: wall.createdBy,
+    updatedBy: wall.updatedBy,
   });
 });
 

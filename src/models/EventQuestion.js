@@ -21,6 +21,7 @@ const EventQuestionSchema = new mongoose.Schema(
 
 // Soft delete support
 EventQuestionSchema.plugin(require("../db/plugins/softDelete"));
+EventQuestionSchema.plugin(require("../db/plugins/auditUser"));
 
 module.exports = mongoose.models.EventQuestion ||
   mongoose.model("EventQuestion", EventQuestionSchema);

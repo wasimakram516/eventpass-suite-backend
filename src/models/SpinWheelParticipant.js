@@ -11,4 +11,5 @@ const participantSchema = new mongoose.Schema({
 
 // Soft delete support
 participantSchema.plugin(require("../db/plugins/softDelete"));
+participantSchema.plugin(require("../db/plugins/auditUser"));
 module.exports = mongoose.models.SpinWheelParticipant || mongoose.model("SpinWheelParticipant", participantSchema);
