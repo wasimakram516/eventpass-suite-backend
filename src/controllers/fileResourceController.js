@@ -22,16 +22,23 @@ exports.createFileResource = asyncHandler(async (req, res) => {
 
   const { key, fileUrl } = await uploadToS3(req.file, business.name);
 
-  const fileResource = await FileResource.create({
+  const payload = {
     title,
     slug: cleanSlug,
     fileKey: key,
     fileUrl,
     contentType: req.file.mimetype,
     businessId: business._id,
-  });
+  };
+  const fileResource = req.user
+    ? await FileResource.createWithAuditUser(payload, req.user)
+    : await FileResource.create(payload);
 
-  return response(res, 201, "File uploaded successfully", fileResource);
+  const populated = await FileResource.findById(fileResource._id)
+    .populate("businessId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 201, "File uploaded successfully", populated || fileResource);
 });
 
 // Update existing file resource (replace old file)
@@ -56,15 +63,19 @@ exports.updateFileResource = asyncHandler(async (req, res) => {
 
   if (title) fileResource.title = title;
 
-  // If slug provided → slugify & ensure uniqueness
   if (slug) {
     const cleanSlug = await generateUniqueSlug(FileResource, "slug", slugify(slug));
     fileResource.slug = cleanSlug;
   }
 
+  if (req.user) fileResource.setAuditUser(req.user);
   await fileResource.save();
 
-  return response(res, 200, "File updated successfully", fileResource);
+  const populated = await FileResource.findById(fileResource._id)
+    .populate("businessId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
+  return response(res, 200, "File updated successfully", populated || fileResource);
 });
 
 // Get all files (optionally by businessSlug)
@@ -80,6 +91,8 @@ exports.getAllFiles = asyncHandler(async (req, res) => {
 
   const files = await FileResource.find(filter)
     .populate("businessId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
     .sort({ createdAt: -1 });
 
   return response(res, 200, "Fetched all files", files);
@@ -87,10 +100,10 @@ exports.getAllFiles = asyncHandler(async (req, res) => {
 
 // Get file by ID
 exports.getFileById = asyncHandler(async (req, res) => {
-  const file = await FileResource.findById(req.params.id).populate(
-    "businessId",
-    "name slug"
-  );
+  const file = await FileResource.findById(req.params.id)
+    .populate("businessId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   if (!file) return response(res, 404, "File not found");
   return response(res, 200, "File found", file);
 });

@@ -95,19 +95,27 @@ exports.registerUser = asyncHandler(async (req, res) => {
     modulePermissions: normalizedPerms,
     staffType: role === "staff" ? staffType : null,
   });
-
+  if (req.user) user.setAuditUser(req.user);
   await user.save();
 
+  const populated = await User.findById(user._id)
+    .populate("business", "name slug logoUrl contact address")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
+    .lean();
+  const u = populated || user;
   const userSafe = {
-    id: user._id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    business: user.business,
-    staffType: user.staffType,
-    modulePermissions: user.modulePermissions,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
+    id: u._id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    business: u.business,
+    staffType: u.staffType,
+    modulePermissions: u.modulePermissions,
+    createdAt: u.createdAt,
+    updatedAt: u.updatedAt,
+    createdBy: u.createdBy,
+    updatedBy: u.updatedBy,
   };
 
   return response(res, 201, "User registered successfully", { user: userSafe });
@@ -145,7 +153,7 @@ exports.login = asyncHandler(async (req, res) => {
     sameSite: env.server.node_env === "production" ? "None" : "Lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
- 
+
   const userSafe = {
     id: user._id,
     name: user.name,
