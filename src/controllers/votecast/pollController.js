@@ -27,13 +27,7 @@ exports.getPolls = asyncHandler(async (req, res) => {
 
   const polls = await Poll.find(filter)
     .notDeleted()
-<<<<<<< HEAD
     .populate("business", "name slug");
-=======
-    .populate("eventId", "name slug")
-    .populate("createdBy", "name")
-    .populate("updatedBy", "name");
->>>>>>> 22eb57a (Feature/Added audit trails(#81))
   return response(res, 200, "Polls fetched", polls);
 });
 
@@ -85,7 +79,6 @@ exports.createPoll = asyncHandler(async (req, res) => {
     };
   });
 
-<<<<<<< HEAD
   const poll = await Poll.create({
     question,
     options: enrichedOptions,
@@ -93,18 +86,6 @@ exports.createPoll = asyncHandler(async (req, res) => {
     status: status || "active",
     type: type || "options",
   });
-=======
-  const poll = await Poll.createWithAuditUser(
-    {
-      question,
-      options: enrichedOptions,
-      business: event.businessId,
-      eventId: event._id,
-      type: type || "options",
-    },
-    req.user
-  );
->>>>>>> 22eb57a (Feature/Added audit trails(#81))
 
   // Fire background recompute
   recomputeAndEmit(business._id || null).catch((err) =>
