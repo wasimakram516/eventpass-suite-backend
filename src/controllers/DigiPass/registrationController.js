@@ -19,6 +19,15 @@ const {
     combinePhoneWithCountryCode,
     DEFAULT_ISO_CODE,
 } = require("../../utils/countryCodes");
+const {
+    buildDuplicateOr,
+    buildRestoreDuplicateFilter,
+    buildPhoneDuplicateCheck,
+} = require("../../utils/registrationDuplicateUtils");
+const {
+    buildDuplicateIndexForEvent,
+    hasDuplicate,
+} = require("../../utils/uploadRegistrationDuplicate");
 const uploadProcessor = require("../../processors/digipass/uploadProcessor");
 
 const ALLOWED_EVENT_TYPE = "digipass";
@@ -385,45 +394,15 @@ exports.createRegistration = asyncHandler(async (req, res) => {
         }
     }
 
-    const duplicateOr = [];
-
-    if (hasCustomFields) {
-        const emailField = formFields.find((f) => f.inputType === "email");
-
-        if (emailField && extractedEmail && String(extractedEmail).trim()) {
-            duplicateOr.push({ [`customFields.${emailField.inputName}`]: extractedEmail });
-        }
-        if (phoneField && phoneForDuplicateCheck && String(phoneForDuplicateCheck).trim()) {
-            duplicateOr.push({ [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck });
-            if (phoneLocalNumber && phoneIsoCode) {
-                duplicateOr.push({
-                    $and: [
-                        { [`customFields.${phoneField.inputName}`]: phoneLocalNumber },
-                        { isoCode: phoneIsoCode },
-                    ],
-                });
-            }
-        }
-    } else {
-        if (extractedEmail && String(extractedEmail).trim()) duplicateOr.push({ email: extractedEmail });
-        if (phoneForDuplicateCheck && String(phoneForDuplicateCheck).trim()) {
-            duplicateOr.push({ phone: phoneForDuplicateCheck });
-            if (phoneLocalNumber && phoneIsoCode) {
-                duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
-            }
-        }
-    }
-
-    if (duplicateOr.length > 0) {
-        const duplicateFilter = {
-            eventId: event._id,
-            $or: duplicateOr,
-        };
-
-        const dup = await Registration.findOne(duplicateFilter);
-        if (dup) {
-            return response(res, 409, "Already registered with this email or phone");
-        }
+    const dupIndex = await buildDuplicateIndexForEvent(event._id);
+    if (
+        hasDuplicate(dupIndex, {
+            email: extractedEmail,
+            phoneLocalNumber,
+            phoneForDuplicateCheck,
+        })
+    ) {
+        return response(res, 409, "Already registered with this email or phone");
     }
 
     const regPayload = {
@@ -496,7 +475,10 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     const hasCustomFields = formFields.length > 0;
 
     const originalEmail = pickEmail(registration.customFields) || registration.email;
-    const originalPhone = pickPhone(registration.customFields) || registration.phone;
+    const { phoneForDuplicateCheck: originalPhone } = buildPhoneDuplicateCheck(
+        pickPhone(registration.customFields) || registration.phone,
+        registration.isoCode || null
+    );
 
     if (hasCustomFields) {
         const phoneField = event.formFields.find((f) =>
@@ -639,52 +621,33 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
         }
     }
 
-    const emailChanged = extractedEmail && extractedEmail !== originalEmail;
-    const phoneChanged = phoneForDuplicateCheck && phoneForDuplicateCheck !== originalPhone;
+    const originalEmailKey = originalEmail
+        ? String(originalEmail).trim().toLowerCase()
+        : null;
+    const newEmailKey = extractedEmail
+        ? String(extractedEmail).trim().toLowerCase()
+        : null;
+    const emailChanged = newEmailKey && newEmailKey !== originalEmailKey;
+    const phoneChanged =
+        phoneForDuplicateCheck && phoneForDuplicateCheck !== originalPhone;
 
     if (emailChanged || phoneChanged) {
-        const duplicateOr = [];
-
-        if (hasCustomFields) {
-            const emailField = event.formFields.find((f) => f.inputType === "email");
-            const phoneField = event.formFields.find((f) =>
-                f.inputType === "phone" || f.inputName?.toLowerCase().includes("phone")
-            );
-
-            if (emailField && extractedEmail) {
-                duplicateOr.push({ [`customFields.${emailField.inputName}`]: extractedEmail });
-            }
-            if (phoneField && phoneForDuplicateCheck) {
-                duplicateOr.push({ [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck });
-                if (phoneLocalNumber && phoneIsoCode) {
-                    duplicateOr.push({
-                        $and: [
-                            { [`customFields.${phoneField.inputName}`]: phoneLocalNumber },
-                            { isoCode: phoneIsoCode },
-                        ],
-                    });
-                }
-            }
-            if (extractedEmail) duplicateOr.push({ email: extractedEmail });
-            if (phoneForDuplicateCheck) {
-                duplicateOr.push({ phone: phoneForDuplicateCheck });
-                if (phoneLocalNumber && phoneIsoCode) {
-                    duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
-                }
-            }
-        } else {
-            if (extractedEmail) duplicateOr.push({ email: extractedEmail });
-            if (phoneForDuplicateCheck) {
-                duplicateOr.push({ phone: phoneForDuplicateCheck });
-                if (phoneLocalNumber && phoneIsoCode) {
-                    duplicateOr.push({ $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }] });
-                }
-            }
-        }
+        const duplicateOr = buildDuplicateOr({
+            hasCustomFields,
+            formFields: event.formFields || [],
+            extractedEmail,
+            phoneForDuplicateCheck,
+            phoneLocalNumber,
+            phoneIsoCode,
+            includeEmail: emailChanged,
+            includePhone: phoneChanged,
+            alsoClassic: hasCustomFields,
+        });
 
         const duplicateFilter = {
             eventId: event._id,
             _id: { $ne: registration._id },
+            isDeleted: { $ne: true },
             ...(duplicateOr.length > 0 ? { $or: duplicateOr } : {}),
         };
 
@@ -764,6 +727,21 @@ exports.restoreRegistration = asyncHandler(async (req, res) => {
     }
 
     const event = reg.eventId;
+    const duplicateFilter = buildRestoreDuplicateFilter(event, reg);
+    if (duplicateFilter) {
+        const conflict = await Registration.findOne({
+            ...duplicateFilter,
+            isDeleted: { $ne: true },
+        });
+        if (conflict) {
+            return response(
+                res,
+                409,
+                "Cannot restore: email or phone already exists for this event"
+            );
+        }
+    }
+
     await reg.restore();
     await recountEventRegistrations(event._id);
 
@@ -785,16 +763,38 @@ exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
         return response(res, 404, "No DigiPass registrations found in trash to restore");
     }
 
+    let restoredCount = 0;
+    let skippedCount = 0;
+
     for (const reg of digiPassRegs) {
+        const event = reg.eventId;
+        const duplicateFilter = buildRestoreDuplicateFilter(event, reg);
+        if (duplicateFilter) {
+            const conflict = await Registration.findOne({
+                ...duplicateFilter,
+                isDeleted: { $ne: true },
+            });
+            if (conflict) {
+                skippedCount++;
+                continue;
+            }
+        }
+
         await reg.restore();
         await recountEventRegistrations(reg.eventId._id);
+        restoredCount++;
     }
 
     recomputeAndEmit(null).catch((err) =>
         console.error("Background recompute failed:", err.message)
     );
 
-    return response(res, 200, `Restored ${digiPassRegs.length} DigiPass registrations`);
+    return response(
+        res,
+        200,
+        `Restored ${restoredCount} DigiPass registrations${skippedCount ? `, skipped ${skippedCount} due to duplicate email/phone` : ""
+        }`
+    );
 });
 
 // Permanent delete single registration
@@ -1353,6 +1353,7 @@ async function validateAllRows(event, rows) {
         if (duplicateOr.length > 0) {
             const existing = await Registration.find({
                 eventId: event._id,
+                isDeleted: { $ne: true },
                 $or: duplicateOr,
             }).select("customFields");
 
@@ -1496,22 +1497,22 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
     const dummyRows = [
         {
             fullName: "User 1",
-            email: "user1@gmail.com",
-            phone: "1234567890",
+            email: "user1@example.com",
+            phone: "5010000001",
             phoneIsoCode: "pk",
             company: "Company 1",
         },
         {
             fullName: "User 2",
-            email: "user2@gmail.com",
-            phone: "12345678",
+            email: "user2@example.com",
+            phone: "80000001",
             phoneIsoCode: "om",
             company: "Company 2",
         },
         {
             fullName: "User 3",
-            email: "user3@gmail.com",
-            phone: "1234567890",
+            email: "user3@example.com",
+            phone: "5010000003",
             phoneIsoCode: "ca",
             company: "Company 3",
         },
