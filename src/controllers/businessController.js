@@ -25,13 +25,14 @@ const { recomputeAndEmit } = require("../socket/dashboardSocket");
 
 // Create Business
 exports.createBusiness = asyncHandler(async (req, res) => {
-  const { name, slug, phone, email, address, ownerIds } = req.body;
+  const { name, slug, phone, email, address } = req.body;
 
   if (!name) return response(res, 400, "Business name is required");
 
-  if (!Array.isArray(ownerIds) || ownerIds.length === 0) {
-    return response(res, 400, "At least one owner is required");
-  }
+  let { ownerIds } = req.body;
+
+  if (!ownerIds) ownerIds = [];
+  if (!Array.isArray(ownerIds)) ownerIds = [ownerIds];
 
   const owners = await User.find({ _id: { $in: ownerIds } }).notDeleted();
   if (owners.length !== ownerIds.length) {
