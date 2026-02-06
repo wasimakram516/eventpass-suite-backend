@@ -22,14 +22,14 @@ exports.exportResults = asyncHandler(async (req, res) => {
     mode: "solo",
   })
     .populate("businessId", "name")
-    .notDeleted();
+    ;
 
   if (!game) return response(res, 404, "Game not found or invalid type/mode");
 
   const sessions = await GameSession.find({
     gameId,
   })
-    .notDeleted()
+    
     .populate("players.playerId");
 
   const exportData = sessions.flatMap((session) =>
@@ -86,7 +86,7 @@ exports.joinGame = asyncHandler(async (req, res) => {
     _id: gameId,
     type: "quiz",
     mode: "solo",
-  }).notDeleted();
+  });
 
   if (!game) return response(res, 404, "Game not found or invalid type/mode");
 
@@ -124,7 +124,7 @@ exports.submitResult = asyncHandler(async (req, res) => {
   const { score, timeTaken, attemptedQuestions } = req.body;
 
   const session = await GameSession.findById(sessionId)
-    .notDeleted()
+    
     .populate("gameId");
 
   if (!session) return response(res, 404, "Game session not found");
@@ -166,12 +166,12 @@ exports.getPlayersByGame = asyncHandler(async (req, res) => {
     _id: gameId,
     type: "quiz",
     mode: "solo",
-  }).notDeleted();
+  });
 
   if (!game) return response(res, 404, "Game not found or invalid type/mode");
 
   const sessions = await GameSession.find({ gameId })
-    .notDeleted()
+    
     .populate("players.playerId");
 
   const allPlayers = sessions.flatMap((session) =>
@@ -196,7 +196,7 @@ exports.getLeaderboard = asyncHandler(async (req, res) => {
     _id: gameId,
     type: "quiz",
     mode: "solo",
-  }).notDeleted();
+  });
 
   if (!game) return response(res, 404, "Game not found or invalid type/mode");
 
@@ -204,7 +204,7 @@ exports.getLeaderboard = asyncHandler(async (req, res) => {
     gameId,
     status: "completed",
   })
-    .notDeleted()
+    
     .populate("players.playerId");
 
   const results = sessions.flatMap((session) =>

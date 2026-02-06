@@ -12,22 +12,25 @@ exports.getPolls = asyncHandler(async (req, res) => {
   const user = req.user;
 
   const filter = {};
-  if (status) filter.status = status;
-
-  if (businessSlug) {
-    const business = await Business.findOne({
-      slug: businessSlug,
-    }).notDeleted();
-    if (!business) return response(res, 404, "Business not found");
-    filter.business = business._id;
-  } else if (user.role === "business") {
-    const businesses = await Business.find({ owner: user.id }).notDeleted();
-    filter.business = { $in: businesses.map((b) => b._id) };
+  if (eventId) {
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return response(res, 400, "Invalid event ID");
+    }
+    const event = await Event.findById(eventId);
+    if (!event || event.eventType !== "votecast") {
+      return response(res, 404, "VoteCast event not found");
+    }
+    filter.eventId = event._id;
+    filter.business = event.businessId;
+  } else {
+    return response(res, 400, "eventId is required");
   }
 
   const polls = await Poll.find(filter)
-    .notDeleted()
-    .populate("business", "name slug");
+    
+    .populate("eventId", "name slug")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name");
   return response(res, 200, "Polls fetched", polls);
 });
 
@@ -38,6 +41,25 @@ exports.createPoll = asyncHandler(async (req, res) => {
 
   if (!question || !options) {
     return response(res, 400, "Question and options are required");
+  }
+
+  if (!eventId) {
+    return response(res, 400, "eventId is required");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    return response(res, 400, "Invalid event ID");
+  }
+
+  const event = await Event.findById(eventId);
+  if (!event || event.eventType !== "votecast") {
+    return response(res, 404, "VoteCast event not found");
+  }
+
+  const isAdmin = ["admin", "superadmin"].includes(user.role);
+  const isOwner = String(event.businessId) === String(user.business?._id || user.business);
+  if (!isAdmin && !isOwner) {
+    return response(res, 403, "Permission denied");
   }
 
   let parsedOptions;
@@ -106,6 +128,11 @@ exports.updatePoll = asyncHandler(async (req, res) => {
 
   const poll = await Poll.findById(id).populate("business");
   if (!poll) return response(res, 404, "Poll not found");
+
+  const pollEvent = await Event.findById(poll.eventId);
+  if (!pollEvent || pollEvent.eventType !== "votecast") {
+    return response(res, 404, "VoteCast event not found");
+  }
 
   const isAdmin = ["admin", "superadmin"].includes(user.role);
   const isOwner = String(poll.business.owner) === user.id;
@@ -187,6 +214,11 @@ exports.deletePoll = asyncHandler(async (req, res) => {
 
   const poll = await Poll.findById(id).populate("business");
   if (!poll) return response(res, 404, "Poll not found");
+
+  const pollEvent = await Event.findById(poll.eventId);
+  if (!pollEvent || pollEvent.eventType !== "votecast") {
+    return response(res, 404, "VoteCast event not found");
+  }
 
   const isAdmin = ["admin", "superadmin"].includes(user.role);
   const isOwner = String(poll.business.owner) === user.id;
@@ -317,7 +349,7 @@ exports.voteOnPoll = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { optionIndex } = req.body;
 
-  const poll = await Poll.findById(id).notDeleted();
+  const poll = await Poll.findById(id);
   if (!poll) return response(res, 404, "Poll not found");
   if (poll.status !== "active") return response(res, 403, "Poll is not active");
 
@@ -337,15 +369,25 @@ exports.voteOnPoll = asyncHandler(async (req, res) => {
 
 // POST reset votes
 exports.resetVotes = asyncHandler(async (req, res) => {
-  const { businessSlug, status } = req.body;
+  const { eventId } = req.body;
 
-  const business = await Business.findOne({ slug: businessSlug });
-  if (!business) return response(res, 404, "Business not found");
+  if (!eventId) {
+    return response(res, 400, "eventId is required");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    return response(res, 400, "Invalid event ID");
+  }
+
+  const event = await Event.findById(eventId);
+  if (!event || event.eventType !== "votecast") {
+    return response(res, 404, "VoteCast event not found");
+  }
 
   const filter = { business: business._id };
   if (status) filter.status = status;
 
-  const polls = await Poll.find(filter).notDeleted();
+  const polls = await Poll.find(filter);
   if (polls.length === 0) return response(res, 404, "No polls found");
 
   await Promise.all(
@@ -362,13 +404,12 @@ exports.resetVotes = asyncHandler(async (req, res) => {
 exports.getActivePollsByBusiness = asyncHandler(async (req, res) => {
   const { businessSlug } = req.params;
 
-  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
-  if (!business) return response(res, 404, "Business not found");
+  const event = await Event.findOne({ slug: eventSlug, eventType: "votecast" });
+  if (!event) return response(res, 404, "VoteCast event not found");
 
   const polls = await Poll.find({
-    business: business._id,
-    status: "active",
-  }).notDeleted();
+    eventId: event._id,
+  });
 
   return response(res, 200, "Active polls fetched", polls);
 });
@@ -379,13 +420,15 @@ exports.getPollResults = asyncHandler(async (req, res) => {
 
   if (!businessSlug) return response(res, 400, "businessSlug is required");
 
-  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
-  if (!business) return response(res, 404, "Business not found");
+  const event = await Event.findById(eventId);
+  if (!event || event.eventType !== "votecast") {
+    return response(res, 404, "VoteCast event not found");
+  }
 
   const filter = { business: business._id };
   if (status) filter.status = status;
 
-  const polls = await Poll.find(filter).notDeleted();
+  const polls = await Poll.find(filter);
 
   const resultData = polls.map((poll) => {
     const totalVotes =
@@ -414,15 +457,25 @@ exports.getPollResults = asyncHandler(async (req, res) => {
 
 // POST export polls
 exports.exportPollsToExcel = asyncHandler(async (req, res) => {
-  const { businessSlug, status } = req.body;
+  const { eventId } = req.body;
 
-  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
-  if (!business) return response(res, 404, "Business not found");
+  if (!eventId) {
+    return response(res, 400, "eventId is required");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    return response(res, 400, "Invalid event ID");
+  }
+
+  const event = await Event.findById(eventId);
+  if (!event || event.eventType !== "votecast") {
+    return response(res, 404, "VoteCast event not found");
+  }
 
   const filter = { business: business._id };
   if (status) filter.status = status;
 
-  const polls = await Poll.find(filter).notDeleted();
+  const polls = await Poll.find(filter);
   if (polls.length === 0) return response(res, 404, "No polls found");
 
   const maxOptions = Math.max(...polls.map((p) => p.options.length));

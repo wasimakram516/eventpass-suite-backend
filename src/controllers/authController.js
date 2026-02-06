@@ -65,7 +65,7 @@ exports.registerUser = asyncHandler(async (req, res) => {
 
   const existingUser = await User.findOne({
     email: email.toLowerCase(),
-  }).notDeleted();
+  });
   if (existingUser) {
     return response(res, 400, "User with this email already exists");
   }
@@ -95,7 +95,12 @@ exports.registerUser = asyncHandler(async (req, res) => {
     modulePermissions: normalizedPerms,
     staffType: role === "staff" ? staffType : null,
   });
-  if (req.user) user.setAuditUser(req.user);
+  if (req.user) {
+    user.setAuditUser(req.user);
+  } else {
+    // Self-registration: set createdBy to the user being created
+    user.setAuditUser(user._id);
+  }
   await user.save();
 
   const populated = await User.findById(user._id)
@@ -130,7 +135,6 @@ exports.login = asyncHandler(async (req, res) => {
   }
 
   const user = await User.findOne({ email: email.toLowerCase() })
-    .notDeleted()
     .populate("business", "name slug logoUrl contact address");
 
   if (!user) {
@@ -184,7 +188,7 @@ exports.refreshToken = asyncHandler(async (req, res) => {
     if (err) return response(res, 403, "Invalid refresh token");
 
     const user = await User.findById(decoded.id)
-      .notDeleted()
+      
       .populate("business", "name slug logoUrl");
 
     if (!user) return response(res, 404, "User not found");

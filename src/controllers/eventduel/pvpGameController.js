@@ -50,7 +50,7 @@ exports.createGame = asyncHandler(async (req, res) => {
     return response(res, 400, `Missing required media: ${missingMedia.join(", ")}`);
   }
 
-  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
+  const business = await Business.findOne({ slug: businessSlug });
   if (!business) return response(res, 404, "Business not found");
 
   const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
@@ -255,7 +255,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
 exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
   const business = await Business.findOne({
     slug: req.params.slug,
-  }).notDeleted();
+  });
   if (!business) return response(res, 404, "Business not found");
 
   const games = await Game.find({
@@ -263,7 +263,7 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
     mode: "pvp",
     type: "quiz",
   })
-    .notDeleted()
+    
     .populate("teams", "name")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -281,7 +281,7 @@ exports.getGameById = asyncHandler(async (req, res) => {
     .populate("businessId", "name slug")
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
-    .notDeleted();
+    ;
 
   if (!game) return response(res, 404, "Game not found");
 
@@ -298,7 +298,7 @@ exports.getGameBySlug = asyncHandler(async (req, res) => {
     .populate("businessId", "name slug")
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
-    .notDeleted();
+    ;
 
   if (!game) return response(res, 404, "Game not found");
 

@@ -23,12 +23,12 @@ exports.exportResults = asyncHandler(async (req, res) => {
     mode: "solo",
   })
     .populate("businessId", "name email phone website")
-    .notDeleted();
+    ;
 
   if (!game) return response(res, 404, "TapMatch game not found");
 
   const sessions = await GameSession.find({ gameId })
-    .notDeleted()
+    
     .populate("players.playerId");
 
   if (!sessions.length)
@@ -103,7 +103,7 @@ exports.joinGame = asyncHandler(async (req, res) => {
     _id: gameId,
     type: "memory",
     mode: "solo",
-  }).notDeleted();
+  });
   if (!game) return response(res, 404, "TapMatch game not found");
 
   if (!game.memoryImages || game.memoryImages.length === 0) {
@@ -148,7 +148,7 @@ exports.submitResult = asyncHandler(async (req, res) => {
   const { moves, matches, misses, totalTime, accuracy } = req.body;
 
   const session = await GameSession.findById(sessionId)
-    .notDeleted()
+    
     .populate("gameId");
 
   if (!session || session.gameId.type !== "memory")
@@ -192,7 +192,7 @@ exports.getPlayersByGame = asyncHandler(async (req, res) => {
   const { gameId } = req.params;
 
   const sessions = await GameSession.find({ gameId })
-    .notDeleted()
+    
     .populate("players.playerId");
 
   const allPlayers = sessions.flatMap((session) =>
@@ -225,7 +225,7 @@ exports.getLeaderboard = asyncHandler(async (req, res) => {
     gameId,
     status: "completed",
   })
-    .notDeleted()
+    
     .populate("players.playerId");
 
   const results = sessions.flatMap((session) =>

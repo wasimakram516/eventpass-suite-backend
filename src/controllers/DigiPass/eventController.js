@@ -20,7 +20,7 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
         return response(res, 400, "Business slug is required");
     }
 
-    const business = await Business.findOne({ slug: businessSlug }).notDeleted();
+    const business = await Business.findOne({ slug: businessSlug });
     if (!business) {
         return response(res, 404, "Business not found");
     }
@@ -31,7 +31,7 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
         businessId,
         eventType: ALLOWED_EVENT_TYPE,
     })
-        .notDeleted()
+        
         .sort({ createdAt: -1 })
         .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
         .populate("createdBy", "name")
@@ -47,7 +47,7 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
 exports.getEventBySlug = asyncHandler(async (req, res) => {
     const { slug } = req.params;
     const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE })
-        .notDeleted()
+        
         .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations");
 
     if (!event) {
@@ -66,7 +66,7 @@ exports.getEventById = asyncHandler(async (req, res) => {
     }
 
     const event = await Event.findById(id)
-        .notDeleted()
+        
         .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations");
 
     if (!event || event.eventType !== ALLOWED_EVENT_TYPE) {
@@ -95,7 +95,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
         return response(res, 400, "Missing required fields: name, slug, businessSlug");
     }
 
-    const business = await Business.findOne({ slug: businessSlug }).notDeleted();
+    const business = await Business.findOne({ slug: businessSlug });
     if (!business) {
         return response(res, 404, "Business not found");
     }
@@ -233,7 +233,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         return response(res, 400, "Invalid Event ID");
     }
 
-    const event = await Event.findById(id).notDeleted();
+    const event = await Event.findById(id);
     if (!event || event.eventType !== ALLOWED_EVENT_TYPE) {
         return response(res, 404, "DigiPass event not found");
     }
@@ -400,7 +400,7 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
         return response(res, 400, "Invalid Event ID");
     }
 
-    const event = await Event.findById(id).notDeleted();
+    const event = await Event.findById(id);
     if (!event || event.eventType !== ALLOWED_EVENT_TYPE) {
         return response(res, 404, "DigiPass event not found");
     }
@@ -444,7 +444,7 @@ exports.restoreAllEvents = asyncHandler(async (req, res) => {
         const conflict = await Event.findOne({
             _id: { $ne: ev._id },
             slug: ev.slug,
-        }).notDeleted();
+        });
         if (!conflict) {
             await ev.restore();
         }

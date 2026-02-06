@@ -12,7 +12,7 @@ exports.getFieldDistribution = asyncHandler(async (req, res) => {
 
     if (!fieldName) return response(res, 400, "Field name is required");
 
-    const event = await Event.findOne({ slug }).notDeleted().lean();
+    const event = await Event.findOne({ slug }).lean();
     if (!event) return response(res, 404, "Event not found");
 
     const topLimit = topN ? parseInt(topN) : null;
@@ -83,7 +83,7 @@ exports.getTimeDistribution = asyncHandler(async (req, res) => {
         return response(res, 400, "fieldName, startDate, and endDate are required");
     }
 
-    const event = await Event.findOne({ slug }).notDeleted().lean();
+    const event = await Event.findOne({ slug }).lean();
     if (!event) return response(res, 404, "Event not found");
 
     const start = new Date(startDate);
@@ -210,7 +210,7 @@ exports.getTimeDistribution = asyncHandler(async (req, res) => {
 exports.getAvailableFields = asyncHandler(async (req, res) => {
     const { slug } = req.params;
 
-    const event = await Event.findOne({ slug }).notDeleted().lean();
+    const event = await Event.findOne({ slug }).lean();
     if (!event) return response(res, 404, "Event not found");
 
     const categoricalFields = [];
@@ -268,7 +268,7 @@ exports.getAvailableFields = asyncHandler(async (req, res) => {
 exports.getInsightsSummary = asyncHandler(async (req, res) => {
     const { slug } = req.params;
 
-    const event = await Event.findOne({ slug }).notDeleted().lean();
+    const event = await Event.findOne({ slug }).lean();
     if (!event) return response(res, 404, "Event not found");
 
     const totalRegistrations = await Registration.countDocuments({
@@ -299,7 +299,7 @@ exports.getInsightsSummary = asyncHandler(async (req, res) => {
 exports.getScannedByTypeDistribution = asyncHandler(async (req, res) => {
     const { slug } = req.params;
 
-    const event = await Event.findOne({ slug }).notDeleted().lean();
+    const event = await Event.findOne({ slug }).lean();
     if (!event) return response(res, 404, "Event not found");
 
     const totalWalkIns = await WalkIn.countDocuments({ eventId: event._id });
@@ -352,7 +352,7 @@ exports.getScannedByUserDistribution = asyncHandler(async (req, res) => {
     const { slug } = req.params;
     const { staffType } = req.query;
 
-    const event = await Event.findOne({ slug }).notDeleted().lean();
+    const event = await Event.findOne({ slug }).lean();
     if (!event) return response(res, 404, "Event not found");
 
     const pipeline = [

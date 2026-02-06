@@ -142,8 +142,8 @@ async function fetchDeletedItems({
         ...pipeline,
         { $skip: (page - 1) * limit },
         { $limit: limit },
-      ]),
-      model.aggregate([...pipeline, { $count: "total" }]),
+      ]).option({ withDeleted: true }),
+      model.aggregate([...pipeline, { $count: "total" }]).option({ withDeleted: true }),
     ]);
 
     const total = totalResult[0]?.total || 0;
@@ -203,8 +203,8 @@ async function fetchDeletedQuestions({ model, query, condition, page, limit }) {
       ...pipeline,
       { $skip: (page - 1) * limit },
       { $limit: limit },
-    ]),
-    model.aggregate([...pipeline, { $count: "total" }]),
+    ]).option({ withDeleted: true }),
+    model.aggregate([...pipeline, { $count: "total" }]).option({ withDeleted: true }),
   ]);
 
   const total = totalResult[0]?.total || 0;

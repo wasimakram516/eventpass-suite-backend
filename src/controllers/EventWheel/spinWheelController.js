@@ -52,7 +52,7 @@ exports.createSpinWheel = asyncHandler(async (req, res) => {
 // Get All SpinWheels
 exports.getAllSpinWheels = asyncHandler(async (req, res) => {
   const wheels = await SpinWheel.find()
-    .notDeleted()
+    
     .populate("business", "name slug")
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
@@ -92,7 +92,7 @@ exports.getAllSpinWheels = asyncHandler(async (req, res) => {
 // Get SpinWheel by ID
 exports.getSpinWheelById = asyncHandler(async (req, res) => {
   const wheel = await SpinWheel.findById(req.params.id)
-    .notDeleted()
+    
     .populate("business", "name slug")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -103,7 +103,7 @@ exports.getSpinWheelById = asyncHandler(async (req, res) => {
 // Get SpinWheel by Slug
 exports.getSpinWheelBySlug = asyncHandler(async (req, res) => {
   const wheel = await SpinWheel.findOne({ slug: req.params.slug })
-    .notDeleted()
+    
     .populate("business", "name slug")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");

@@ -293,7 +293,7 @@ function formatRowNumbers(arr) {
 exports.downloadSampleExcel = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const event = await Event.findOne({ slug }).notDeleted();
+  const event = await Event.findOne({ slug });
   if (!event) return response(res, 404, "Event not found");
 
   const hasCustomFields = event.formFields && event.formFields.length > 0;
@@ -459,7 +459,7 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   if (!slug) return response(res, 400, "Event Slug is required");
 
-  const event = await Event.findOne({ slug }).notDeleted();
+  const event = await Event.findOne({ slug });
   if (!event) return response(res, 404, "Event not found");
 
   if (!req.file) return response(res, 400, "Excel file is required");
@@ -519,7 +519,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     ...dynamicFiltersRaw
   } = req.query;
 
-  const event = await Event.findOne({ slug }).notDeleted();
+  const event = await Event.findOne({ slug });
   if (!event) return response(res, 404, "Event not found");
 
   const eventId = event._id;
@@ -1438,7 +1438,7 @@ exports.bulkUpdateRegistrationApproval = asyncHandler(async (req, res) => {
     );
   }
 
-  const event = await Event.findOne({ slug }).notDeleted();
+  const event = await Event.findOne({ slug });
   if (!event) return response(res, 404, "Event not found");
 
   if (!event.requiresApproval) {
@@ -1627,7 +1627,7 @@ exports.bulkUpdateRegistrationApproval = asyncHandler(async (req, res) => {
 
 exports.unsentCount = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const event = await Event.findOne({ slug }).notDeleted();
+  const event = await Event.findOne({ slug });
   if (!event) return response(res, 404, "Event not found");
 
   const unsentCount = await Registration.countDocuments({
@@ -1811,7 +1811,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   const page = Number(req.query.page) || 1;
   const limit = Number(req.query.limit) || 10;
 
-  const event = await Event.findOne({ slug }).notDeleted();
+  const event = await Event.findOne({ slug });
   if (!event) return response(res, 404, "Event not found");
   if (event.eventType !== "public") {
     return response(res, 400, "This event is not public");
@@ -1829,7 +1829,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 
   const registrations = await Registration.find({ eventId })
-    .notDeleted()
+    
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
     .skip((page - 1) * limit)
@@ -1944,7 +1944,7 @@ async function loadRemainingRecords(eventId, total) {
 exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const event = await Event.findOne({ slug }).notDeleted();
+  const event = await Event.findOne({ slug });
   if (!event) return response(res, 404, "Event not found");
   if (event.eventType !== "public") {
     return response(res, 400, "This event is not public");
@@ -2023,7 +2023,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
 
   const registration = await Registration.findOne({ token })
     .populate("eventId")
-    .notDeleted();
+    ;
   if (!registration) return response(res, 404, "Registration not found");
 
   const eventBusinessId = registration.eventId?.businessId?.toString();
@@ -2112,7 +2112,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
     return response(res, 401, "Unauthorized – no admin info");
   }
 
-  const userDoc = await User.findById(adminUser.id).notDeleted();
+  const userDoc = await User.findById(adminUser.id);
   if (!userDoc) {
     return response(res, 404, "User not found");
   }
@@ -2128,7 +2128,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
 
   const registration = await Registration.findById(id)
     .populate("eventId")
-    .notDeleted();
+    ;
 
   if (!registration) {
     return response(res, 404, "Registration not found");

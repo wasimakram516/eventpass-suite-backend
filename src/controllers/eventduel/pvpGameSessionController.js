@@ -20,7 +20,7 @@ exports.getGameSessions = asyncHandler(async (req, res) => {
     slug: gameSlug,
     mode: "pvp",
     type: "quiz",
-  }).notDeleted();
+  });
   if (!game) return response(res, 404, "Game not found");
 
   const pageNumber = parseInt(page);
@@ -30,7 +30,7 @@ exports.getGameSessions = asyncHandler(async (req, res) => {
   const totalCount = await GameSession.countDocuments({
     gameId: game._id,
     status: "completed",
-  }).notDeleted();
+  });
 
   // ────────────────────────────────
   // 🔹 INDIVIDUAL / PVP MODE
@@ -40,7 +40,7 @@ exports.getGameSessions = asyncHandler(async (req, res) => {
       gameId: game._id,
       status: "completed",
     })
-      .notDeleted()
+      
       .populate([
         { path: "players.playerId", select: "name company" },
         { path: "winner", select: "name company" },
@@ -65,7 +65,7 @@ exports.getGameSessions = asyncHandler(async (req, res) => {
     gameId: game._id,
     status: "completed",
   })
-    .notDeleted()
+    
     .populate([
       { path: "teams.teamId", select: "name gameId" },
       { path: "teams.players.playerId", select: "name company" },
@@ -120,7 +120,7 @@ exports.startGameSession = asyncHandler(async (req, res) => {
     slug: gameSlug,
     mode: "pvp",
     type: "quiz",
-  }).notDeleted();
+  });
   if (!game) {
     return response(res, 404, "Game not found");
   }
@@ -203,7 +203,7 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
     slug: gameSlug,
     mode: "pvp",
     type: "quiz",
-  }).notDeleted();
+  });
   if (!game) {
     return response(res, 400, "Invalid or non-PvP game.");
   }
@@ -242,7 +242,7 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
     await session.save();
 
     const allSessions = await GameSession.find({ gameId: session.gameId })
-      .notDeleted()
+      
       .populate("players.playerId winner gameId")
       .sort({ createdAt: -1 })
       .limit(5);
@@ -311,7 +311,7 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
   await session.save();
 
   const allSessions = await GameSession.find({ gameId: session.gameId })
-    .notDeleted()
+    
     .populate([
       { path: "teams.teamId" },
       { path: "teams.players.playerId" },
@@ -355,7 +355,7 @@ exports.abandonGameSession = asyncHandler(async (req, res) => {
     _id: session.gameId,
     mode: "pvp",
     type: "quiz",
-  }).notDeleted();
+  });
   if (!game) return response(res, 404, "Game not found");
 
   // --- PvP Mode ---
@@ -512,7 +512,7 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
       await session.save();
 
       const allSessions = await GameSession.find({ gameId: session.gameId })
-        .notDeleted()
+        
         .populate("players.playerId winner gameId")
         .sort({ createdAt: -1 })
         .limit(5);
@@ -607,7 +607,7 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
 
     // emit final results
     const allSessions = await GameSession.find({ gameId: session.gameId })
-      .notDeleted()
+      
       .populate([
         { path: "teams.teamId" },
         { path: "teams.players.playerId" },
@@ -1105,14 +1105,14 @@ exports.exportResults = asyncHandler(async (req, res) => {
     type: "quiz",
   })
     .populate("businessId", "name")
-    .notDeleted();
+    ;
   if (!game) return response(res, 404, "Game not found");
 
   const sessions = await GameSession.find({
     gameId: game._id,
     status: "completed",
   })
-    .notDeleted()
+    
     .populate(
       game.isTeamMode
         ? [{ path: "teams.teamId" }, { path: "teams.players.playerId" }]
@@ -1260,7 +1260,7 @@ exports.getLeaderboard = asyncHandler(async (req, res) => {
     slug: gameSlug,
     mode: "pvp",
     type: "quiz",
-  }).notDeleted();
+  });
   if (!game) return response(res, 404, "Game not found");
   if (game.mode !== "pvp")
     return response(res, 400, "Leaderboard only available for PvP games");
@@ -1271,7 +1271,7 @@ exports.getLeaderboard = asyncHandler(async (req, res) => {
       gameId: game._id,
       status: "completed",
     })
-      .notDeleted()
+      
       .populate("players.playerId");
 
     const results = sessions.flatMap((session) =>
@@ -1299,7 +1299,7 @@ exports.getLeaderboard = asyncHandler(async (req, res) => {
     gameId: game._id,
     status: "completed",
   })
-    .notDeleted()
+    
     .populate([{ path: "teams.teamId" }, { path: "teams.players.playerId" }]);
 
   const results = sessions.flatMap((session) =>

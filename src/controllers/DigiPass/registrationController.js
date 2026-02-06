@@ -29,7 +29,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE }).notDeleted();
+    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE });
     if (!event) {
         return response(res, 404, "DigiPass event not found");
     }
@@ -44,7 +44,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
     });
 
     const registrations = await Registration.find({ eventId })
-        .notDeleted()
+        
         .populate("createdBy", "name")
         .populate("updatedBy", "name")
         .skip((page - 1) * limit)
@@ -144,7 +144,7 @@ async function loadRemainingRecords(eventId, total) {
 exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
     const { slug } = req.params;
 
-    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE }).notDeleted();
+    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE });
     if (!event) {
         return response(res, 404, "DigiPass event not found");
     }
@@ -212,7 +212,7 @@ exports.getRegistrationById = asyncHandler(async (req, res) => {
 
     const registration = await Registration.findById(id)
         .populate("eventId")
-        .notDeleted();
+        ;
 
     if (!registration) {
         return response(res, 404, "Registration not found");
@@ -255,7 +255,7 @@ async function checkIdentityUniqueness(event, customFields, excludeRegistrationI
             query._id = { $ne: excludeRegistrationId };
         }
 
-        const existingReg = await Registration.findOne(query).notDeleted();
+        const existingReg = await Registration.findOne(query);
 
         if (existingReg) {
             return {
@@ -275,7 +275,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
         return response(res, 400, "Event slug is required");
     }
 
-    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE }).notDeleted();
+    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE });
     if (!event) {
         return response(res, 404, "DigiPass event not found");
     }
@@ -481,7 +481,7 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
 
     const registration = await Registration.findById(id)
         .populate("eventId")
-        .notDeleted();
+        ;
 
     if (!registration) {
         return response(res, 404, "Registration not found");
@@ -730,7 +730,7 @@ exports.deleteRegistration = asyncHandler(async (req, res) => {
 
     const registration = await Registration.findById(id)
         .populate("eventId")
-        .notDeleted();
+        ;
 
     if (!registration) {
         return response(res, 404, "Registration not found");
@@ -873,7 +873,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
 
     const registration = await Registration.findOne({ token })
         .populate("eventId")
-        .notDeleted();
+        ;
 
     if (!registration) {
         return response(res, 404, "Registration not found");
@@ -902,7 +902,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
         registrationId,
         eventId,
         scannedBy,
-    }).notDeleted();
+    });
 
     if (existingWalkIn) {
         return response(res, 200, "Registration already scanned by this scanner", {
@@ -989,7 +989,7 @@ exports.signIn = asyncHandler(async (req, res) => {
         return response(res, 400, "Event slug is required");
     }
 
-    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE }).notDeleted();
+    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE });
     if (!event) {
         return response(res, 404, "DigiPass event not found");
     }
@@ -1037,7 +1037,7 @@ exports.signIn = asyncHandler(async (req, res) => {
         query.$and = $and;
     }
 
-    const registration = await Registration.findOne(query).notDeleted();
+    const registration = await Registration.findOne(query);
 
     if (!registration) {
         return response(res, 404, "No registration found with the provided identity information");
@@ -1072,7 +1072,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
         return response(res, 401, "Unauthorized – no admin info");
     }
 
-    const userDoc = await User.findById(adminUser.id).notDeleted();
+    const userDoc = await User.findById(adminUser.id);
     if (!userDoc) {
         return response(res, 404, "User not found");
     }
@@ -1088,7 +1088,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
 
     const registration = await Registration.findById(id)
         .populate("eventId")
-        .notDeleted();
+        ;
 
     if (!registration) {
         return response(res, 404, "Registration not found");
@@ -1106,7 +1106,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
         registrationId,
         eventId,
         scannedBy,
-    }).notDeleted();
+    });
 
     if (existingWalkIn) {
         return response(res, 200, "Walk-in already exists for this scanner", {
@@ -1354,7 +1354,7 @@ async function validateAllRows(event, rows) {
             const existing = await Registration.find({
                 eventId: event._id,
                 $or: duplicateOr,
-            }).select("customFields").notDeleted();
+            }).select("customFields");
 
             if (existing.length > 0) {
                 const conflictRows = new Set();
@@ -1407,7 +1407,7 @@ async function validateAllRows(event, rows) {
                 const existing = await Registration.find({
                     eventId: event._id,
                     [`customFields.${identityField.inputName}`]: { $in: identityValues },
-                }).select(`customFields.${identityField.inputName}`).notDeleted();
+                }).select(`customFields.${identityField.inputName}`);
 
                 if (existing.length > 0) {
                     const conflictRows = new Set();
@@ -1466,7 +1466,7 @@ function formatRowNumbers(arr) {
 exports.downloadSampleExcel = asyncHandler(async (req, res) => {
     const { slug } = req.params;
 
-    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE }).notDeleted();
+    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE });
     if (!event) {
         return response(res, 404, "DigiPass event not found");
     }
@@ -1561,7 +1561,7 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
     const { slug } = req.params;
     if (!slug) return response(res, 400, "Event Slug is required");
 
-    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE }).notDeleted();
+    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE });
     if (!event) return response(res, 404, "DigiPass event not found");
 
     if (!req.file) return response(res, 400, "Excel file is required");
@@ -1616,7 +1616,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
         ...dynamicFiltersRaw
     } = req.query;
 
-    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE }).notDeleted();
+    const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE });
     if (!event) {
         return response(res, 404, "DigiPass event not found");
     }

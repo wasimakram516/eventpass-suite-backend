@@ -10,7 +10,7 @@ exports.getAllVisitors = asyncHandler(async (req, res) => {
     return response(res, 403, "Unauthorized");
   }
 
-  const visitors = await Visitor.find().notDeleted()
+  const visitors = await Visitor.find()
     .populate("eventHistory.business", "name")
     .sort({ createdAt: -1 });
 

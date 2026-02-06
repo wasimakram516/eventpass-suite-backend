@@ -18,7 +18,7 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
     return response(res, 400, "Business slug is required");
   }
 
-  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
+  const business = await Business.findOne({ slug: businessSlug });
   if (!business) {
     return response(res, 404, "Business not found");
   }
@@ -29,7 +29,7 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
     businessId,
     eventType: "closed",
   })
-    .notDeleted()
+    
     .sort({ startDate: -1 })
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -43,7 +43,7 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
 // GET single event by slug
 exports.getEventBySlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const event = await Event.findOne({ slug }).notDeleted();
+  const event = await Event.findOne({ slug });
 
   if (!event || event.eventType !== "closed") {
     return response(res, 400, "Closed event not found");
@@ -60,7 +60,7 @@ exports.getEventById = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid Event ID");
   }
 
-  const event = await Event.findById(id).notDeleted();
+  const event = await Event.findById(id);
   if (!event || event.eventType !== "closed") {
     return response(res, 400, "Closed event not found");
   }

@@ -34,7 +34,7 @@ exports.createBusiness = asyncHandler(async (req, res) => {
   if (!ownerIds) ownerIds = [];
   if (!Array.isArray(ownerIds)) ownerIds = [ownerIds];
 
-  const owners = await User.find({ _id: { $in: ownerIds } }).notDeleted();
+  const owners = await User.find({ _id: { $in: ownerIds } });
   if (owners.length !== ownerIds.length) {
     return response(res, 404, "One or more owners not found");
   }
@@ -75,6 +75,7 @@ exports.createBusiness = asyncHandler(async (req, res) => {
   recomputeAndEmit(business._id).catch(() => { });
 
   const populated = await Business.findById(business._id)
+    
     .populate("owners", "name email role")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -84,7 +85,7 @@ exports.createBusiness = asyncHandler(async (req, res) => {
 // Get All Businesses
 exports.getAllBusinesses = asyncHandler(async (req, res) => {
   const businesses = await Business.find()
-    .notDeleted()
+    
     .populate("owners", "name email role")
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
@@ -103,7 +104,7 @@ exports.getAllBusinesses = asyncHandler(async (req, res) => {
 // Get Business by ID (with owner populated)
 exports.getBusinessById = asyncHandler(async (req, res) => {
   const business = await Business.findById(req.params.id)
-    .notDeleted()
+    
     .populate("owners", "name email role")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -120,7 +121,7 @@ exports.getBusinessById = asyncHandler(async (req, res) => {
 // Get Business by Slug (with owner populated)
 exports.getBusinessBySlug = asyncHandler(async (req, res) => {
   const business = await Business.findOne({ slug: req.params.slug })
-    .notDeleted()
+    
     .populate("owners", "name email role")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -136,7 +137,7 @@ exports.getBusinessBySlug = asyncHandler(async (req, res) => {
 
 // Update Business
 exports.updateBusiness = asyncHandler(async (req, res) => {
-  const business = await Business.findById(req.params.id).notDeleted();
+  const business = await Business.findById(req.params.id);
   if (!business) return response(res, 404, "Business not found");
 
   const { name, slug, email, phone, address } = req.body;
@@ -174,6 +175,7 @@ exports.updateBusiness = asyncHandler(async (req, res) => {
   );
 
   const populated = await Business.findById(business._id)
+    
     .populate("owners", "name email role")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -296,7 +298,7 @@ exports.deleteBusiness = asyncHandler(async (req, res) => {
 
 // Restore
 exports.restoreBusiness = asyncHandler(async (req, res) => {
-  const business = await Business.findById(req.params.id);
+  const business = await Business.findOneDeleted({ _id: req.params.id });
   if (!business) return response(res, 404, "Business not found");
 
   const conflict = await Business.findOne({
