@@ -27,7 +27,7 @@ const { recomputeAndEmit } = require("../socket/dashboardSocket");
 // Get all users
 exports.getAllUsers = asyncHandler(async (req, res) => {
   const users = await User.find()
-    .notDeleted()
+    
     .populate("business", "name slug logoUrl contact address")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -101,6 +101,7 @@ exports.getAllStaffUsersByBusiness = asyncHandler(async (req, res) => {
     role: "staff", // Only fetch staff members
     _id: { $ne: currentUserId }, // Exclude current user
   })
+    
     .populate("business", "name slug logoUrl contact address")
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
@@ -125,6 +126,7 @@ exports.getUnassignedUsers = asyncHandler(async (req, res) => {
 // Get user by ID
 exports.getUserById = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id)
+    
     .populate("business", "name slug logoUrl contact address")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -153,7 +155,7 @@ exports.createBusinessUser = asyncHandler(async (req, res) => {
 
   const existing = await User.findOne({
     email: email.toLowerCase(),
-  }).notDeleted();
+  });
   if (existing) {
     return response(res, 409, "User with this email already exists");
   }
@@ -229,6 +231,7 @@ exports.createBusinessUser = asyncHandler(async (req, res) => {
   recomputeAndEmit(attachedBusiness._id).catch(() => { });
 
   const populatedUser = await User.findById(user._id)
+    
     .populate("business", "name slug logoUrl contact address")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -248,7 +251,7 @@ exports.createAdminUser = asyncHandler(async (req, res) => {
 
   const existing = await User.findOne({
     email: email.toLowerCase(),
-  }).notDeleted();
+  });
   if (existing) {
     return response(res, 409, "User with this email already exists");
   }
@@ -266,6 +269,7 @@ exports.createAdminUser = asyncHandler(async (req, res) => {
     : await User.create(adminPayload);
 
   const populated = await User.findById(user._id)
+    
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
   return response(res, 201, "Admin user created successfully", {
@@ -319,6 +323,7 @@ exports.updateUser = asyncHandler(async (req, res) => {
   );
 
   const populated = await User.findById(user._id)
+    
     .populate("business", "name slug logoUrl contact address")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -456,7 +461,7 @@ exports.deleteUser = asyncHandler(async (req, res) => {
 
 // Restore single user
 exports.restoreUser = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id);
+  const user = await User.findOneDeleted({ _id: req.params.id });
   if (!user) return response(res, 404, "User not found");
 
   // Prevent email conflict
@@ -481,7 +486,7 @@ exports.restoreUser = asyncHandler(async (req, res) => {
 
 // Permanent delete single user
 exports.permanentDeleteUser = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id);
+  const user = await User.findOneDeleted({ _id: req.params.id });
   if (!user) return response(res, 404, "User not found");
 
   await cascadeDeleteUser(req.params.id);

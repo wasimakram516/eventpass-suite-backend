@@ -12,7 +12,7 @@ exports.getQuestionDistribution = asyncHandler(async (req, res) => {
 
     if (!questionId) return response(res, 400, "Question ID is required");
 
-    const form = await SurveyForm.findOne({ slug }).notDeleted().lean();
+    const form = await SurveyForm.findOne({ slug }).lean();
     if (!form) return response(res, 404, "Form not found");
 
     const question = form.questions?.find(q => String(q._id) === questionId);
@@ -129,7 +129,7 @@ exports.getTimeDistribution = asyncHandler(async (req, res) => {
         return response(res, 400, "startDate and endDate are required");
     }
 
-    const form = await SurveyForm.findOne({ slug }).notDeleted().lean();
+    const form = await SurveyForm.findOne({ slug }).lean();
     if (!form) return response(res, 404, "Form not found");
 
     const start = new Date(startDate);
@@ -204,7 +204,7 @@ exports.getTimeDistribution = asyncHandler(async (req, res) => {
 exports.getAvailableQuestions = asyncHandler(async (req, res) => {
     const { slug } = req.params;
 
-    const form = await SurveyForm.findOne({ slug }).notDeleted().lean();
+    const form = await SurveyForm.findOne({ slug }).lean();
     if (!form) return response(res, 404, "Form not found");
 
     const categoricalFields = [];
@@ -251,7 +251,7 @@ exports.getAvailableQuestions = asyncHandler(async (req, res) => {
 exports.getInsightsSummary = asyncHandler(async (req, res) => {
     const { slug } = req.params;
 
-    const form = await SurveyForm.findOne({ slug }).notDeleted().lean();
+    const form = await SurveyForm.findOne({ slug }).lean();
     if (!form) return response(res, 404, "Form not found");
 
     const totalResponses = await SurveyResponse.countDocuments({

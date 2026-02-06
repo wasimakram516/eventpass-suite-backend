@@ -214,7 +214,7 @@ function buildParticipantsQuery(wheelId, options = {}) {
   }
 
   let baseQuery = SpinWheelParticipant.find(query)
-    .notDeleted()
+    
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
   if (sortByName) {
@@ -258,7 +258,7 @@ exports.getParticipantsBySlug = asyncHandler(async (req, res) => {
 
   const wheel = await SpinWheel.findOne({ slug })
     .select("_id type")
-    .notDeleted();
+    ;
   if (!wheel) return response(res, 404, "SpinWheel not found");
 
   const participants = await buildParticipantsQuery(wheel._id, {
@@ -281,7 +281,7 @@ exports.getParticipantsForCMS = asyncHandler(async (req, res) => {
   const page = Number(req.query.page) || 1;
   const limit = Number(req.query.limit) || 10;
 
-  const wheel = await SpinWheel.findById(spinWheelId).notDeleted();
+  const wheel = await SpinWheel.findById(spinWheelId);
   if (!wheel) return response(res, 404, "SpinWheel not found");
 
   const countQuery = { spinWheel: wheel._id, isDeleted: { $ne: true } };
@@ -310,7 +310,7 @@ exports.getParticipantsForCMS = asyncHandler(async (req, res) => {
 // Get Single Participant by ID
 exports.getParticipantById = asyncHandler(async (req, res) => {
   const participant = await SpinWheelParticipant.findById(req.params.id)
-    .notDeleted()
+    
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
   if (!participant) return response(res, 404, "Participant not found");
@@ -426,7 +426,7 @@ exports.restoreParticipant = asyncHandler(async (req, res) => {
   await participant.restore();
 
   // Fire background recompute
-  recomputeAndEmit(participant.spinwheel.business || null).catch((err) =>
+  recomputeAndEmit(participant.spinWheel.business || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
@@ -442,7 +442,7 @@ exports.permanentDeleteParticipant = asyncHandler(async (req, res) => {
 
   await participant.deleteOne();
   // Fire background recompute
-  recomputeAndEmit(participant.spinwheel.business || null).catch((err) =>
+  recomputeAndEmit(participant.spinWheel.business || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
   return response(res, 200, "Participant permanently deleted");
@@ -497,7 +497,7 @@ exports.exportSpinWheelParticipantsXlsx = asyncHandler(async (req, res) => {
   const participants = await SpinWheelParticipant.find({
     spinWheel: wheel._id,
   })
-    .notDeleted()
+    
     .lean();
 
   /* ===============================
@@ -682,7 +682,7 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
     return response(res, 400, "SpinWheel ID is required");
   }
 
-  const wheel = await SpinWheel.findById(spinWheelId).notDeleted();
+  const wheel = await SpinWheel.findById(spinWheelId);
   if (!wheel) {
     return response(res, 404, "SpinWheel not found");
   }
@@ -776,7 +776,7 @@ exports.uploadParticipants = asyncHandler(async (req, res) => {
     return response(res, 400, "SpinWheel ID is required");
   }
 
-  const wheel = await SpinWheel.findById(spinWheelId).notDeleted();
+  const wheel = await SpinWheel.findById(spinWheelId);
   if (!wheel) {
     return response(res, 404, "SpinWheel not found");
   }
@@ -847,12 +847,12 @@ exports.saveWinner = asyncHandler(async (req, res) => {
     return response(res, 400, "SpinWheel ID and Participant ID are required");
   }
 
-  const wheel = await SpinWheel.findById(spinWheelId).notDeleted();
+  const wheel = await SpinWheel.findById(spinWheelId);
   if (!wheel) {
     return response(res, 404, "SpinWheel not found");
   }
 
-  const participant = await SpinWheelParticipant.findById(participantId).notDeleted();
+  const participant = await SpinWheelParticipant.findById(participantId);
   if (!participant) {
     return response(res, 404, "Participant not found");
   }
@@ -884,7 +884,7 @@ exports.removeWinner = asyncHandler(async (req, res) => {
     return response(res, 400, "Participant ID is required");
   }
 
-  const participant = await SpinWheelParticipant.findById(participantId).notDeleted();
+  const participant = await SpinWheelParticipant.findById(participantId);
   if (!participant) {
     return response(res, 404, "Participant not found");
   }
@@ -900,7 +900,7 @@ exports.removeWinner = asyncHandler(async (req, res) => {
 exports.getWinners = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const wheel = await SpinWheel.findOne({ slug }).select("_id").notDeleted();
+  const wheel = await SpinWheel.findOne({ slug }).select("_id");
   if (!wheel) return response(res, 404, "SpinWheel not found");
 
   const winners = await SpinWheelWinner.find({ spinWheel: wheel._id })

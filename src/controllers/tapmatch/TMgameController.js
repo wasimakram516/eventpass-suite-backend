@@ -48,7 +48,7 @@ exports.createGame = asyncHandler(async (req, res) => {
     return response(res, 400, `Missing required media: ${missingMedia.join(", ")}`);
   }
 
-  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
+  const business = await Business.findOne({ slug: businessSlug });
   if (!business) return response(res, 404, "Business not found");
 
   const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
@@ -116,7 +116,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
     _id: req.params.id,
     type: "memory",
     mode: "solo",
-  }).notDeleted();
+  });
   if (!game) return response(res, 404, "TapMatch game not found");
 
   const {
@@ -217,7 +217,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
 // ---------------------------------------------------------
 exports.getAllGames = asyncHandler(async (req, res) => {
   const games = await Game.find({ type: "memory", mode: "solo" })
-    .notDeleted()
+    
     .populate("businessId", "name slug")
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
@@ -232,7 +232,7 @@ exports.getAllGames = asyncHandler(async (req, res) => {
 exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
   const business = await Business.findOne({
     slug: req.params.slug,
-  }).notDeleted();
+  });
   if (!business) return response(res, 404, "Business not found");
 
   const games = await Game.find({
@@ -240,7 +240,7 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
     type: "memory",
     mode: "solo",
   })
-    .notDeleted()
+    
     .populate("businessId", "name slug")
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
@@ -258,7 +258,7 @@ exports.getGameById = asyncHandler(async (req, res) => {
     type: "memory",
     mode: "solo",
   })
-    .notDeleted()
+    
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
   if (!game) return response(res, 404, "TapMatch game not found");
@@ -275,7 +275,7 @@ exports.getGameBySlug = asyncHandler(async (req, res) => {
     type: "memory",
     mode: "solo",
   })
-    .notDeleted()
+    
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
 

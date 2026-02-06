@@ -21,7 +21,7 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
     businessId: business._id,
     eventType: "public",
   })
-    .notDeleted()
+    
     .sort({ startDate: -1 })
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -35,7 +35,7 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
 // Get a single event by Slug
 exports.getEventBySlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const event = await Event.findOne({ slug }).notDeleted();
+  const event = await Event.findOne({ slug });
   if (!event || event.eventType !== "public") {
     return response(res, 400, "Public event not found");
   }
@@ -49,7 +49,7 @@ exports.getEventById = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid Event ID");
   }
 
-  const event = await Event.findById(id).notDeleted();
+  const event = await Event.findById(id);
   if (!event || event.eventType !== "public") {
     return response(res, 400, "Public event not found");
   }
@@ -64,7 +64,7 @@ exports.getEventsByBusinessId = asyncHandler(async (req, res) => {
   }
 
   const events = await Event.find({ businessId, eventType: "public" })
-    .notDeleted()
+    
     .sort({ startDate: -1 })
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -78,14 +78,14 @@ exports.getEventsByBusinessId = asyncHandler(async (req, res) => {
 // Get all events by Business Slug
 exports.getEventsByBusinessSlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const business = await Business.findOne({ slug }).notDeleted();
+  const business = await Business.findOne({ slug });
   if (!business) return response(res, 404, "Business not found");
 
   const events = await Event.find({
     businessId: business._id,
     eventType: "public",
   })
-    .notDeleted()
+    
     .sort({ startDate: -1 })
     .populate("createdBy", "name")
     .populate("updatedBy", "name");

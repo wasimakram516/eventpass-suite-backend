@@ -131,7 +131,7 @@ exports.getQuestions = asyncHandler(async (req, res) => {
     _id: gameId,
     mode: "pvp",
     type: "quiz",
-  }).notDeleted();
+  });
   if (!game) return response(res, 404, "Game not found");
 
   const activeQuestions = game.questions.filter((q) => !q.isDeleted);
@@ -179,7 +179,7 @@ exports.addQuestion = asyncHandler(async (req, res) => {
     _id: req.params.gameId,
     mode: "pvp",
     type: "quiz",
-  }).notDeleted();
+  });
   if (!game) return response(res, 404, "Game not found");
 
   const parsedAnswers = typeof answers === 'string' ? JSON.parse(answers) : answers;
@@ -249,7 +249,7 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
     _id: req.params.gameId,
     mode: "pvp",
     type: "quiz",
-  }).notDeleted();
+  });
   if (!game) return response(res, 404, "Game not found");
 
   const q = game.questions.id(req.params.questionId);

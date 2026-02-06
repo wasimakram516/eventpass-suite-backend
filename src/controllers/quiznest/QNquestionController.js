@@ -63,7 +63,7 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
     _id: gameId,
     type: "quiz",
     mode: "solo",
-  }).notDeleted();
+  });
 
   if (!game) return response(res, 404, "Game not found");
 
@@ -145,7 +145,7 @@ exports.getQuestions = asyncHandler(async (req, res) => {
     _id: req.params.gameId,
     type: "quiz",
     mode: "solo",
-  }).notDeleted();
+  });
 
   if (!game) return response(res, 404, "Game not found");
 
@@ -196,7 +196,7 @@ exports.addQuestion = asyncHandler(async (req, res) => {
     _id: req.params.gameId,
     type: "quiz",
     mode: "solo",
-  }).notDeleted();
+  });
 
   if (!game) return response(res, 404, "Game not found");
 
@@ -271,7 +271,7 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
     _id: req.params.gameId,
     type: "quiz",
     mode: "solo",
-  }).notDeleted();
+  });
 
   if (!game) return response(res, 404, "Game not found");
 

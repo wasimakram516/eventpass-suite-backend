@@ -14,7 +14,7 @@ exports.createFileResource = asyncHandler(async (req, res) => {
   if (!businessSlug || !req.file || !slug)
     return response(res, 400, "Missing required fields");
 
-  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
+  const business = await Business.findOne({ slug: businessSlug });
   if (!business) return response(res, 404, "Business not found");
 
   // Slugify the user-provided slug ONLY
@@ -49,7 +49,7 @@ exports.updateFileResource = asyncHandler(async (req, res) => {
   const fileResource = await FileResource.findById(id);
   if (!fileResource) return response(res, 404, "File not found");
 
-  const business = await Business.findById(fileResource.businessId).notDeleted();
+  const business = await Business.findById(fileResource.businessId);
   if (!business) return response(res, 404, "Linked business not found");
 
   // Replace file if uploaded
@@ -84,7 +84,7 @@ exports.getAllFiles = asyncHandler(async (req, res) => {
 
   let filter = {};
   if (businessSlug) {
-    const business = await Business.findOne({ slug: businessSlug }).notDeleted();
+    const business = await Business.findOne({ slug: businessSlug });
     if (!business) return response(res, 404, "Business not found");
     filter.businessId = business._id;
   }

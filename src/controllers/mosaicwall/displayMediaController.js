@@ -10,7 +10,7 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 // Get all media
 exports.getDisplayMedia = asyncHandler(async (req, res) => {
   const items = await DisplayMedia.find()
-    .notDeleted()
+    
     .sort({ createdAt: -1 })
     .populate("wall");
   return response(
@@ -24,7 +24,7 @@ exports.getDisplayMedia = asyncHandler(async (req, res) => {
 // Get one media item by ID
 exports.getMediaById = asyncHandler(async (req, res) => {
   const item = await DisplayMedia.findById(req.params.id)
-    .notDeleted()
+    
     .populate("wall");
   if (!item) return response(res, 404, "Media not found.");
   return response(res, 200, "Media retrieved.", item);

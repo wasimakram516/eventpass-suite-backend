@@ -120,7 +120,7 @@ exports.listForms = asyncHandler(async (req, res) => {
   if (eventId) filter.eventId = eventId;
 
   const forms = await SurveyForm.find(filter)
-    .notDeleted()
+    
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
     .sort({ createdAt: -1 });
@@ -160,7 +160,7 @@ exports.getForm = asyncHandler(async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(id))
     return response(res, 400, "Invalid form id");
   const form = await SurveyForm.findById(id)
-    .notDeleted()
+    
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
   if (!form) return response(res, 404, "Survey form not found");
@@ -172,7 +172,7 @@ exports.getFormBySlug = asyncHandler(async (req, res) => {
   const form = await SurveyForm.findOne({
     slug: req.params.slug,
     isActive: true,
-  }).notDeleted();
+  });
   if (!form) return response(res, 404, "Survey form not found");
   return response(res, 200, "Survey form fetched", form);
 });
@@ -182,7 +182,7 @@ exports.updateForm = asyncHandler(async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(id))
     return response(res, 400, "Invalid form id");
 
-  const prev = await SurveyForm.findById(id).notDeleted();
+  const prev = await SurveyForm.findById(id);
   if (!prev) return response(res, 404, "Survey form not found");
 
   const patch = {

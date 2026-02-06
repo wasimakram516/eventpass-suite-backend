@@ -48,7 +48,7 @@ exports.createGame = asyncHandler(async (req, res) => {
 
   const sanitizedSlug = await generateUniqueSlug(Game, "slug", slug);
 
-  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
+  const business = await Business.findOne({ slug: businessSlug });
   if (!business) return response(res, 404, "Business not found");
 
   const businessId = business._id;
@@ -167,7 +167,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
 exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
   const business = await Business.findOne({
     slug: req.params.slug,
-  }).notDeleted();
+  });
   if (!business) return response(res, 404, "Business not found");
 
   const games = await Game.find({
@@ -175,7 +175,7 @@ exports.getGamesByBusinessSlug = asyncHandler(async (req, res) => {
     type: "quiz",
     mode: "solo",
   })
-    .notDeleted()
+    
     .populate("businessId", "name slug")
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
@@ -195,7 +195,7 @@ exports.getAllGames = asyncHandler(async (req, res) => {
     type: "quiz",
     mode: "solo",
   })
-    .notDeleted()
+    
     .populate("businessId", "name slug")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -210,7 +210,7 @@ exports.getGameById = asyncHandler(async (req, res) => {
     type: "quiz",
     mode: "solo",
   })
-    .notDeleted()
+    
     .populate("businessId", "name slug")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -227,7 +227,7 @@ exports.getGameBySlug = asyncHandler(async (req, res) => {
     type: "quiz",
     mode: "solo",
   })
-    .notDeleted()
+    
     .populate("businessId", "name slug")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");

@@ -13,7 +13,7 @@ exports.createWallConfig = asyncHandler(async (req, res) => {
     return response(res, 400, "Name, slug, and valid mode are required.");
   }
 
-  const business = await Business.findById(businessId).notDeleted();
+  const business = await Business.findById(businessId);
   if (!business) {
     return response(res, 404, "Business not found.");
   }
@@ -91,7 +91,7 @@ exports.updateWallConfig = asyncHandler(async (req, res) => {
 // Get all wall configs
 exports.getWallConfigs = asyncHandler(async (req, res) => {
   const configs = await WallConfig.find()
-    .notDeleted()
+    
     .sort({ createdAt: -1 })
     .populate("business")
     .populate("createdBy", "name")
@@ -121,7 +121,7 @@ exports.getWallConfigs = asyncHandler(async (req, res) => {
 // Get single wall config
 exports.getWallConfigBySlug = asyncHandler(async (req, res) => {
   const wall = await WallConfig.findOne({ slug: req.params.slug })
-    .notDeleted()
+    
     .populate("business")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");

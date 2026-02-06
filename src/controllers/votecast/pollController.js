@@ -16,7 +16,7 @@ exports.getPolls = asyncHandler(async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(eventId)) {
       return response(res, 400, "Invalid event ID");
     }
-    const event = await Event.findById(eventId).notDeleted();
+    const event = await Event.findById(eventId);
     if (!event || event.eventType !== "votecast") {
       return response(res, 404, "VoteCast event not found");
     }
@@ -27,7 +27,7 @@ exports.getPolls = asyncHandler(async (req, res) => {
   }
 
   const polls = await Poll.find(filter)
-    .notDeleted()
+    
     .populate("eventId", "name slug")
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
@@ -51,7 +51,7 @@ exports.createPoll = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid event ID");
   }
 
-  const event = await Event.findById(eventId).notDeleted();
+  const event = await Event.findById(eventId);
   if (!event || event.eventType !== "votecast") {
     return response(res, 404, "VoteCast event not found");
   }
@@ -128,7 +128,7 @@ exports.updatePoll = asyncHandler(async (req, res) => {
   const poll = await Poll.findById(id).populate("eventId");
   if (!poll) return response(res, 404, "Poll not found");
 
-  const pollEvent = await Event.findById(poll.eventId).notDeleted();
+  const pollEvent = await Event.findById(poll.eventId);
   if (!pollEvent || pollEvent.eventType !== "votecast") {
     return response(res, 404, "VoteCast event not found");
   }
@@ -221,7 +221,7 @@ exports.deletePoll = asyncHandler(async (req, res) => {
   const poll = await Poll.findById(id).populate("eventId");
   if (!poll) return response(res, 404, "Poll not found");
 
-  const pollEvent = await Event.findById(poll.eventId).notDeleted();
+  const pollEvent = await Event.findById(poll.eventId);
   if (!pollEvent || pollEvent.eventType !== "votecast") {
     return response(res, 404, "VoteCast event not found");
   }
@@ -355,7 +355,7 @@ exports.voteOnPoll = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { optionIndex } = req.body;
 
-  const poll = await Poll.findById(id).notDeleted();
+  const poll = await Poll.findById(id);
   if (!poll) return response(res, 404, "Poll not found");
 
   if (
@@ -384,14 +384,14 @@ exports.resetVotes = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid event ID");
   }
 
-  const event = await Event.findById(eventId).notDeleted();
+  const event = await Event.findById(eventId);
   if (!event || event.eventType !== "votecast") {
     return response(res, 404, "VoteCast event not found");
   }
 
   const filter = { eventId: event._id };
 
-  const polls = await Poll.find(filter).notDeleted();
+  const polls = await Poll.find(filter);
   if (polls.length === 0) return response(res, 404, "No polls found");
 
   await Promise.all(
@@ -408,12 +408,12 @@ exports.resetVotes = asyncHandler(async (req, res) => {
 exports.getActivePollsByEvent = asyncHandler(async (req, res) => {
   const { eventSlug } = req.params;
 
-  const event = await Event.findOne({ slug: eventSlug, eventType: "votecast" }).notDeleted();
+  const event = await Event.findOne({ slug: eventSlug, eventType: "votecast" });
   if (!event) return response(res, 404, "VoteCast event not found");
 
   const polls = await Poll.find({
     eventId: event._id,
-  }).notDeleted();
+  });
 
   return response(res, 200, "Polls fetched", polls);
 });
@@ -428,14 +428,14 @@ exports.getPollResults = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid event ID");
   }
 
-  const event = await Event.findById(eventId).notDeleted();
+  const event = await Event.findById(eventId);
   if (!event || event.eventType !== "votecast") {
     return response(res, 404, "VoteCast event not found");
   }
 
   const filter = { eventId: event._id };
 
-  const polls = await Poll.find(filter).notDeleted();
+  const polls = await Poll.find(filter);
 
   const resultData = polls.map((poll) => {
     const totalVotes =
@@ -474,14 +474,14 @@ exports.exportPollsToExcel = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid event ID");
   }
 
-  const event = await Event.findById(eventId).notDeleted();
+  const event = await Event.findById(eventId);
   if (!event || event.eventType !== "votecast") {
     return response(res, 404, "VoteCast event not found");
   }
 
   const filter = { eventId: event._id };
 
-  const polls = await Poll.find(filter).notDeleted();
+  const polls = await Poll.find(filter);
   if (polls.length === 0) return response(res, 404, "No polls found");
 
   const maxOptions = Math.max(...polls.map((p) => p.options.length));

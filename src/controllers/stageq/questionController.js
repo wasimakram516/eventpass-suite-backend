@@ -9,11 +9,11 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 exports.getQuestionsByBusiness = asyncHandler(async (req, res) => {
   const { businessSlug } = req.params;
 
-  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
+  const business = await Business.findOne({ slug: businessSlug });
   if (!business) return response(res, 404, "Business not found");
 
   const questions = await EventQuestion.find({ business: business._id })
-    .notDeleted()
+    
     .populate("visitor", "name phone company")
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
@@ -30,10 +30,10 @@ exports.submitQuestion = asyncHandler(async (req, res) => {
   if (!name || !text)
     return response(res, 400, "Name and question are required");
 
-  const business = await Business.findOne({ slug: businessSlug }).notDeleted();
+  const business = await Business.findOne({ slug: businessSlug });
   if (!business) return response(res, 404, "Business not found");
 
-  let visitor = await Visitor.findOne({ name, phone }).notDeleted();
+  let visitor = await Visitor.findOne({ name, phone });
   if (!visitor) {
     visitor = await Visitor.create({
       name,
@@ -84,7 +84,7 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
 
   const question = await EventQuestion.findById(questionId)
     .populate("business")
-    .notDeleted();
+    ;
   if (!question) return response(res, 404, "Question not found");
 
   const isAdmin = user.role === "admin" || user.role === "superadmin";
