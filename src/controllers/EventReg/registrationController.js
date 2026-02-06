@@ -34,6 +34,15 @@ const {
   DEFAULT_ISO_CODE,
   COUNTRY_CODES,
 } = require("../../utils/countryCodes");
+const {
+  buildRestoreDuplicateFilter,
+  buildDuplicateOr,
+  buildPhoneDuplicateCheck,
+} = require("../../utils/registrationDuplicateUtils");
+const {
+  buildDuplicateIndexForEvent,
+  hasDuplicate,
+} = require("../../utils/uploadRegistrationDuplicate");
 
 const {
   buildRegistrationEmail,
@@ -221,6 +230,7 @@ async function validateAllRows(event, rows) {
   if (emailsInFile.length || phonesInFile.length) {
     const existing = await Registration.find({
       eventId: event._id,
+      isDeleted: { $ne: true },
       $or: [
         emailsInFile.length ? { email: { $in: emailsInFile } } : null,
         phonesInFile.length ? { phone: { $in: phonesInFile } } : null,
@@ -241,12 +251,14 @@ async function validateAllRows(event, rows) {
         }
       });
 
-      return {
-        valid: false,
-        error: `Some rows are already registered for this event: rows ${formatRowNumbers(
-          [...conflictRows],
-        )}`,
-      };
+      if (conflictRows.size > 0) {
+        return {
+          valid: false,
+          error: `Some rows are already registered for this event: rows ${formatRowNumbers(
+            [...conflictRows],
+          )}`,
+        };
+      }
     }
   }
 
@@ -293,7 +305,7 @@ function formatRowNumbers(arr) {
 exports.downloadSampleExcel = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug, eventType: "public" });
   if (!event) return response(res, 404, "Event not found");
 
   const hasCustomFields = event.formFields && event.formFields.length > 0;
@@ -330,22 +342,22 @@ exports.downloadSampleExcel = asyncHandler(async (req, res) => {
   const dummyRows = [
     {
       fullName: "User 1",
-      email: "user1@gmail.com",
-      phone: "1234567890",
+      email: "user1@example.com",
+      phone: "5010000001",
       phoneIsoCode: "pk",
       company: "Company 1",
     },
     {
       fullName: "User 2",
-      email: "user2@gmail.com",
-      phone: "12345678",
+      email: "user2@example.com",
+      phone: "80000001",
       phoneIsoCode: "om",
       company: "Company 2",
     },
     {
       fullName: "User 3",
-      email: "user3@gmail.com",
-      phone: "1234567890",
+      email: "user3@example.com",
+      phone: "5010000003",
       phoneIsoCode: "ca",
       company: "Company 3",
     },
@@ -459,7 +471,7 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   if (!slug) return response(res, 400, "Event Slug is required");
 
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug, eventType: "public" });
   if (!event) return response(res, 404, "Event not found");
 
   if (!req.file) return response(res, 400, "Excel file is required");
@@ -519,7 +531,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     ...dynamicFiltersRaw
   } = req.query;
 
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug, eventType: "public" });
   if (!event) return response(res, 404, "Event not found");
 
   const eventId = event._id;
@@ -832,7 +844,7 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   const { slug } = req.body;
   if (!slug) return response(res, 400, "Event slug is required");
 
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug, eventType: "public" });
   if (!event) return response(res, 404, "Event not found");
   if (event.eventType !== "public")
     return response(res, 400, "This event is not open for public registration");
@@ -969,56 +981,15 @@ exports.createRegistration = asyncHandler(async (req, res) => {
   }
 
   // ---------- DUPLICATE CHECK ----------
-  const duplicateOr = [];
-
-  if (hasCustomFields) {
-    const emailField = formFields.find((f) => f.inputType === "email");
-
-    if (emailField && extractedEmail && String(extractedEmail).trim()) {
-      duplicateOr.push({
-        [`customFields.${emailField.inputName}`]: extractedEmail,
-      });
-    }
-    if (
-      phoneField &&
-      phoneForDuplicateCheck &&
-      String(phoneForDuplicateCheck).trim()
-    ) {
-      duplicateOr.push({
-        [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck,
-      });
-      if (phoneLocalNumber && phoneIsoCode) {
-        duplicateOr.push({
-          $and: [
-            { [`customFields.${phoneField.inputName}`]: phoneLocalNumber },
-            { isoCode: phoneIsoCode },
-          ],
-        });
-      }
-    }
-  } else {
-    if (extractedEmail && String(extractedEmail).trim())
-      duplicateOr.push({ email: extractedEmail });
-    if (phoneForDuplicateCheck && String(phoneForDuplicateCheck).trim()) {
-      duplicateOr.push({ phone: phoneForDuplicateCheck });
-      if (phoneLocalNumber && phoneIsoCode) {
-        duplicateOr.push({
-          $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }],
-        });
-      }
-    }
-  }
-
-  if (duplicateOr.length > 0) {
-    const duplicateFilter = {
-      eventId,
-      $or: duplicateOr,
-    };
-
-    const dup = await Registration.findOne(duplicateFilter);
-    if (dup) {
-      return response(res, 409, "Already registered with this email or phone");
-    }
+  const dupIndex = await buildDuplicateIndexForEvent(eventId);
+  if (
+    hasDuplicate(dupIndex, {
+      email: extractedEmail,
+      phoneLocalNumber,
+      phoneForDuplicateCheck,
+    })
+  ) {
+    return response(res, 409, "Already registered with this email or phone");
   }
 
   // ---------- CREATE ----------
@@ -1129,6 +1100,13 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
 
   const event = reg.eventId;
   const hasCustomFields = event.formFields?.length > 0;
+
+  const originalEmailRaw = hasCustomFields
+    ? pickEmail(reg.customFields)
+    : reg.email;
+  const originalPhoneRaw = hasCustomFields
+    ? pickPhone(reg.customFields)
+    : reg.phone;
 
   // ---------- APPLY UPDATES ----------
   if (hasCustomFields) {
@@ -1268,59 +1246,38 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
   }
 
   // ---------- DUPLICATE CHECK ----------
-  if (extractedEmail || phoneForDuplicateCheck) {
-    const duplicateOr = [];
+  const originalEmailKey = originalEmailRaw
+    ? String(originalEmailRaw).trim().toLowerCase()
+    : null;
+  const newEmailKey = extractedEmail
+    ? String(extractedEmail).trim().toLowerCase()
+    : null;
+  const { phoneForDuplicateCheck: originalPhoneKey } = buildPhoneDuplicateCheck(
+    originalPhoneRaw,
+    reg.isoCode || null
+  );
 
-    if (hasCustomFields) {
-      const emailField = event.formFields.find((f) => f.inputType === "email");
-      const phoneField = event.formFields.find(
-        (f) =>
-          f.inputType === "phone" ||
-          f.inputName?.toLowerCase().includes("phone"),
-      );
+  const emailChanged = newEmailKey && newEmailKey !== originalEmailKey;
+  const phoneChanged =
+    phoneForDuplicateCheck && phoneForDuplicateCheck !== originalPhoneKey;
 
-      if (emailField && extractedEmail) {
-        duplicateOr.push({
-          [`customFields.${emailField.inputName}`]: extractedEmail,
-        });
-      }
-      if (phoneField && phoneForDuplicateCheck) {
-        duplicateOr.push({
-          [`customFields.${phoneField.inputName}`]: phoneForDuplicateCheck,
-        });
-        if (phoneLocalNumber && phoneIsoCode) {
-          duplicateOr.push({
-            $and: [
-              { [`customFields.${phoneField.inputName}`]: phoneLocalNumber },
-              { isoCode: phoneIsoCode },
-            ],
-          });
-        }
-      }
-      if (extractedEmail) duplicateOr.push({ email: extractedEmail });
-      if (phoneForDuplicateCheck) {
-        duplicateOr.push({ phone: phoneForDuplicateCheck });
-        if (phoneLocalNumber && phoneIsoCode) {
-          duplicateOr.push({
-            $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }],
-          });
-        }
-      }
-    } else {
-      if (extractedEmail) duplicateOr.push({ email: extractedEmail });
-      if (phoneForDuplicateCheck) {
-        duplicateOr.push({ phone: phoneForDuplicateCheck });
-        if (phoneLocalNumber && phoneIsoCode) {
-          duplicateOr.push({
-            $and: [{ phone: phoneLocalNumber }, { isoCode: phoneIsoCode }],
-          });
-        }
-      }
-    }
+  if (emailChanged || phoneChanged) {
+    const duplicateOr = buildDuplicateOr({
+      hasCustomFields,
+      formFields: event.formFields || [],
+      extractedEmail,
+      phoneForDuplicateCheck,
+      phoneLocalNumber,
+      phoneIsoCode,
+      alsoClassic: hasCustomFields,
+      includeEmail: emailChanged,
+      includePhone: phoneChanged,
+    });
 
     const duplicateFilter = {
       eventId: event._id,
       _id: { $ne: reg._id },
+      isDeleted: { $ne: true },
       ...(duplicateOr.length > 0 ? { $or: duplicateOr } : {}),
     };
 
@@ -1438,7 +1395,7 @@ exports.bulkUpdateRegistrationApproval = asyncHandler(async (req, res) => {
     );
   }
 
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug, eventType: "public" });
   if (!event) return response(res, 404, "Event not found");
 
   if (!event.requiresApproval) {
@@ -1627,7 +1584,7 @@ exports.bulkUpdateRegistrationApproval = asyncHandler(async (req, res) => {
 
 exports.unsentCount = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug, eventType: "public" });
   if (!event) return response(res, 404, "Event not found");
 
   const unsentCount = await Registration.countDocuments({
@@ -1646,7 +1603,7 @@ exports.sendBulkEmails = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const { subject, body, statusFilter, emailSentFilter, whatsappSentFilter } =
     req.body;
-  const event = await Event.findOne({ slug }).lean();
+  const event = await Event.findOne({ slug, eventType: "public" }).lean();
   if (!event) return response(res, 404, "Event not found");
 
   const business = await Business.findById(event.businessId).lean();
@@ -1730,7 +1687,7 @@ exports.sendBulkWhatsApp = asyncHandler(async (req, res) => {
     whatsappSentFilter,
   } = req.body;
 
-  const event = await Event.findOne({ slug }).lean();
+  const event = await Event.findOne({ slug, eventType: "public" }).lean();
   if (!event) return response(res, 404, "Event not found");
 
   const business = await Business.findById(event.businessId).lean();
@@ -1811,7 +1768,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   const page = Number(req.query.page) || 1;
   const limit = Number(req.query.limit) || 10;
 
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug, eventType: "public" });
   if (!event) return response(res, 404, "Event not found");
   if (event.eventType !== "public") {
     return response(res, 400, "This event is not public");
@@ -1944,7 +1901,7 @@ async function loadRemainingRecords(eventId, total) {
 exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const event = await Event.findOne({ slug });
+  const event = await Event.findOne({ slug, eventType: "public" });
   if (!event) return response(res, 404, "Event not found");
   if (event.eventType !== "public") {
     return response(res, 400, "This event is not public");
@@ -2198,6 +2155,21 @@ exports.restoreRegistration = asyncHandler(async (req, res) => {
   const event = await Event.findById(reg.eventId).lean();
   if (!event) return response(res, 404, "Associated event not found");
 
+  const duplicateFilter = buildRestoreDuplicateFilter(event, reg);
+  if (duplicateFilter) {
+    const conflict = await Registration.findOne({
+      ...duplicateFilter,
+      isDeleted: { $ne: true },
+    });
+    if (conflict) {
+      return response(
+        res,
+        409,
+        "Cannot restore: email or phone already exists for this event"
+      );
+    }
+  }
+
   await reg.restore();
   await recountEventRegistrations(event._id);
 
@@ -2216,9 +2188,42 @@ exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
     return response(res, 404, "No registrations found in trash to restore");
   }
 
+  const eventCache = new Map();
+  let restoredCount = 0;
+  let skippedCount = 0;
+
   for (const reg of regs) {
+    const eventId = reg.eventId?.toString();
+    if (!eventId) {
+      skippedCount++;
+      continue;
+    }
+
+    let event = eventCache.get(eventId);
+    if (event === undefined) {
+      event = await Event.findById(reg.eventId).lean();
+      eventCache.set(eventId, event || null);
+    }
+    if (!event) {
+      skippedCount++;
+      continue;
+    }
+
+    const duplicateFilter = buildRestoreDuplicateFilter(event, reg);
+    if (duplicateFilter) {
+      const conflict = await Registration.findOne({
+        ...duplicateFilter,
+        isDeleted: { $ne: true },
+      });
+      if (conflict) {
+        skippedCount++;
+        continue;
+      }
+    }
+
     await reg.restore();
     await recountEventRegistrations(reg.eventId);
+    restoredCount++;
   }
 
   // Fire background recompute
@@ -2226,7 +2231,12 @@ exports.restoreAllRegistrations = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message),
   );
 
-  return response(res, 200, `Restored ${regs.length} registrations`);
+  return response(
+    res,
+    200,
+    `Restored ${restoredCount} registrations${skippedCount ? `, skipped ${skippedCount} due to duplicate email/phone` : ""
+    }`
+  );
 });
 
 // Permanent delete single registration

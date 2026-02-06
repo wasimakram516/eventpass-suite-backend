@@ -1,7 +1,13 @@
 const Registration = require("../../models/Registration");
 const Event = require("../../models/Event");
 const { emitUploadProgress } = require("../../socket/modules/digipass/digiPassSocket");
+const { pickEmail, pickPhone } = require("../../utils/customFieldUtils");
 const { normalizePhone } = require("../../utils/whatsappProcessorUtils");
+const {
+    buildDuplicateIndexForEvent,
+    hasDuplicate,
+    addToDuplicateIndex,
+} = require("../../utils/uploadRegistrationDuplicate");
 const {
     extractCountryCodeAndIsoCode,
     combinePhoneWithCountryCode,
@@ -19,6 +25,8 @@ module.exports = async function uploadProcessor(event, rows, user) {
     const CHUNK_SIZE = 100;
 
     try {
+        const duplicateIndex = await buildDuplicateIndexForEvent(event._id);
+
         for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
             const chunk = rows.slice(i, i + CHUNK_SIZE);
 
@@ -35,6 +43,9 @@ module.exports = async function uploadProcessor(event, rows, user) {
 
                     let phoneIsoCode = null;
                     let phoneLocalNumber = null;
+                    let phoneForDuplicateCheck = null;
+                    let extractedEmail = null;
+                    let extractedPhone = null;
 
                     const customFields = {};
                     let missingField = null;
@@ -78,13 +89,18 @@ module.exports = async function uploadProcessor(event, rows, user) {
                                 if (extracted.isoCode) {
                                     phoneLocalNumber = extracted.localNumber;
                                     extractedIsoCode = extracted.isoCode;
+                                    phoneForDuplicateCheck = normalizedPhone;
                                 } else {
                                     phoneLocalNumber = normalizedPhone;
                                     extractedIsoCode = extractedIsoCode || DEFAULT_ISO_CODE;
+                                    phoneForDuplicateCheck =
+                                        combinePhoneWithCountryCode(phoneLocalNumber, extractedIsoCode) || normalizedPhone;
                                 }
                             } else {
                                 phoneLocalNumber = normalizedPhone;
                                 extractedIsoCode = extractedIsoCode || DEFAULT_ISO_CODE;
+                                phoneForDuplicateCheck =
+                                    combinePhoneWithCountryCode(phoneLocalNumber, extractedIsoCode) || normalizedPhone;
                             }
 
                             customFields[phoneField.inputName] = phoneLocalNumber;
@@ -95,12 +111,30 @@ module.exports = async function uploadProcessor(event, rows, user) {
 
                     registrationData.customFields = customFields;
                     registrationData.isoCode = phoneIsoCode || null;
+                    extractedEmail = pickEmail(customFields);
+                    extractedPhone = phoneForDuplicateCheck || pickPhone(customFields);
+
+                    if (
+                        hasDuplicate(duplicateIndex, {
+                            email: extractedEmail,
+                            phoneLocalNumber,
+                            phoneForDuplicateCheck,
+                        })
+                    ) {
+                        skipped++;
+                        continue;
+                    }
 
                     if (user) {
                         await Registration.createWithAuditUser(registrationData, user);
                     } else {
                         await Registration.create(registrationData);
                     }
+                    addToDuplicateIndex(duplicateIndex, {
+                        email: extractedEmail,
+                        phone: phoneLocalNumber || phoneForDuplicateCheck || extractedPhone,
+                        isoCode: phoneIsoCode || null,
+                    });
                     imported++;
                 } catch (err) {
                     skipped++;

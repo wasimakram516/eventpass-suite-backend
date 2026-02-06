@@ -7,6 +7,11 @@ const {
 } = require("../../utils/customFieldUtils");
 const { normalizePhone } = require("../../utils/whatsappProcessorUtils");
 const {
+  buildDuplicateIndexForEvent,
+  hasDuplicate,
+  addToDuplicateIndex,
+} = require("../../utils/uploadRegistrationDuplicate");
+const {
   extractCountryCodeAndIsoCode,
   combinePhoneWithCountryCode,
   getCountryByCode,
@@ -21,7 +26,8 @@ function formatRowNumbers(arr) {
 }
 
 module.exports = async function uploadProcessor(event, rows, user) {
-  const eventId = event._id.toString();
+  const eventId = event._id;
+  const eventIdStr = event._id.toString();
   const total = rows.length;
   let processed = 0;
   let imported = 0;
@@ -31,6 +37,8 @@ module.exports = async function uploadProcessor(event, rows, user) {
   const CHUNK_SIZE = 100;
 
   try {
+    const duplicateIndex = await buildDuplicateIndexForEvent(eventId);
+
     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
       const chunk = rows.slice(i, i + CHUNK_SIZE);
 
@@ -180,44 +188,16 @@ module.exports = async function uploadProcessor(event, rows, user) {
             extractedPhone = phoneForDuplicateCheck || phone;
           }
 
-          const duplicateFilter = { eventId, isDeleted: { $ne: true } };
-          const or = [];
-
-          if (extractedEmail) {
-            if (hasCustomFields) {
-              const emailField = event.formFields.find((f) => f.inputType === "email");
-              if (emailField) {
-                or.push({ [`customFields.${emailField.inputName}`]: extractedEmail });
-              }
-            }
-            or.push({ email: extractedEmail });
-          }
-
-          if (extractedPhone) {
-            const phoneForDupCheck = phoneForDuplicateCheck || extractedPhone;
-            if (hasCustomFields) {
-              const phoneField = event.formFields.find((f) =>
-                f.inputType === "phone" ||
-                f.inputName?.toLowerCase().includes("phone")
-              );
-              if (phoneField) {
-
-                or.push({ [`customFields.${phoneField.inputName}`]: phoneLocalNumber || extractedPhone });
-                or.push({ [`customFields.${phoneField.inputName}`]: phoneForDupCheck });
-              }
-            }
-            or.push({ phone: phoneLocalNumber || extractedPhone });
-            or.push({ phone: phoneForDupCheck });
-          }
-
-          if (or.length > 0) {
-            duplicateFilter.$or = or;
-            const existing = await Registration.findOne(duplicateFilter);
-            if (existing) {
-              duplicateRowNumbers.push(rowNumber);
-              skipped++;
-              continue;
-            }
+          if (
+            hasDuplicate(duplicateIndex, {
+              email: extractedEmail,
+              phoneLocalNumber,
+              phoneForDuplicateCheck,
+            })
+          ) {
+            duplicateRowNumbers.push(rowNumber);
+            skipped++;
+            continue;
           }
 
           if (user) {
@@ -225,18 +205,23 @@ module.exports = async function uploadProcessor(event, rows, user) {
           } else {
             await Registration.create(registrationData);
           }
+          addToDuplicateIndex(duplicateIndex, {
+            email: extractedEmail,
+            phone: phoneLocalNumber || phoneForDuplicateCheck || extractedPhone,
+            isoCode: phoneIsoCode || null,
+          });
           imported++;
         } catch (err) {
           skipped++;
         }
 
-        emitUploadProgress(eventId, processed, total);
+        emitUploadProgress(eventIdStr, processed, total);
       }
 
       await new Promise((r) => setTimeout(r, 15));
     }
 
-    emitUploadProgress(eventId, total, total);
+    emitUploadProgress(eventIdStr, total, total);
 
     await Event.findByIdAndUpdate(eventId, {
       $inc: { registrations: imported },
@@ -248,7 +233,7 @@ module.exports = async function uploadProcessor(event, rows, user) {
       duplicateMessage = `Row${duplicateRowNumbers.length > 1 ? "s" : ""} ${rowNumbersText} ${duplicateRowNumbers.length > 1 ? "are" : "is"} already existing and ${duplicateRowNumbers.length > 1 ? "were" : "was"} skipped.`;
     }
 
-    emitUploadComplete(eventId, {
+    emitUploadComplete(eventIdStr, {
       imported,
       skipped,
       total,

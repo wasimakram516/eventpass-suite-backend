@@ -632,6 +632,15 @@ exports.restoreEvent = asyncHandler(async (req, res) => {
   });
   if (!event) return response(res, 404, "Event not found in trash");
 
+  const conflict = await Event.findOne({
+    _id: { $ne: event._id },
+    slug: event.slug,
+    isDeleted: { $ne: true },
+  });
+  if (conflict) {
+    return response(res, 409, "Cannot restore: slug already in use");
+  }
+
   await event.restore();
 
   // Fire background recompute
@@ -648,8 +657,21 @@ exports.restoreAllEvents = asyncHandler(async (req, res) => {
     return response(res, 404, "No public events found in trash to restore");
   }
 
+  let restoredCount = 0;
+  let skippedCount = 0;
+
   for (const ev of events) {
+    const conflict = await Event.findOne({
+      _id: { $ne: ev._id },
+      slug: ev.slug,
+      isDeleted: { $ne: true },
+    });
+    if (conflict) {
+      skippedCount++;
+      continue;
+    }
     await ev.restore();
+    restoredCount++;
   }
 
   // Fire background recompute
@@ -657,7 +679,11 @@ exports.restoreAllEvents = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
-  return response(res, 200, `Restored ${events.length} events`);
+  return response(
+    res,
+    200,
+    `Restored ${restoredCount} events${skippedCount ? `, skipped ${skippedCount} due to slug conflict` : ""}`
+  );
 });
 
 // Permanent delete single event (cascade delete registrations)
