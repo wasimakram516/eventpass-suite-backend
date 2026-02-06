@@ -833,7 +833,7 @@ exports.uploadParticipants = asyncHandler(async (req, res) => {
   });
 
   setImmediate(() => {
-    uploadProcessor(wheel, rows).catch((err) =>
+    uploadProcessor(wheel, rows, req.user).catch((err) =>
       console.error("SPINWHEEL UPLOAD PROCESSOR FAILED:", err)
     );
   });
