@@ -633,6 +633,30 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     };
   }
 
+  const useCustomQr = useCustomQrCode === true || useCustomQrCode === "true" || event.useCustomQrCode;
+  if (useCustomQr && (updates.logoUrl !== undefined || updates.brandingMedia !== undefined)) {
+    const baseWrapper = updates.customQrWrapper || event.customQrWrapper || {};
+    const synced = { ...baseWrapper };
+    if (updates.logoUrl !== undefined) {
+      synced.logo = { ...(baseWrapper.logo || {}), url: updates.logoUrl || "" };
+    }
+    if (updates.brandingMedia !== undefined) {
+      const items = Array.isArray(updates.brandingMedia)
+        ? updates.brandingMedia
+          .filter((m) => m && (m.logoUrl || m.url))
+          .map((m) => ({
+            url: m.logoUrl || m.url,
+            width: m.width !== undefined ? m.width : 200,
+            height: m.height !== undefined ? m.height : 60,
+            x: m.x !== undefined ? m.x : 50,
+            y: m.y !== undefined ? m.y : 15,
+          }))
+        : [];
+      synced.brandingMedia = { items };
+    }
+    updates.customQrWrapper = synced;
+  }
+
   if (req.user) {
     updates.updatedBy = req.user._id ?? req.user.id;
   }
