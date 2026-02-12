@@ -2,6 +2,8 @@ const GlobalConfig = require("../models/GlobalConfig");
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
 const { uploadToS3, deleteFromS3 } = require("../utils/s3Storage");
+const env = require("../config/env");
+const axios = require("axios");
 
 // ---------- helpers ----------
 function parseJsonArray(raw) {
@@ -353,7 +355,6 @@ exports.restoreConfig = asyncHandler(async (req, res) => {
 
 // Permanent delete (admin-only)
 exports.permanentDeleteConfig = asyncHandler(async (req, res) => {
-  // You can pick by ID if you prefer; here we delete the latest trashed one:
   const trashed = await GlobalConfig.findOne({ isDeleted: true }).sort({
     deletedAt: -1,
   });
@@ -362,3 +363,153 @@ exports.permanentDeleteConfig = asyncHandler(async (req, res) => {
   await trashed.deleteOne();
   return response(res, 200, "Global configuration permanently deleted");
 });
+
+function parseJson(raw) {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw === "object") return raw;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+exports.updateDefaultQrWrapper = asyncHandler(async (req, res) => {
+  const config = await GlobalConfig.findOne({ isDeleted: false });
+  if (!config) return response(res, 404, "Global configuration not found");
+
+  const payload = parseJson(req.body.defaultQrWrapper);
+  const businessSlug = "global";
+  const moduleName = "GlobalConfig";
+
+  if (!config.defaultQrWrapper) config.defaultQrWrapper = {};
+  const brandingItemsBeforeMerge = config.defaultQrWrapper?.brandingMedia?.items
+    ? config.defaultQrWrapper.brandingMedia.items.map((it) => ({ _id: String(it._id), url: it.url }))
+    : [];
+
+  if (payload) {
+    if (payload.logo && typeof payload.logo === "object") {
+      config.defaultQrWrapper.logo = { ...(config.defaultQrWrapper.logo || {}), ...payload.logo };
+      if (config.defaultQrWrapper.logo.url === undefined) config.defaultQrWrapper.logo.url = "";
+    }
+    if (payload.backgroundImage && typeof payload.backgroundImage === "object") {
+      config.defaultQrWrapper.backgroundImage = { ...(config.defaultQrWrapper.backgroundImage || {}), ...payload.backgroundImage };
+      if (config.defaultQrWrapper.backgroundImage.url === undefined) config.defaultQrWrapper.backgroundImage.url = "";
+    }
+    if (payload.brandingMedia && typeof payload.brandingMedia === "object") {
+      const existing = config.defaultQrWrapper.brandingMedia || {};
+      const legacyItems = existing.url
+        ? [{ url: existing.url, width: existing.width, height: existing.height, x: existing.x, y: existing.y }]
+        : (existing.items || []);
+      const payloadItems = Array.isArray(payload.brandingMedia.items) ? payload.brandingMedia.items : legacyItems;
+      config.defaultQrWrapper.brandingMedia = {
+        items: payloadItems.filter((i) => i && i.url).map((i) => ({
+          url: i.url,
+          width: i.width !== undefined ? i.width : 200,
+          height: i.height !== undefined ? i.height : 60,
+          x: i.x !== undefined ? i.x : 50,
+          y: i.y !== undefined ? i.y : 15,
+        })),
+      };
+    }
+    if (payload.qr && typeof payload.qr === "object") {
+      config.defaultQrWrapper.qr = { ...(config.defaultQrWrapper.qr || {}), ...payload.qr };
+    }
+    if (Array.isArray(payload.customFields)) {
+      config.defaultQrWrapper.customFields = payload.customFields;
+    }
+  }
+
+  if (req.files?.qrWrapperLogo) {
+    if (config.defaultQrWrapper?.logo?.url) {
+      try { await deleteFromS3(config.defaultQrWrapper.logo.url); } catch {}
+    }
+    const { fileUrl } = await uploadToS3(
+      req.files.qrWrapperLogo[0],
+      businessSlug,
+      moduleName,
+      { inline: true }
+    );
+    if (!config.defaultQrWrapper.logo) config.defaultQrWrapper.logo = {};
+    config.defaultQrWrapper.logo.url = fileUrl;
+  }
+  if (!req.files?.qrWrapperLogo && toBool(req.body.removeQrWrapperLogo) && config.defaultQrWrapper?.logo?.url) {
+    try { await deleteFromS3(config.defaultQrWrapper.logo.url); } catch {}
+    config.defaultQrWrapper.logo = config.defaultQrWrapper.logo || {};
+    config.defaultQrWrapper.logo.url = "";
+  }
+
+  if (req.files?.qrWrapperBackground) {
+    if (config.defaultQrWrapper?.backgroundImage?.url) {
+      try { await deleteFromS3(config.defaultQrWrapper.backgroundImage.url); } catch {}
+    }
+    const { fileUrl } = await uploadToS3(
+      req.files.qrWrapperBackground[0],
+      businessSlug,
+      moduleName,
+      { inline: true }
+    );
+    if (!config.defaultQrWrapper.backgroundImage) config.defaultQrWrapper.backgroundImage = {};
+    config.defaultQrWrapper.backgroundImage.url = fileUrl;
+  }
+  if (!req.files?.qrWrapperBackground && toBool(req.body.removeQrWrapperBackground) && config.defaultQrWrapper?.backgroundImage?.url) {
+    try { await deleteFromS3(config.defaultQrWrapper.backgroundImage.url); } catch {}
+    config.defaultQrWrapper.backgroundImage = config.defaultQrWrapper.backgroundImage || {};
+    config.defaultQrWrapper.backgroundImage.url = "";
+  }
+
+  const removeBrandingIds = parseJson(req.body.removeBrandingMediaIds);
+  if (Array.isArray(removeBrandingIds) && removeBrandingIds.length) {
+    const toRemove = new Set(removeBrandingIds.map(String));
+    for (const it of brandingItemsBeforeMerge) {
+      if (toRemove.has(it._id) && it.url) {
+        try { await deleteFromS3(it.url); } catch {}
+      }
+    }
+  }
+
+  if (toBool(req.body.clearAllBrandingMedia) || (Array.isArray(payload?.brandingMedia?.items) && payload.brandingMedia.items.length === 0 && brandingItemsBeforeMerge.length > 0)) {
+    for (const it of brandingItemsBeforeMerge) {
+      if (it?.url) { try { await deleteFromS3(it.url); } catch {} }
+    }
+  }
+
+  if (req.files?.qrWrapperBrandingMedia?.length) {
+    if (!config.defaultQrWrapper.brandingMedia) config.defaultQrWrapper.brandingMedia = { items: [] };
+    if (!Array.isArray(config.defaultQrWrapper.brandingMedia.items)) config.defaultQrWrapper.brandingMedia.items = [];
+    for (const file of req.files.qrWrapperBrandingMedia) {
+      const { fileUrl } = await uploadToS3(file, businessSlug, moduleName, { inline: true });
+      config.defaultQrWrapper.brandingMedia.items.push({ url: fileUrl, width: 200, height: 60, x: 50, y: 15 });
+    }
+  }
+
+  await config.save();
+  return response(res, 200, "Default QR wrapper updated", config);
+});
+
+// Proxy image for QR wrapper download (avoids CORS; only allows app CloudFront URLs)
+exports.proxyImage = asyncHandler(async (req, res) => {
+  const rawUrl = req.query.url;
+  if (!rawUrl || typeof rawUrl !== "string") {
+    return response(res, 400, "Missing url query");
+  }
+  const url = decodeURIComponent(rawUrl.trim());
+  const allowedBase = (env.aws.cloudfrontUrl || "").replace(/\/$/, "");
+  if (!allowedBase || !url.startsWith(allowedBase)) {
+    return response(res, 403, "URL not allowed");
+  }
+  try {
+    const ax = await axios.get(url, {
+      responseType: "arraybuffer",
+      timeout: 15000,
+      maxRedirects: 3,
+      validateStatus: (status) => status === 200,
+    });
+    const contentType = ax.headers["content-type"] || "image/png";
+    res.set("Content-Type", contentType);
+    res.set("Cache-Control", "private, max-age=60");
+    res.send(Buffer.from(ax.data));
+  } catch (err) {
+    if (err.response?.status) {
+      return response(res, err.response.status, "Image fetch failed");
+    }
+    return response(res, 502, "Image fetch failed");
+  }
+});
+

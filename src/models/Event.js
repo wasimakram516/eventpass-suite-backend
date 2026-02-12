@@ -110,6 +110,47 @@ const EventSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: {},
   },
+
+  /** ===== Custom QR Code Wrapper (event-level) ===== */
+  useCustomQrCode: { type: Boolean, default: false },
+  customQrWrapper: {
+    logo: {
+      url: { type: String },
+      width: { type: Number },
+      height: { type: Number },
+      x: { type: Number },
+      y: { type: Number },
+    },
+    backgroundImage: { url: { type: String } },
+    brandingMedia: {
+      items: [{
+        url: { type: String },
+        width: { type: Number },
+        height: { type: Number },
+        x: { type: Number },
+        y: { type: Number },
+      }],
+    },
+    qr: {
+      x: { type: Number },
+      y: { type: Number },
+      size: { type: Number },
+    },
+    customFields: [{
+      id: { type: String },
+      label: { type: String },
+      x: { type: Number },
+      y: { type: Number },
+      fontSize: { type: Number },
+      fontFamily: { type: String },
+      text: { type: String },
+      color: { type: String },
+      isBold: { type: Boolean },
+      isItalic: { type: Boolean },
+      isUnderline: { type: Boolean },
+      alignment: { type: String },
+    }],
+  },
 }, { timestamps: true });
 
 EventSchema.index({ businessId: 1, isDeleted: 1 });
