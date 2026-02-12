@@ -67,7 +67,46 @@ const GlobalConfigSchema = new mongoose.Schema({
       weight: { type: Number },
       style: { type: String, default: 'normal' }
     }]
-  }]
+  }],
+
+  defaultQrWrapper: {
+    logo: {
+      url: { type: String },
+      width: { type: Number },
+      height: { type: Number },
+      x: { type: Number },
+      y: { type: Number }
+    },
+    backgroundImage: { url: { type: String } },
+    brandingMedia: {
+      items: [{
+        url: { type: String },
+        width: { type: Number },
+        height: { type: Number },
+        x: { type: Number },
+        y: { type: Number }
+      }]
+    },
+    qr: {
+      x: { type: Number },
+      y: { type: Number },
+      size: { type: Number }
+    },
+    customFields: [{
+      id: { type: String },
+      label: { type: String },
+      x: { type: Number },
+      y: { type: Number },
+      fontSize: { type: Number },
+      fontFamily: { type: String },
+      text: { type: String },
+      color: { type: String },
+      isBold: { type: Boolean },
+      isItalic: { type: Boolean },
+      isUnderline: { type: Boolean },
+      alignment: { type: String }
+    }]
+  }
 
 }, { timestamps: true });
 

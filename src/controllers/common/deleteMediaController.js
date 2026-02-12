@@ -16,15 +16,67 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
     gameId,
     memoryImageId,
     deleteAllMemoryImages,
+    defaultQrWrapperBrandingId,
+    defaultQrWrapperClearAllBranding,
   } = req.body;
 
   const isMemoryImageOperation = mediaType === "memoryImage" && gameId;
+  const isDefaultQrWrapperOperation =
+    mediaType === "defaultQrWrapperLogo" ||
+    mediaType === "defaultQrWrapperBackground" ||
+    (mediaType === "defaultQrWrapperBranding" && (defaultQrWrapperBrandingId || defaultQrWrapperClearAllBranding));
+  const isEventQrWrapperBackground = mediaType === "eventQrWrapperBackground" && eventId;
 
-  if (!fileUrl && !isMemoryImageOperation) {
+  if (!fileUrl && !isMemoryImageOperation && !isDefaultQrWrapperOperation && !isEventQrWrapperBackground) {
     return response(res, 400, "File URL is required");
   }
 
   try {
+    if (mediaType === "defaultQrWrapperLogo" || mediaType === "defaultQrWrapperBackground" || mediaType === "defaultQrWrapperBranding") {
+      if (!req.user || (req.user.role !== "superadmin" && req.user.role !== "admin")) {
+        return response(res, 403, "Forbidden - Admins only");
+      }
+      const GlobalConfig = require("../../models/GlobalConfig");
+      const config = await GlobalConfig.findOne({ isDeleted: false });
+      if (!config) return response(res, 404, "Global configuration not found");
+      if (!config.defaultQrWrapper) config.defaultQrWrapper = {};
+
+      if (mediaType === "defaultQrWrapperLogo") {
+        if (config.defaultQrWrapper.logo?.url) {
+          try { await deleteFromS3(config.defaultQrWrapper.logo.url); } catch {}
+        }
+        config.defaultQrWrapper.logo = config.defaultQrWrapper.logo || {};
+        config.defaultQrWrapper.logo.url = "";
+      } else if (mediaType === "defaultQrWrapperBackground") {
+        if (config.defaultQrWrapper.backgroundImage?.url) {
+          try { await deleteFromS3(config.defaultQrWrapper.backgroundImage.url); } catch {}
+        }
+        config.defaultQrWrapper.backgroundImage = config.defaultQrWrapper.backgroundImage || {};
+        config.defaultQrWrapper.backgroundImage.url = "";
+      } else if (mediaType === "defaultQrWrapperBranding") {
+        const items = config.defaultQrWrapper.brandingMedia?.items || [];
+        if (defaultQrWrapperClearAllBranding) {
+          for (const it of items) {
+            if (it?.url) { try { await deleteFromS3(it.url); } catch {} }
+          }
+          config.defaultQrWrapper.brandingMedia = config.defaultQrWrapper.brandingMedia || {};
+          config.defaultQrWrapper.brandingMedia.items = [];
+        } else if (defaultQrWrapperBrandingId) {
+          const id = String(defaultQrWrapperBrandingId);
+          const idx = items.findIndex((it) => String(it._id) === id);
+          if (idx === -1) return response(res, 404, "Branding item not found");
+          const item = items[idx];
+          if (item?.url) { try { await deleteFromS3(item.url); } catch {} }
+          items.splice(idx, 1);
+          config.defaultQrWrapper.brandingMedia = config.defaultQrWrapper.brandingMedia || {};
+          config.defaultQrWrapper.brandingMedia.items = items;
+        }
+      }
+
+      await config.save();
+      return response(res, 200, "Media deleted successfully", config);
+    }
+
     if (fileUrl) {
       await deleteFromS3(fileUrl);
     }
@@ -73,6 +125,18 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
         }
       } else if (mediaType === "agenda") {
         updates.agendaUrl = null;
+      } else if (mediaType === "eventQrWrapperBackground") {
+        if (event.customQrWrapper?.backgroundImage?.url) {
+          try {
+            await deleteFromS3(event.customQrWrapper.backgroundImage.url);
+          } catch (err) {
+            console.warn("Failed to delete event QR wrapper background from S3:", err);
+          }
+        }
+        updates.customQrWrapper = {
+          ...(event.customQrWrapper || {}),
+          backgroundImage: { url: "" },
+        };
       }
 
       if (Object.keys(updates).length > 0) {

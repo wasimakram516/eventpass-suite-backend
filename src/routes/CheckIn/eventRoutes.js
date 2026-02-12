@@ -8,10 +8,16 @@ const {
   updateEvent,
   deleteEvent,
 } = require("../../controllers/CheckIn/eventController");
-
+const { updateEventCustomQrWrapper } = require("../../controllers/common/eventCustomQrWrapperController");
 const { protect, checkPermission } = require("../../middlewares/auth");
+const multer = require("../../middlewares/uploadMiddleware");
 
 const checkInAccess = [protect, checkPermission.checkin];
+const qrWrapperUpload = multer.fields([
+  { name: "qrWrapperLogo", maxCount: 1 },
+  { name: "qrWrapperBackground", maxCount: 1 },
+  { name: "qrWrapperBrandingMedia", maxCount: 20 },
+]);
 
 // Get all events
 router.get("/", checkInAccess, getEventDetails);
@@ -35,6 +41,9 @@ router.put(
   checkInAccess,
   updateEvent
 );
+
+// Update event custom QR wrapper (closed events)
+router.put("/:id/custom-qr-wrapper", checkInAccess, qrWrapperUpload, updateEventCustomQrWrapper("closed"));
 
 // Delete an event
 router.delete("/:id", checkInAccess, deleteEvent);

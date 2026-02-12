@@ -130,6 +130,8 @@ exports.createEvent = asyncHandler(async (req, res) => {
     emailTemplate,
     badgeFields,
     badgeCustomizations,
+    useCustomQrCode,
+    customQrWrapperBackgroundUrl,
   } = req.body;
 
   let { capacity, formFields } = req.body;
@@ -260,6 +262,16 @@ exports.createEvent = asyncHandler(async (req, res) => {
       }
       : {}),
     customizations: badgeCustomizations || {},
+    useCustomQrCode: useCustomQrCode === true || useCustomQrCode === "true",
+    ...(customQrWrapperBackgroundUrl && String(customQrWrapperBackgroundUrl).trim()
+      ? {
+          customQrWrapper: {
+            brandingMedia: { items: [] },
+            customFields: [],
+            backgroundImage: { url: String(customQrWrapperBackgroundUrl).trim() },
+          },
+        }
+      : {}),
   };
   const newEvent = req.user
     ? await Event.createWithAuditUser(eventPayload, req.user)
@@ -307,6 +319,9 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     emailTemplate,
     badgeFields,
     badgeCustomizations,
+    useCustomQrCode,
+    customQrWrapperBackgroundUrl,
+    removeQrWrapperBackground,
   } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -580,6 +595,41 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     updates.emailTemplate = {
       subject: parsedEmailTemplate.subject || "",
       body: parsedEmailTemplate.body || "",
+    };
+  }
+
+  if (
+    typeof useCustomQrCode === "boolean" ||
+    useCustomQrCode === "true" ||
+    useCustomQrCode === "false"
+  ) {
+    updates.useCustomQrCode =
+      useCustomQrCode === "true" || useCustomQrCode === true;
+  }
+
+  if (removeQrWrapperBackground === "true" || removeQrWrapperBackground === true) {
+    if (event.customQrWrapper?.backgroundImage?.url) {
+      try {
+        await deleteFromS3(event.customQrWrapper.backgroundImage.url);
+      } catch (err) {
+        console.warn("Failed to delete event QR wrapper background from S3:", err);
+      }
+    }
+    updates.customQrWrapper = {
+      ...(event.customQrWrapper || {}),
+      backgroundImage: { url: "" },
+    };
+  } else if (customQrWrapperBackgroundUrl !== undefined && customQrWrapperBackgroundUrl !== null && customQrWrapperBackgroundUrl !== "") {
+    if (event.customQrWrapper?.backgroundImage?.url && event.customQrWrapper.backgroundImage.url !== customQrWrapperBackgroundUrl) {
+      try {
+        await deleteFromS3(event.customQrWrapper.backgroundImage.url);
+      } catch (err) {
+        console.warn("Failed to delete previous event QR wrapper background from S3:", err);
+      }
+    }
+    updates.customQrWrapper = {
+      ...(event.customQrWrapper || {}),
+      backgroundImage: { url: String(customQrWrapperBackgroundUrl) },
     };
   }
 
