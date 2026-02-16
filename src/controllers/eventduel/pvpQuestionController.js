@@ -6,6 +6,7 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const XLSX = require("xlsx");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const { deleteFromS3 } = require("../../utils/s3Storage");
+const { createLog } = require("../../utils/logger");
 
 // Download sample Excel template
 exports.downloadSampleTemplate = asyncHandler(async (req, res) => {
@@ -119,6 +120,24 @@ exports.uploadQuestions = asyncHandler(async (req, res) => {
   recomputeAndEmit(game.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
+
+  // Log each uploaded question as "Question" create
+  const userId = req.user?._id ?? req.user?.id ?? null;
+  if (userId && game.questions?.length) {
+    const businessId = game.businessId ?? null;
+    for (const q of game.questions) {
+      if (q._id) {
+        createLog({
+          userId,
+          logType: "create",
+          itemType: "Question",
+          itemId: q._id,
+          businessId,
+          module: "EventDuel",
+        });
+      }
+    }
+  }
 
   return response(res, 200, "Questions uploaded", { count: questions.length });
 });

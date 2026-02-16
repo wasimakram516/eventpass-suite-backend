@@ -8,18 +8,31 @@ const EventSchema = new mongoose.Schema({
   },
   name: { type: String, required: true },
   slug: { type: String, required: true },
-  startDate: { type: Date, required: true },
+  startDate: {
+    type: Date,
+    required: function () {
+      return this.eventType === "closed" || this.eventType === "public";
+    },
+  },
   endDate: {
     type: Date,
-    required: true,
+    required: function () {
+      return this.eventType === "closed" || this.eventType === "public";
+    },
     validate: {
       validator: function (value) {
+        if (this.eventType !== "closed" && this.eventType !== "public") return true;
         return value >= this.startDate;
       },
       message: "End date must be greater than or equal to start date.",
     },
   },
-  venue: { type: String, required: true },
+  venue: {
+    type: String,
+    required: function () {
+      return this.eventType === "closed" || this.eventType === "public";
+    },
+  },
   description: { type: String },
   logoUrl: { type: String },
   background: {
@@ -58,13 +71,16 @@ const EventSchema = new mongoose.Schema({
   registrations: { type: Number, default: 0 },
   eventType: {
     type: String,
-    enum: ["closed", "public"],
+    enum: ["closed", "public", "digipass", "votecast"],
     required: true,
     default: "public",
   },
   startTime: { type: String },
   endTime: { type: String },
   timezone: { type: String, default: "Asia/Muscat" },
+
+  maxTasksPerUser: { type: Number, default: null },
+  minTasksPerUser: { type: Number, default: null },
 
   /** ===== Custom Form Fields ===== */
   formFields: [
@@ -78,6 +94,7 @@ const EventSchema = new mongoose.Schema({
       values: [String],
       required: { type: Boolean, default: false },
       visible: { type: Boolean, default: true },
+      identity: { type: Boolean, default: false },
     },
   ],
 

@@ -13,6 +13,8 @@ const {
 const { updateEventCustomQrWrapper } = require("../../controllers/common/eventCustomQrWrapperController");
 const { protect, checkPermission } = require("../../middlewares/auth");
 const multer = require("../../middlewares/uploadMiddleware");
+const activityLogger = require("../../middlewares/activityLogger");
+const Event = require("../../models/Event");
 
 const eventRegAccess = [protect, checkPermission.eventreg];
 const qrWrapperUpload = multer.fields([
@@ -36,15 +38,64 @@ router.get("/business/:businessId", getEventsByBusinessId);
 router.get("/business/slug/:slug", getEventsByBusinessSlug);
 
 // CREATE public event
-router.post("/", eventRegAccess, createEvent);
+router.post(
+  "/",
+  eventRegAccess,
+  activityLogger({
+    logType: "create",
+    itemType: "Event",
+    module: "EventReg",
+  }),
+  createEvent
+);
+
 
 // UPDATE public event
-router.put("/:id", eventRegAccess, updateEvent);
+router.put(
+  "/:id",
+  eventRegAccess,
+  activityLogger({
+    logType: "update",
+    itemType: "Event",
+    module: "EventReg",
+    getItemId: (req) => req.params.id,
+    getBusinessId: (req, data) => data?.businessId ?? null,
+
+  }),
+  updateEvent
+);
 
 // UPDATE event custom QR wrapper (public events)
-router.put("/:id/custom-qr-wrapper", eventRegAccess, qrWrapperUpload, updateEventCustomQrWrapper("public"));
+router.put(
+  "/:id/custom-qr-wrapper",
+  eventRegAccess,
+  qrWrapperUpload,
+  activityLogger({
+    logType: "update",
+    itemType: "Event",
+    module: "EventReg",
+    getItemId: (req) => req.params.id,
+    getBusinessId: (req, data) => data?.businessId ?? null,
+  }),
+  updateEventCustomQrWrapper("public")
+);
+
 
 // DELETE public event
-router.delete("/:id", eventRegAccess, deleteEvent);
+router.delete(
+  "/:id",
+  eventRegAccess,
+  activityLogger({
+    logType: "delete",
+    itemType: "Event",
+    module: "EventReg",
+    getItemId: (req) => req.params.id,
+    preFetchBusinessId: async (req) => {
+      const event = await Event.findById(req.params.id).select("businessId").lean();
+      return event?.businessId ?? null;
+    },
+  }),
+  deleteEvent
+);
 
 module.exports = router;

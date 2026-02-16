@@ -8,7 +8,7 @@ const {
     DEFAULT_ISO_CODE,
 } = require("../../utils/countryCodes");
 
-module.exports = async function uploadProcessor(spinWheel, rows) {
+module.exports = async function uploadProcessor(spinWheel, rows, user = null) {
     const spinWheelId = spinWheel._id.toString();
     const total = rows.length;
     let processed = 0;
@@ -75,7 +75,11 @@ module.exports = async function uploadProcessor(spinWheel, rows) {
                         company: company ? company.trim() : null,
                     };
 
-                    await SpinWheelParticipant.create(participantData);
+                    if (user) {
+                        await SpinWheelParticipant.createWithAuditUser(participantData, user);
+                    } else {
+                        await SpinWheelParticipant.create(participantData);
+                    }
                     imported++;
                 } catch (err) {
                     skipped++;

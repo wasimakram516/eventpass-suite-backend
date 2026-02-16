@@ -23,10 +23,44 @@ const {
 } = require("../../controllers/CheckIn/registrationController");
 
 const { protect, optionalProtect, checkPermission } = require("../../middlewares/auth");
+const activityLogger = require("../../middlewares/activityLogger");
+const Registration = require("../../models/Registration");
+const Event = require("../../models/Event");
 const CheckInAccess = [protect, checkPermission.checkin];
 
+const preFetchRegistrationBusinessId = async (req) => {
+  const reg = await Registration.findById(req.params.id).select("eventId").lean();
+  if (!reg?.eventId) return null;
+  const event = await Event.findById(reg.eventId).select("businessId").lean();
+  return event?.businessId ?? null;
+};
+
+const preFetchBusinessIdForCreateRegistration = async (req) => {
+  const slug = req.body?.slug;
+  if (slug) {
+    const e = await Event.findOne({ slug, eventType: "closed" }).select("businessId").lean();
+    return e?.businessId ?? null;
+  }
+  const eventId = req.body?.eventId;
+  if (eventId) {
+    const e = await Event.findById(eventId).select("businessId").lean();
+    return e?.businessId ?? null;
+  }
+  return null;
+};
+
 // Create registration: public (no auth) or CMS (token optional — sets createdBy when present)
-router.post("/", optionalProtect, createRegistration);
+router.post(
+  "/",
+  optionalProtect,
+  activityLogger({
+    logType: "create",
+    itemType: "Registration",
+    module: "CheckIn",
+    preFetchBusinessId: preFetchBusinessIdForCreateRegistration,
+  }),
+  createRegistration
+);
 
 // Public endpoints for token-based confirmation
 router.get("/by-token", getRegistrationByToken);
@@ -34,13 +68,46 @@ router.post("/confirm-presence", confirmPresence);
 router.post("/update-attendance-status", updateAttendanceStatus);
 
 // Update registration
-router.put("/:id", CheckInAccess, updateRegistration);
+router.put(
+  "/:id",
+  CheckInAccess,
+  activityLogger({
+    logType: "update",
+    itemType: "Registration",
+    module: "CheckIn",
+    getItemId: (req) => req.params.id,
+    preFetchBusinessId: preFetchRegistrationBusinessId,
+  }),
+  updateRegistration
+);
 
 // Update registration approval status
-router.patch("/:id/approval", CheckInAccess, updateRegistrationApproval);
+router.patch(
+  "/:id/approval",
+  CheckInAccess,
+  activityLogger({
+    logType: "update",
+    itemType: "Registration",
+    module: "CheckIn",
+    getItemId: (req) => req.params.id,
+    preFetchBusinessId: preFetchRegistrationBusinessId,
+  }),
+  updateRegistrationApproval
+);
 
 // Create walkin record for a registration (protected)
-router.post("/:id/walkin", CheckInAccess, createWalkIn);
+router.post(
+  "/:id/walkin",
+  CheckInAccess,
+  activityLogger({
+    logType: "create",
+    itemType: "Registration",
+    module: "CheckIn",
+    getItemId: (req) => req.params.id,
+    preFetchBusinessId: preFetchRegistrationBusinessId,
+  }),
+  createWalkIn
+);
 
 // SEND bulk emails to all registrations for an event (protected)
 router.post("/event/:slug/bulk-email", CheckInAccess, upload.single("file"), sendBulkEmails);
@@ -61,7 +128,18 @@ router.get("/event/:slug/all", CheckInAccess, getAllCheckInRegistrationsByEvent)
 router.get("/event/:slug/export", CheckInAccess, exportRegistrations);
 
 // Delete a registration by ID (protected)
-router.delete("/:id", CheckInAccess, deleteRegistration);
+router.delete(
+  "/:id",
+  CheckInAccess,
+  activityLogger({
+    logType: "delete",
+    itemType: "Registration",
+    module: "CheckIn",
+    getItemId: (req) => req.params.id,
+    preFetchBusinessId: preFetchRegistrationBusinessId,
+  }),
+  deleteRegistration
+);
 
 // Sample Excel and upload
 router.get("/event/:slug/sample-excel", CheckInAccess, downloadSampleExcel);

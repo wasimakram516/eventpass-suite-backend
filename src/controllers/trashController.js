@@ -2,6 +2,51 @@ const asyncHandler = require("../middlewares/asyncHandler");
 const response = require("../utils/response");
 const moduleMapping = require("../utils/trashMappings");
 const mongoose = require("mongoose");
+const { createLog } = require("../utils/logger");
+
+const MODEL_TO_ITEM_TYPE = {
+  User: "User",
+  Business: "Event",
+  Event: "Event",
+  Registration: "Registration",
+  Poll: "Poll",
+  SpinWheel: "SpinWheel",
+  SpinWheelParticipant: "WheelSpin",
+  DisplayMedia: "MosaicWall",
+  WallConfig: "MosaicWall",
+  GlobalConfig: null,
+  Game: "Game",
+  GameSession: "Game",
+  SurveyForm: "Event",
+  WalkIn: "Registration",
+  EventQuestion: "Question",
+};
+
+function mapModuleName(moduleKey = "") {
+  const key = String(moduleKey).toLowerCase();
+  if (key.includes("eventreg")) return "EventReg";
+  if (key.includes("checkin")) return "CheckIn";
+  if (key.includes("digipass")) return "DigiPass";
+  if (key.includes("votecast") || key === "poll") return "VoteCast";
+  if (key.includes("eventduel") || key.includes("pvp")) return "EventDuel";
+  if (key.includes("tapmatch")) return "TapMatch";
+  if (key.includes("quiznest") || key.includes("qn")) return "QuizNest";
+  if (key.includes("survey")) return "SurveyGuru";
+  if (key.includes("stageq") || key === "question") return "StageQ";
+  if (key.includes("spinwheel") || key.includes("wheel")) return "EventWheel";
+  if (key.includes("wall") || key.includes("media") || key.includes("mosaic"))
+    return "MosaicWall";
+  if (key === "user" || key.includes("business")) return "User";
+  return "Other";
+}
+
+function getLogMetaForModule(moduleKey, entry) {
+  const modelName = entry?.model?.modelName || null;
+  return {
+    itemType: MODEL_TO_ITEM_TYPE[modelName] ?? null,
+    module: mapModuleName(moduleKey),
+  };
+}
 
 /**
  * Utility: build query / aggregation depending on condition type
@@ -333,6 +378,29 @@ exports.restoreItem = asyncHandler(async (req, res, next) => {
   if (!entry) return response(res, 400, "Invalid module");
   if (!entry.controller.restore)
     return response(res, 400, "Restore not implemented for this module");
+
+  const { itemType, module: moduleName } = getLogMetaForModule(module, entry);
+  const originalJson = res.json.bind(res);
+  res.json = function (body) {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      createLog({
+        userId: req.user?._id ?? req.user?.id ?? null,
+        logType: "restore",
+        itemType,
+        itemId: req.params?.id ?? null,
+        businessId:
+          body?.data?.businessId ??
+          body?.data?.business?._id ??
+          req.body?.businessId ??
+          req.query?.businessId ??
+          null,
+        module: moduleName,
+        meta: { action: "restore", source: "trash" },
+      });
+    }
+    return originalJson(body);
+  };
+
   return entry.controller.restore(req, res, next);
 });
 
@@ -355,6 +423,27 @@ exports.restoreAllItems = asyncHandler(async (req, res, next) => {
   if (!entry) return response(res, 400, "Invalid module");
   if (!entry.controller.restoreAll)
     return response(res, 400, "Bulk restore not implemented for this module");
+
+  const { itemType, module: moduleName } = getLogMetaForModule(module, entry);
+  const originalJson = res.json.bind(res);
+  res.json = function (body) {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      createLog({
+        userId: req.user?._id ?? req.user?.id ?? null,
+        logType: "restore",
+        itemType,
+        itemId: null,
+        businessId:
+          req.body?.businessId ??
+          req.query?.businessId ??
+          null,
+        module: moduleName,
+        meta: { action: "restore_all", source: "trash", targetModule: module },
+      });
+    }
+    return originalJson(body);
+  };
+
   return entry.controller.restoreAll(req, res, next);
 });
 

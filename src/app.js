@@ -8,7 +8,7 @@ const errorHandler = require("./middlewares/errorHandler");
 const response = require("./utils/response");
 
 const allRoutes = require("./routes/index");
-
+const logRoutes = require("./routes/logRoutes");
 const app = express();
 app.use(morgan("dev"));
 
@@ -17,7 +17,7 @@ const allowedOrigins = [
   "http://localhost:3000",
   "https://eventpass-whitewall.vercel.app",
   "https://www.whitewall.solutions",
-  "https://whitewall.solutions", 
+  "https://whitewall.solutions",
   "https://eventpass.whitewall.solutions",
   "https://uat-eventpass-whitewall.vercel.app",
   "https://uat.eventpass.whitewall.solutions",
@@ -60,5 +60,6 @@ app.get("/", (req, res) => {
 // ------------------ 404 & Error Handling ------------------
 app.use((req, res) => response(res, 404, `Route not found: ${req.originalUrl}`));
 app.use(errorHandler);
+app.use("/api/logs", logRoutes);
 
 module.exports = app;

@@ -1,5 +1,6 @@
+const mongoose = require("mongoose");
 const Poll = require("../../models/Poll");
-const Business = require("../../models/Business");
+const Event = require("../../models/Event");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const XLSX = require("xlsx");
@@ -8,8 +9,7 @@ const { uploadToS3, deleteFromS3 } = require("../../utils/s3Storage");
 
 // GET polls
 exports.getPolls = asyncHandler(async (req, res) => {
-  const { businessSlug, status } = req.query;
-  const user = req.user;
+  const { eventId } = req.query;
 
   const filter = {};
   if (eventId) {
@@ -36,7 +36,7 @@ exports.getPolls = asyncHandler(async (req, res) => {
 
 // POST create poll
 exports.createPoll = asyncHandler(async (req, res) => {
-  const { question, options, businessId, status, type } = req.body;
+  const { question, options, eventId, type } = req.body;
   const user = req.user;
 
   if (!question || !options) {
@@ -77,40 +77,39 @@ exports.createPoll = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid poll type");
   }
 
-  let business;
-  if (user.role === "business") {
-    business = await Business.findOne({ owner: user.id });
-    if (!business)
-      return response(res, 403, "You don’t have a business account");
-  } else {
-    business = await Business.findById(businessId);
-    if (!business) return response(res, 404, "Business not found");
+  // Validate that each option has either text or imageUrl
+  for (const opt of parsedOptions) {
+    const hasText = opt.text && opt.text.trim() !== "";
+    const hasImage = opt.imageUrl && opt.imageUrl.trim() !== "";
+    if (!hasText && !hasImage) {
+      return response(res, 400, "Each option must have either text or image");
+    }
   }
 
-
   const enrichedOptions = parsedOptions.map((opt) => {
-    if (!opt.text) throw new Error("Each option must have text");
-
-
+    const text = opt.text && opt.text.trim() !== "" ? opt.text.trim() : null;
     const imageUrl = opt.imageUrl && opt.imageUrl.trim() !== "" ? opt.imageUrl : null;
 
     return {
-      text: opt.text,
+      text: text || "",
       imageUrl: imageUrl,
       votes: 0,
     };
   });
 
-  const poll = await Poll.create({
-    question,
-    options: enrichedOptions,
-    business: business._id,
-    status: status || "active",
-    type: type || "options",
-  });
+  const poll = await Poll.createWithAuditUser(
+    {
+      question,
+      options: enrichedOptions,
+      business: event.businessId,
+      eventId: event._id,
+      type: type || "options",
+    },
+    req.user
+  );
 
   // Fire background recompute
-  recomputeAndEmit(business._id || null).catch((err) =>
+  recomputeAndEmit(event.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
@@ -123,10 +122,10 @@ exports.createPoll = asyncHandler(async (req, res) => {
 // PATCH update poll
 exports.updatePoll = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { question, options, status, type } = req.body;
+  const { question, options, type } = req.body;
   const user = req.user;
 
-  const poll = await Poll.findById(id).populate("business");
+  const poll = await Poll.findById(id).populate("eventId");
   if (!poll) return response(res, 404, "Poll not found");
 
   const pollEvent = await Event.findById(poll.eventId);
@@ -135,11 +134,10 @@ exports.updatePoll = asyncHandler(async (req, res) => {
   }
 
   const isAdmin = ["admin", "superadmin"].includes(user.role);
-  const isOwner = String(poll.business.owner) === user.id;
+  const isOwner = String(pollEvent.businessId) === String(user.business?._id || user.business);
   if (!isAdmin && !isOwner) return response(res, 403, "Permission denied");
 
   if (question !== undefined) poll.question = question;
-  if (status !== undefined) poll.status = status;
 
   if (type !== undefined) {
     if (!["options", "slider"].includes(type)) {
@@ -160,13 +158,21 @@ exports.updatePoll = asyncHandler(async (req, res) => {
       return response(res, 400, "At least 2 options are required");
     }
 
+    // Validate that each option has either text or imageUrl
+    for (const opt of parsedOptions) {
+      const hasText = opt.text && opt.text.trim() !== "";
+      const hasImage = opt.imageUrl && opt.imageUrl.trim() !== "";
+      if (!hasText && !hasImage) {
+        return response(res, 400, "Each option must have either text or image");
+      }
+    }
 
     poll.options = await Promise.all(
       parsedOptions.map(async (opt, idx) => {
         const existingOption = poll.options[idx];
 
+        const text = opt.text && opt.text.trim() !== "" ? opt.text.trim() : null;
         let imageUrl = opt.imageUrl && opt.imageUrl.trim() !== "" ? opt.imageUrl : null;
-
 
         if (!imageUrl && existingOption?.imageUrl) {
           try {
@@ -185,7 +191,7 @@ exports.updatePoll = asyncHandler(async (req, res) => {
         }
 
         return {
-          text: opt.text,
+          text: text || "",
           imageUrl: imageUrl,
           votes: typeof opt.votes === "number" ? opt.votes : (existingOption?.votes || 0),
         };
@@ -197,7 +203,7 @@ exports.updatePoll = asyncHandler(async (req, res) => {
   await poll.save();
 
   // Fire background recompute
-  recomputeAndEmit(poll.business || null).catch((err) =>
+  recomputeAndEmit(pollEvent.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
@@ -212,7 +218,7 @@ exports.deletePoll = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const user = req.user;
 
-  const poll = await Poll.findById(id).populate("business");
+  const poll = await Poll.findById(id).populate("eventId");
   if (!poll) return response(res, 404, "Poll not found");
 
   const pollEvent = await Event.findById(poll.eventId);
@@ -221,13 +227,13 @@ exports.deletePoll = asyncHandler(async (req, res) => {
   }
 
   const isAdmin = ["admin", "superadmin"].includes(user.role);
-  const isOwner = String(poll.business.owner) === user.id;
+  const isOwner = String(pollEvent.businessId) === String(user.business?._id || user.business);
   if (!isAdmin && !isOwner) return response(res, 403, "Permission denied");
 
   await poll.softDelete(req.user.id);
 
   // Fire background recompute
-  recomputeAndEmit(poll.business || null).catch((err) =>
+  recomputeAndEmit(pollEvent.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)
   );
 
@@ -322,12 +328,12 @@ exports.clonePoll = asyncHandler(async (req, res) => {
 
   const clonedPoll = new Poll({
     business: existingPoll.business,
+    eventId: existingPoll.eventId,
     question: existingPoll.question + " (Copy)",
     options: existingPoll.options.map((opt) => ({
       text: opt.text,
       imageUrl: opt.imageUrl,
     })),
-    status: existingPoll.status,
     type: existingPoll.type,
   });
   clonedPoll.setAuditUser(req.user);
@@ -351,7 +357,6 @@ exports.voteOnPoll = asyncHandler(async (req, res) => {
 
   const poll = await Poll.findById(id);
   if (!poll) return response(res, 404, "Poll not found");
-  if (poll.status !== "active") return response(res, 403, "Poll is not active");
 
   if (
     typeof optionIndex !== "number" ||
@@ -384,8 +389,7 @@ exports.resetVotes = asyncHandler(async (req, res) => {
     return response(res, 404, "VoteCast event not found");
   }
 
-  const filter = { business: business._id };
-  if (status) filter.status = status;
+  const filter = { eventId: event._id };
 
   const polls = await Poll.find(filter);
   if (polls.length === 0) return response(res, 404, "No polls found");
@@ -400,9 +404,9 @@ exports.resetVotes = asyncHandler(async (req, res) => {
   return response(res, 200, "Votes reset successfully");
 });
 
-// Active Polls by business
-exports.getActivePollsByBusiness = asyncHandler(async (req, res) => {
-  const { businessSlug } = req.params;
+// Active Polls by event
+exports.getActivePollsByEvent = asyncHandler(async (req, res) => {
+  const { eventSlug } = req.params;
 
   const event = await Event.findOne({ slug: eventSlug, eventType: "votecast" });
   if (!event) return response(res, 404, "VoteCast event not found");
@@ -411,22 +415,25 @@ exports.getActivePollsByBusiness = asyncHandler(async (req, res) => {
     eventId: event._id,
   });
 
-  return response(res, 200, "Active polls fetched", polls);
+  return response(res, 200, "Polls fetched", polls);
 });
 
 // Poll Results
 exports.getPollResults = asyncHandler(async (req, res) => {
-  const { businessSlug, status } = req.query; // e.g., ?businessSlug=oabc&status=active
+  const { eventId } = req.query;
 
-  if (!businessSlug) return response(res, 400, "businessSlug is required");
+  if (!eventId) return response(res, 400, "eventId is required");
+
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    return response(res, 400, "Invalid event ID");
+  }
 
   const event = await Event.findById(eventId);
   if (!event || event.eventType !== "votecast") {
     return response(res, 404, "VoteCast event not found");
   }
 
-  const filter = { business: business._id };
-  if (status) filter.status = status;
+  const filter = { eventId: event._id };
 
   const polls = await Poll.find(filter);
 
@@ -472,16 +479,15 @@ exports.exportPollsToExcel = asyncHandler(async (req, res) => {
     return response(res, 404, "VoteCast event not found");
   }
 
-  const filter = { business: business._id };
-  if (status) filter.status = status;
+  const filter = { eventId: event._id };
 
   const polls = await Poll.find(filter);
   if (polls.length === 0) return response(res, 404, "No polls found");
 
   const maxOptions = Math.max(...polls.map((p) => p.options.length));
 
-  const headerRow1 = ["Business", "Status", "Question"];
-  const headerRow2 = ["", "", ""];
+  const headerRow1 = ["Event", "Question"];
+  const headerRow2 = ["", ""];
 
   for (let i = 1; i <= maxOptions; i++) {
     headerRow1.push(`Option ${i}`, "", "");
@@ -494,7 +500,7 @@ exports.exportPollsToExcel = asyncHandler(async (req, res) => {
 
   polls.forEach((poll) => {
     const totalVotes = poll.options.reduce((sum, o) => sum + o.votes, 0);
-    const row = [business.slug, poll.status, poll.question];
+    const row = [event.name, poll.question];
 
     poll.options.forEach((option) => {
       const percent = totalVotes
@@ -526,7 +532,7 @@ exports.exportPollsToExcel = asyncHandler(async (req, res) => {
 
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename="${business.slug}-polls.xlsx"`
+    `attachment; filename="${event.slug}-polls.xlsx"`
   );
   res.setHeader(
     "Content-Type",

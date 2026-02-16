@@ -4,13 +4,19 @@ const businessController = require("../controllers/businessController");
 
 const { protect, adminOnly } = require("../middlewares/auth");
 const upload = require("../middlewares/uploadMiddleware");
+const activityLogger = require("../middlewares/activityLogger");
 
 // CREATE business - protected (accessible to all roles)
 router.post(
   "/",
   protect,
   upload.single("file"),
-  businessController.createBusiness
+  activityLogger({
+    logType: "create",
+    itemType: "Event",
+    module: "Other",
+  }),
+  businessController.createBusiness,
 );
 
 // GET all businesses – protected (accessible to all roles)
@@ -27,10 +33,27 @@ router.put(
   "/:id",
   protect,
   upload.single("file"),
-  businessController.updateBusiness
+  activityLogger({
+    logType: "update",
+    itemType: "Event",
+    module: "Other",
+    getItemId: (req) => req.params.id,
+  }),
+  businessController.updateBusiness,
 );
 
 // DELETE business – admin only
-router.delete("/:id", protect, adminOnly, businessController.deleteBusiness);
+router.delete(
+  "/:id",
+  protect,
+  adminOnly,
+  activityLogger({
+    logType: "delete",
+    itemType: "Event",
+    module: "Other",
+    getItemId: (req) => req.params.id,
+  }),
+  businessController.deleteBusiness,
+);
 
 module.exports = router;

@@ -11,6 +11,7 @@ const authRoutes = require("./authRoutes");
 const userRoutes = require("./userRoutes");
 const globalConfigRoutes = require("./globalConfigRoutes");
 const businessRoutes = require("./businessRoutes");
+const logRoutes = require("./logRoutes");
 
 // QuizNest
 const quizGameRoutes = require("./quiznest/gameRoutes");
@@ -27,6 +28,7 @@ const tapmatchGameRoutes = require("./tapmatch/gameRoutes");
 const tapmatchPlayerRoutes = require("./tapmatch/playerRoutes");
 
 // Votecast
+const votecastEventRoutes = require("./votecast/eventRoutes");
 const pollRoutes = require("./votecast/pollRoutes");
 
 // EventReg
@@ -43,6 +45,10 @@ const surveyGuruInsightsRoutes = require("./surveyguru/insightsRoutes");
 // CheckIn
 const checkInEventRoutes = require("./CheckIn/eventRoutes");
 const checkInRegistrationRoutes = require("./CheckIn/registrationRoutes");
+
+// DigiPass
+const digiPassEventRoutes = require("./DigiPass/eventRoutes");
+const digiPassRegistrationRoutes = require("./DigiPass/registrationRoutes");
 
 // StageQ
 const stageqQuestionRoutes = require("./stageq/questionRoutes");
@@ -78,6 +84,7 @@ router.use("/files", fileResourceRoutes);
 router.use("/media", deleteMediaRoutes);
 router.use("/notifications/whatsapp-logs", whatsappLogs);
 router.use("/notifications/whatsapp-inbox", whatsappInboxRoutes);
+router.use("/logs", logRoutes);
 
 router.use("/webhooks/twilio/whatsapp", twilioWhatsAppStatusWebhookRoutes);
 
@@ -96,6 +103,7 @@ router.use("/tapmatch/games", tapmatchGameRoutes);
 router.use("/tapmatch/player", tapmatchPlayerRoutes);
 
 // ------------------ Votecast ------------------
+router.use("/votecast/events", votecastEventRoutes);
 router.use("/votecast/polls", pollRoutes);
 
 // ------------------ EventReg ------------------
@@ -112,6 +120,10 @@ router.use("/surveyguru", surveyGuruInsightsRoutes);
 // ------------------ CheckIn ------------------
 router.use("/checkin/events", checkInEventRoutes);
 router.use("/checkin/registrations", checkInRegistrationRoutes);
+
+// ------------------ DigiPass ------------------
+router.use("/digipass/events", digiPassEventRoutes);
+router.use("/digipass/registrations", digiPassRegistrationRoutes);
 
 // ------------------ StageQ ------------------
 router.use("/stageq/questions", stageqQuestionRoutes);
