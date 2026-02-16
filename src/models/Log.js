@@ -9,12 +9,12 @@ const LogSchema = new mongoose.Schema(
         },
         logType: {
             type: String,
-            enum: ["login", "create", "update", "delete"],
+            enum: ["login", "create", "update", "delete", "restore"],
             required: true,
         },
         itemType: {
             type: String,
-            enum: [null, "Event", "Registration", "WheelSpin", "SpinWheel", "MosaicWall", "Poll", "Game", "Question"],
+            enum: [null, "Event", "Registration", "WheelSpin", "SpinWheel", "MosaicWall", "Poll", "Game", "Question", "User"],
             default: null,
         },
         itemId: {
@@ -28,7 +28,7 @@ const LogSchema = new mongoose.Schema(
         },
         module: {
             type: String,
-            enum: [null, "EventReg", "QuizNest", "EventDuel", "TapMatch", "VoteCast", "SurveyGuru", "CheckIn", "DigiPass", "StageQ", "MosaicWall", "EventWheel", "Auth", "Other"],
+            enum: [null, "EventReg", "QuizNest", "EventDuel", "TapMatch", "VoteCast", "SurveyGuru", "CheckIn", "DigiPass", "StageQ", "MosaicWall", "EventWheel", "Auth", "User", "Other"],
             default: null,
         },
     },

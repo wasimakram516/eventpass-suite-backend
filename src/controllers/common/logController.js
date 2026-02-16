@@ -8,18 +8,34 @@ const SpinWheel = require("../../models/SpinWheel");
 const WallConfig = require("../../models/WallConfig");
 const SurveyForm = require("../../models/SurveyForm");
 const EventQuestion = require("../../models/EventQuestion");
+const User = require("../../models/User");
 const response = require("../../utils/response");
 const mongoose = require("mongoose");
 
 async function resolveItemNames(logs) {
     if (!logs || logs.length === 0) return logs;
 
-    const byType = { Event: [], Registration: [], Game: [], Poll: [], WheelSpin: [], SpinWheel: [], MosaicWall: [], Question: [] };
+    const byType = {
+        Event: [],
+        Registration: [],
+        Game: [],
+        Poll: [],
+        WheelSpin: [],
+        SpinWheel: [],
+        MosaicWall: [],
+        Question: [],
+        User: [],
+        AuthEventMaybeUser: [],
+    };
     for (const log of logs) {
         if (log.itemType && log.itemId && mongoose.Types.ObjectId.isValid(log.itemId)) {
             const id = log.itemId._id || log.itemId;
             if (!byType[log.itemType]) byType[log.itemType] = [];
             byType[log.itemType].push(id);
+            // Backward compatibility: older user logs were incorrectly stored as itemType "Event" under Auth module.
+            if (log.itemType === "Event" && log.module === "Auth") {
+                byType.AuthEventMaybeUser.push(id);
+            }
         }
     }
 
@@ -84,6 +100,28 @@ async function resolveItemNames(logs) {
         stageQQuestions.forEach((d) => {
             if (nameMap[`Question:${d._id.toString()}`] == null)
                 nameMap[`Question:${d._id.toString()}`] = (d.text && String(d.text).trim()) || null;
+        });
+    }
+    if (byType.User.length) {
+        const docs = await User.find({ _id: { $in: uniq(byType.User) } })
+            .withDeleted()
+            .select("_id name email")
+            .lean();
+        docs.forEach((d) => {
+            const label = d.name || d.email || d._id?.toString();
+            nameMap[`User:${d._id.toString()}`] = label;
+        });
+    }
+    if (byType.AuthEventMaybeUser.length) {
+        const docs = await User.find({ _id: { $in: uniq(byType.AuthEventMaybeUser) } })
+            .withDeleted()
+            .select("_id name email")
+            .lean();
+        docs.forEach((d) => {
+            const key = `Event:${d._id.toString()}`;
+            if (nameMap[key] == null) {
+                nameMap[key] = d.name || d.email || d._id?.toString();
+            }
         });
     }
 
@@ -202,7 +240,7 @@ exports.getLogStats = asyncHandler(async (req, res) => {
     ]);
 
     // Build clean objects with 0-defaults
-    const logTypeCounts = { login: 0, create: 0, update: 0, delete: 0 };
+    const logTypeCounts = { login: 0, create: 0, update: 0, delete: 0, restore: 0 };
     byLogType.forEach((s) => { if (s._id) logTypeCounts[s._id] = s.count; });
 
     const moduleCounts = {};

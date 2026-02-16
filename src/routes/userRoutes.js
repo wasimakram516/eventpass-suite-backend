@@ -21,8 +21,8 @@ router.post(
   "/register/staff",
   activityLogger({
     logType: "create",
-    itemType: "Event",
-    module: "Auth",
+    itemType: "User",
+    module: "User",
   }),
   registerUser,
 ); // REGISTER STAFF USER FOR A BUSINESS
@@ -30,8 +30,8 @@ router.post(
   "/register/business",
   activityLogger({
     logType: "create",
-    itemType: "Event",
-    module: "Auth",
+    itemType: "User",
+    module: "User",
   }),
   createBusinessUser,
 ); // REGISTER BUSINESS USER FOR A BUSINESS
@@ -40,8 +40,8 @@ router.post(
   superAdminOnly,
   activityLogger({
     logType: "create",
-    itemType: "Event",
-    module: "Auth",
+    itemType: "User",
+    module: "User",
   }),
   createAdminUser,
 ); // CREATE ADMIN USER (SUPERADMIN ONLY)
@@ -54,8 +54,8 @@ router.put(
   "/:id",
   activityLogger({
     logType: "update",
-    itemType: "Event",
-    module: "Auth",
+    itemType: "User",
+    module: "User",
     getItemId: (req) => req.params.id,
   }),
   updateUser,
@@ -64,8 +64,8 @@ router.delete(
   "/:id",
   activityLogger({
     logType: "delete",
-    itemType: "Event",
-    module: "Auth",
+    itemType: "User",
+    module: "User",
     getItemId: (req) => req.params.id,
   }),
   deleteUser,

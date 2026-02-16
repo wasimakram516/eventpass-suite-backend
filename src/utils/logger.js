@@ -6,6 +6,7 @@ const Poll = require("../models/Poll");
 const SpinWheel = require("../models/SpinWheel");
 const WallConfig = require("../models/WallConfig");
 const SurveyForm = require("../models/SurveyForm");
+const User = require("../models/User");
 const mongoose = require("mongoose");
 const { emitUpdate } = require("./socketUtils");
 
@@ -48,6 +49,10 @@ async function getItemName(itemType, itemId) {
             const EventQuestion = require("../models/EventQuestion");
             const stageQ = await EventQuestion.findOne({ _id: id }).withDeleted().select("text").lean();
             return (stageQ?.text && String(stageQ.text).trim()) || null;
+        }
+        if (itemType === "User") {
+            const d = await User.findOne({ _id: id }).withDeleted().select("name email").lean();
+            return (d && (d.name || d.email)) || null;
         }
     } catch (err) {
         return null;
