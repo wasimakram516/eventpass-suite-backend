@@ -8,7 +8,12 @@ function pick(customFields, matchKey, extraKeys = []) {
   const target = normalize(matchKey);
   const candidates = new Set([target, ...extraKeys.map(normalize)]);
 
-  for (const [origKey, val] of Object.entries(customFields)) {
+  const entries =
+    customFields instanceof Map
+      ? Array.from(customFields.entries())
+      : Object.entries(customFields);
+
+  for (const [origKey, val] of entries) {
     const nk = normalize(origKey);
     if (candidates.has(nk)) return val;
   }
@@ -49,13 +54,21 @@ const pickPhone = (f) =>
   pick(f, "phone", ["phone number", "mobile", "contact", "whatsapp"]);
 const pickCompany = (f) =>
   pick(f, "company", [
+    "company name",
     "organization",
+    "organization name",
     "organisation",
+    "organisation name",
+    "university / institution",
+    "university institution",
+    "university",
     "institution",
     "institute",
     "business",
     "enterprise",
     "office",
+    "employer",
+    "org",
   ]);
 
 const pickTitle = (f) =>
