@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const env = require("../config/env");
 const response = require("../utils/response");
 const asyncHandler = require("../middlewares/asyncHandler");
+const { createLog } = require("../utils/logger");
 const { MODULES } = require("../constants/modules");
 const VALID_MODULE_KEYS = MODULES.map((m) => m.key);
 
@@ -169,6 +170,15 @@ exports.login = asyncHandler(async (req, res) => {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
+
+  createLog({
+    userId: user._id,
+    logType: "login",
+    itemType: null,
+    itemId: null,
+    businessId: user.business?._id ?? null,
+    module: null,
+  });
 
   return response(res, 200, "Login successful", {
     accessToken,

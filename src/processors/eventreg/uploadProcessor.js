@@ -3,6 +3,7 @@ const Event = require("../../models/Event");
 const { emitUploadProgress } = require("../../socket/modules/eventreg/eventRegSocket");
 const { pickEmail, pickPhone } = require("../../utils/customFieldUtils");
 const { normalizePhone } = require("../../utils/whatsappProcessorUtils");
+const { createLog } = require("../../utils/logger");
 const {
   buildDuplicateIndexForEvent,
   hasDuplicate,
@@ -198,10 +199,11 @@ module.exports = async function uploadProcessor(event, rows, user) {
             continue;
           }
 
+          let newRegistration;
           if (user) {
-            await Registration.createWithAuditUser(registrationData, user);
+            newRegistration = await Registration.createWithAuditUser(registrationData, user);
           } else {
-            await Registration.create(registrationData);
+            newRegistration = await Registration.create(registrationData);
           }
           addToDuplicateIndex(duplicateIndex, {
             email: extractedEmail,
@@ -209,6 +211,20 @@ module.exports = async function uploadProcessor(event, rows, user) {
             isoCode: phoneIsoCode || null,
           });
           imported++;
+
+          if (user && newRegistration && event.businessId) {
+            const userId = user._id || user.id || null;
+            if (userId) {
+              createLog({
+                userId,
+                logType: "create",
+                itemType: "Registration",
+                itemId: newRegistration._id,
+                businessId: event.businessId,
+                module: "EventReg",
+              });
+            }
+          }
         } catch (err) {
           skipped++;
         }

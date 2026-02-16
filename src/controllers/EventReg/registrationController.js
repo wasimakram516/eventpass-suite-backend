@@ -1067,6 +1067,8 @@ exports.createRegistration = asyncHandler(async (req, res) => {
     .populate("updatedBy", "name");
   const regForResponse = populated || newRegistration;
 
+  regForResponse.businessId = event.businessId;
+
   const enhancedRegistration = {
     _id: regForResponse._id,
     token: regForResponse.token,
@@ -1293,7 +1295,11 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
   const populated = await Registration.findById(reg._id)
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
-  return response(res, 200, "Registration updated successfully", populated || reg);
+  const regForResponse = populated || reg;
+  if (event?.businessId) {
+    regForResponse.businessId = event.businessId;
+  }
+  return response(res, 200, "Registration updated successfully", regForResponse);
 });
 
 // UPDATE registration approval status
@@ -1373,11 +1379,16 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
   const populated = await Registration.findById(registration._id)
     .populate("createdBy", "name")
     .populate("updatedBy", "name");
+  const regForResponse = populated || registration;
+  const event = registration.eventId;
+  if (event?.businessId) {
+    regForResponse.businessId = event.businessId;
+  }
   return response(
     res,
     200,
     "Registration approval status updated",
-    populated || registration,
+    regForResponse,
   );
 });
 
@@ -1579,6 +1590,7 @@ exports.bulkUpdateRegistrationApproval = asyncHandler(async (req, res) => {
     matched: result.matchedCount ?? result.n ?? 0,
     modified: result.modifiedCount ?? result.nModified ?? 0,
     status,
+    businessId: event.businessId || null,
   });
 });
 
@@ -2116,6 +2128,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
       name: adminUser.name || adminUser.email,
       id: adminUser.id,
     },
+    businessId: registration.eventId?.businessId || null,
   });
 });
 
@@ -2144,7 +2157,9 @@ exports.deleteRegistration = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message),
   );
 
-  return response(res, 200, "Registration moved to recycle bin");
+  return response(res, 200, "Registration moved to recycle bin", {
+    businessId: businessId || null,
+  });
 });
 
 // Restore single registration

@@ -18,11 +18,45 @@ const {
 } = require("../../controllers/DigiPass/registrationController");
 
 const { protect, optionalProtect, checkPermission } = require("../../middlewares/auth");
+const activityLogger = require("../../middlewares/activityLogger");
+const Registration = require("../../models/Registration");
+const Event = require("../../models/Event");
 
 const digiPassAccess = [protect, checkPermission.digipass];
 
+const preFetchRegistrationBusinessId = async (req) => {
+    const reg = await Registration.findById(req.params.id).select("eventId").lean();
+    if (!reg?.eventId) return null;
+    const event = await Event.findById(reg.eventId).select("businessId").lean();
+    return event?.businessId ?? null;
+};
+
+const preFetchCreateRegBusinessId = async (req) => {
+    const eventId = req.body?.eventId;
+    if (eventId) {
+        const event = await Event.findById(eventId).select("businessId").lean();
+        return event?.businessId ?? null;
+    }
+    const slug = req.body?.eventSlug ?? req.body?.slug;
+    if (slug) {
+        const event = await Event.findOne({ slug, eventType: "digipass" }).select("businessId").lean();
+        return event?.businessId ?? null;
+    }
+    return null;
+};
+
 // Create registration: public (no auth) or CMS (token optional — sets createdBy when present)
-router.post("/", optionalProtect, createRegistration);
+router.post(
+    "/",
+    optionalProtect,
+    activityLogger({
+        logType: "create",
+        itemType: "Registration",
+        module: "DigiPass",
+        preFetchBusinessId: preFetchCreateRegBusinessId,
+    }),
+    createRegistration,
+);
 
 // Sign in using identity fields (public - no auth required)
 router.post("/signin", signIn);
@@ -49,13 +83,46 @@ router.get("/event/:slug/export", digiPassAccess, exportRegistrations);
 router.get("/:id", digiPassAccess, getRegistrationById);
 
 // Update registration
-router.put("/:id", digiPassAccess, updateRegistration);
+router.put(
+    "/:id",
+    digiPassAccess,
+    activityLogger({
+        logType: "update",
+        itemType: "Registration",
+        module: "DigiPass",
+        getItemId: (req) => req.params.id,
+        preFetchBusinessId: preFetchRegistrationBusinessId,
+    }),
+    updateRegistration,
+);
 
 // Delete registration
-router.delete("/:id", digiPassAccess, deleteRegistration);
+router.delete(
+    "/:id",
+    digiPassAccess,
+    activityLogger({
+        logType: "delete",
+        itemType: "Registration",
+        module: "DigiPass",
+        getItemId: (req) => req.params.id,
+        preFetchBusinessId: preFetchRegistrationBusinessId,
+    }),
+    deleteRegistration,
+);
 
 // Create walkin record for a registration (protected)
-router.post("/:id/walkin", digiPassAccess, createWalkIn);
+router.post(
+    "/:id/walkin",
+    digiPassAccess,
+    activityLogger({
+        logType: "create",
+        itemType: "Registration",
+        module: "DigiPass",
+        getItemId: (req) => req.params.id,
+        preFetchBusinessId: preFetchRegistrationBusinessId,
+    }),
+    createWalkIn,
+);
 
 module.exports = router;
 
