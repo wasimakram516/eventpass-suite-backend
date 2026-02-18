@@ -161,9 +161,9 @@ exports.clearRecipients = asyncHandler(async (req, res) => {
   });
 });
 
-// GET /surveyguru/recipients/export?formId=...
+// GET /surveyguru/recipients/export?formId=...&timezone=...
 exports.exportRecipients = asyncHandler(async (req, res) => {
-  const { formId } = req.query;
+  const { formId, timezone } = req.query;
   if (!formId || !mongoose.Types.ObjectId.isValid(formId)) {
     return response(res, 400, "Invalid formId");
   }
@@ -191,19 +191,33 @@ exports.exportRecipients = asyncHandler(async (req, res) => {
     if (!date) return "";
     const d = new Date(date);
 
-    const datePart = d.toLocaleDateString("en-US", {
+    const dateOptions = {
       weekday: "long",
       month: "long",
       day: "numeric",
       year: "numeric",
-    });
+    };
 
-    const timePart = d.toLocaleTimeString("en-US", {
+    const timeOptions = {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
       hour12: true,
-    });
+    };
+
+    const datePart = timezone
+      ? new Intl.DateTimeFormat("en-US", {
+          ...dateOptions,
+          timeZone: timezone,
+        }).format(d)
+      : d.toLocaleDateString("en-US", dateOptions);
+
+    const timePart = timezone
+      ? new Intl.DateTimeFormat("en-US", {
+          ...timeOptions,
+          timeZone: timezone,
+        }).format(d)
+      : d.toLocaleTimeString("en-US", timeOptions);
 
     return `${datePart} at ${timePart}`;
   };
