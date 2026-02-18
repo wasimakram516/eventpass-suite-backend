@@ -81,6 +81,7 @@ exports.listResponsesByForm = asyncHandler(async (req, res) => {
 // CMS: Export responses Excel for a form (with recipient details if linked)
 exports.exportResponsesCsv = asyncHandler(async (req, res) => {
   const { formId } = req.params;
+  const { timezone } = req.query || {};
   if (!mongoose.Types.ObjectId.isValid(formId)) {
     return response(res, 400, "Invalid formId");
   }
@@ -91,17 +92,27 @@ exports.exportResponsesCsv = asyncHandler(async (req, res) => {
     .lean();
   if (!form) return response(res, 404, "Form not found");
 
-  // Local datetime formatter
+  // Local datetime formatter (optionally using a specific timezone)
   const formatLocal = (d) => {
     if (!d) return "";
-    return new Date(d).toLocaleString("en-US", {
+    const dateObj = new Date(d);
+    const options = {
       year: "numeric",
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
-    });
+    };
+
+    if (timezone) {
+      return new Intl.DateTimeFormat("en-US", {
+        ...options,
+        timeZone: timezone,
+      }).format(dateObj);
+    }
+
+    return dateObj.toLocaleString("en-US", options);
   };
 
   const optLabel = new Map();
@@ -140,9 +151,7 @@ exports.exportResponsesCsv = asyncHandler(async (req, res) => {
         row["Recipient Status"] = r.recipientId.status || "";
         row["Recipient Token"] = r.recipientId.token || "";
         row["Recipient Created At"] = formatLocal(r.recipientId.createdAt);
-        row["Recipient Responded At"] = formatLocal(
-          r.recipientId.respondedAt
-        );
+        row["Recipient Responded At"] = formatLocal(r.recipientId.respondedAt);
       } else {
         row["Original Full Name"] = "";
         row["Original Email"] = "";
