@@ -33,12 +33,15 @@ exports.syncFromEventRegistrations = asyncHandler(async (req, res) => {
     .select("email fullName company token customFields eventId")
     .lean();
 
-  // Immediate response — prevent timeouts
   response(res, 200, "Sync started");
 
-  // Background processing
+  const logContext = {
+    userId: req.user?.id ?? req.user?._id ?? null,
+    businessId: form.businessId || null,
+  };
+
   setImmediate(() => {
-    loadRemainingRecipients(formId, regs).catch((err) =>
+    loadRemainingRecipients(formId, regs, 100, logContext).catch((err) =>
       console.error("Survey sync failed:", err)
     );
   });
