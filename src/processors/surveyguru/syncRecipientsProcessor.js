@@ -9,10 +9,10 @@ const {
   pickCompany,
 } = require("../../utils/customFieldUtils");
 
-// Utility to sync recipients in chunks
-module.exports = async function loadRemainingRecipients(formId, regs, CHUNK_SIZE = 100) {
+module.exports = async function loadRemainingRecipients(formId, regs, CHUNK_SIZE = 100, logContext = {}) {
   const total = regs.length;
   let processed = 0;
+  const { userId = null } = logContext;
 
   const form = await SurveyForm.findById(formId).lean();
   if (!form) return console.error("Sync stopped — form not found", formId);
@@ -56,16 +56,21 @@ module.exports = async function loadRemainingRecipients(formId, regs, CHUNK_SIZE
     }
 
     if (bulkOps.length) {
-      await SurveyRecipient.bulkWrite(bulkOps, { ordered: false });
+      const result = await SurveyRecipient.bulkWrite(bulkOps, { ordered: false });
+      const upsertedIds = result.upsertedIds || {};
+      const ids = Object.keys(upsertedIds).map((k) => upsertedIds[k]);
+      if (ids.length && userId) {
+        await SurveyRecipient.updateMany(
+          { _id: { $in: ids } },
+          { $set: { createdBy: userId } }
+        );
+      }
     }
 
-    // Emit only progress — lightweight
     emitSurveySyncProgress(formId, processed, total);
 
-    // avoid event loop blocking
     await new Promise((resolve) => setTimeout(resolve, 15));
   }
 
-  // Final 100%
   emitSurveySyncProgress(formId, total, total);
 }

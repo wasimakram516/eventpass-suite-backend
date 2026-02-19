@@ -6,6 +6,7 @@ const Poll = require("../models/Poll");
 const SpinWheel = require("../models/SpinWheel");
 const WallConfig = require("../models/WallConfig");
 const SurveyForm = require("../models/SurveyForm");
+const SurveyRecipient = require("../models/SurveyRecipient");
 const User = require("../models/User");
 const mongoose = require("mongoose");
 const { emitUpdate } = require("./socketUtils");
@@ -54,6 +55,10 @@ async function getItemName(itemType, itemId) {
             const d = await User.findOne({ _id: id }).withDeleted().select("name email").lean();
             return (d && (d.name || d.email)) || null;
         }
+        if (itemType === "SurveyRecipient") {
+            const d = await SurveyRecipient.findOne({ _id: id }).select("fullName email").lean();
+            return (d && (d.fullName || d.email)) || null;
+        }
     } catch (err) {
         return null;
     }
@@ -83,6 +88,7 @@ const createLog = ({
     businessId = null,
     module = "Other",
     meta = {},
+    itemNameSnapshot = null,
 }) => {
     const safeId = (val) => {
         if (!val) return null;
@@ -90,15 +96,19 @@ const createLog = ({
         return null;
     };
 
-    Log.create({
+    const payload = {
         userId: safeId(userId),
         logType,
         itemType,
         itemId: safeId(itemId),
         businessId: safeId(businessId),
         module,
-        meta,
-    })
+    };
+    if (itemNameSnapshot != null && String(itemNameSnapshot).trim() !== "") {
+        payload.itemNameSnapshot = String(itemNameSnapshot).trim();
+    }
+
+    Log.create(payload)
         .then((doc) =>
             Log.findById(doc._id)
                 .populate("userId", "name email")

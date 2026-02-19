@@ -7,6 +7,7 @@ const Poll = require("../../models/Poll");
 const SpinWheel = require("../../models/SpinWheel");
 const WallConfig = require("../../models/WallConfig");
 const SurveyForm = require("../../models/SurveyForm");
+const SurveyRecipient = require("../../models/SurveyRecipient");
 const EventQuestion = require("../../models/EventQuestion");
 const User = require("../../models/User");
 const response = require("../../utils/response");
@@ -25,6 +26,7 @@ async function resolveItemNames(logs) {
         MosaicWall: [],
         Question: [],
         User: [],
+        SurveyRecipient: [],
         AuthEventMaybeUser: [],
     };
     for (const log of logs) {
@@ -112,6 +114,15 @@ async function resolveItemNames(logs) {
             nameMap[`User:${d._id.toString()}`] = label;
         });
     }
+    if (byType.SurveyRecipient.length) {
+        const docs = await SurveyRecipient.find({ _id: { $in: uniq(byType.SurveyRecipient) } })
+            .select("_id fullName email")
+            .lean();
+        docs.forEach((d) => {
+            const label = d.fullName || d.email || d._id?.toString();
+            nameMap[`SurveyRecipient:${d._id.toString()}`] = label;
+        });
+    }
     if (byType.AuthEventMaybeUser.length) {
         const docs = await User.find({ _id: { $in: uniq(byType.AuthEventMaybeUser) } })
             .withDeleted()
@@ -129,7 +140,8 @@ async function resolveItemNames(logs) {
         const id = log.itemId?._id || log.itemId;
         const key = id && log.itemType ? `${log.itemType}:${id.toString()}` : null;
         const plain = log.toObject ? log.toObject() : { ...log };
-        return { ...plain, itemName: (key && nameMap[key]) || null };
+        const resolvedName = (key && nameMap[key]) || plain.itemNameSnapshot || null;
+        return { ...plain, itemName: resolvedName };
     });
 }
 
