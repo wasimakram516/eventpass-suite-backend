@@ -164,27 +164,27 @@ const BASE = [
     color: "#c62828",
     routes: { admin: "/cms/modules/eventwheel", staff: null },
   },
-  // {
-  //   key: "digipass",
-  //   labels: { en: "DigiPass", ar: "DigiPass" },
-  //   descriptionsByRole: {
-  //     admin: {
-  //       en: "Manage digital passes and track user activity completion.",
-  //       ar: "إدارة التذاكر الرقمية وتتبع إتمام أنشطة المستخدمين.",
-  //     },
-  //     staff: {
-  //       en: "Scan QR codes to verify users and track their activity completion.",
-  //       ar: "امسح رموز QR للتحقق من المستخدمين وتتبع إتمام أنشطتهم.",
-  //     },
-  //   },
-  //   buttonsByRole: {
-  //     admin: { en: "Manage Passes", ar: "إدارة التذاكر" },
-  //     staff: { en: "Scan QR Code", ar: "مسح رمز QR" },
-  //   },
-  //   icon: "badge",
-  //   color: "#2e7d32",
-  //   routes: { admin: "/cms/modules/digipass", staff: "/staff/digipass/verify" },
-  // },
+  {
+    key: "digipass",
+    labels: { en: "DigiPass", ar: "DigiPass" },
+    descriptionsByRole: {
+      admin: {
+        en: "Manage digital passes and track user activity completion.",
+        ar: "إدارة التذاكر الرقمية وتتبع إتمام أنشطة المستخدمين.",
+      },
+      staff: {
+        en: "Scan QR codes to verify users and track their activity completion.",
+        ar: "امسح رموز QR للتحقق من المستخدمين وتتبع إتمام أنشطتهم.",
+      },
+    },
+    buttonsByRole: {
+      admin: { en: "Manage Passes", ar: "إدارة التذاكر" },
+      staff: { en: "Scan QR Code", ar: "مسح رمز QR" },
+    },
+    icon: "badge",
+    color: "#2e7d32",
+    routes: { admin: "/cms/modules/digipass", staff: "/staff/digipass/verify" },
+  },
 ];
 
 // ---- helpers ----

@@ -14,7 +14,7 @@ const activityLogger = require("../../middlewares/activityLogger");
 const Event = require("../../models/Event");
 const Business = require("../../models/Business");
 
-const digiPassAccess = [protect];
+const digiPassAccess = [protect, checkPermission.digipass];
 
 const preFetchEventBusinessId = async (req) => {
     const event = await Event.findById(req.params.id).select("businessId").lean();
