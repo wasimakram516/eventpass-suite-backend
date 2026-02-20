@@ -25,6 +25,8 @@ const SurveyFormSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   isAnonymous: { type: Boolean, default: false },
   defaultLanguage: { type: String, enum: ["en", "ar"], default: "en" },
+  emailSubject: { type: String, default: "" },
+  greetingMessage: { type: String, default: "" },
 }, { timestamps: true });
 
 // Unique per business (safer than global uniqueness)
