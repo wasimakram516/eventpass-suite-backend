@@ -103,6 +103,8 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
           ...(event.background || {}),
           ar: null,
         };
+      } else if (mediaType === "progressImage") {
+        updates.progressImageUrl = null;
       } else if (mediaType === "brandingLogo") {
         const removeIds = removeBrandingLogoIds || [];
         if (removeIds.length && Array.isArray(removeIds)) {
