@@ -114,6 +114,14 @@ async function buildSurveyInvitationEmail({
   texts.forEach((t, i) => (map[t] = results[i] || t));
   const tr = (t) => map[t] || t;
 
+  const customSubject = (form.emailSubject || "").trim();
+  const headerTitle = customSubject || tr("We value your feedback!");
+  const rawGreeting = (form.greetingMessage || "").trim();
+  const hasCustomGreeting =
+    rawGreeting &&
+    rawGreeting.replace(/<[^>]+>/g, "").trim().length > 0;
+  const customGreetingHtml = hasCustomGreeting ? rawGreeting : "";
+
   // ---------------------------------------
   // HTML TEMPLATE
   // ---------------------------------------
@@ -128,9 +136,7 @@ async function buildSurveyInvitationEmail({
             ? `<img src="${event.logoUrl}" alt="Event Logo" style="max-width:140px;max-height:80px;margin-bottom:10px;" />`
             : ""
         }
-        <h2 style="color:#fff;font-size:22px;margin:0;">${tr(
-          "We value your feedback!"
-        )}</h2>
+        <h2 style="color:#fff;font-size:22px;margin:0;">${headerTitle}</h2>
       </div>
 
     <!-- TOP BUTTON -->
@@ -174,7 +180,10 @@ async function buildSurveyInvitationEmail({
 
       <!-- CONTENT BODY -->
       <div style="padding:24px 28px 28px;">
-        
+        ${
+          customGreetingHtml
+            ? `<div style="font-size:15px;color:#333;line-height:1.6;margin-top:28px;">${customGreetingHtml}</div>`
+            : `
         <p style="font-size:15px;color:#333;margin-top:28px;">
           ${tr("Hello")} <strong>${
     form.isAnonymous ? tr("Guest") : recipient.fullName || tr("Guest")
@@ -188,6 +197,8 @@ async function buildSurveyInvitationEmail({
             "Please take a moment to share your experience and help us improve."
           )}
         </p>
+        `
+        }
 
         <!-- Anonymous Notice -->
         ${
@@ -251,7 +262,9 @@ async function buildSurveyInvitationEmail({
     </div>
   </div>`;
 
-  const subject = `${tr("We value your feedback!")} – ${tr(event.name)}`;
+  const subject = customSubject
+    ? `${customSubject} – ${tr(event.name)}`
+    : `${tr("We value your feedback!")} – ${tr(event.name)}`;
   return { subject, html };
 }
 

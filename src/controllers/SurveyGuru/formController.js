@@ -76,6 +76,8 @@ exports.createForm = asyncHandler(async (req, res) => {
     isAnonymous: String(req.body.isAnonymous ?? "false") === "true",
     questions: Array.isArray(req.body.questions) ? req.body.questions : parseJson(req.body.questions) || [],
     defaultLanguage: req.body.defaultLanguage || "en",
+    emailSubject: req.body.emailSubject ?? "",
+    greetingMessage: req.body.greetingMessage ?? "",
   };
 
   if (!body.businessId) return response(res, 400, "businessId is required");
@@ -204,6 +206,8 @@ exports.updateForm = asyncHandler(async (req, res) => {
       typeof req.body.defaultLanguage === "undefined"
         ? prev.defaultLanguage
         : req.body.defaultLanguage,
+    emailSubject: req.body.emailSubject !== undefined ? req.body.emailSubject : prev.emailSubject,
+    greetingMessage: req.body.greetingMessage !== undefined ? req.body.greetingMessage : prev.greetingMessage,
   };
 
   patch.questions = await processOptionImages(patch.questions, prev);
