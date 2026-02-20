@@ -31,9 +31,9 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
         businessId,
         eventType: ALLOWED_EVENT_TYPE,
     })
-        
+
         .sort({ createdAt: -1 })
-        .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
+        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
         .populate("createdBy", "name")
         .populate("updatedBy", "name");
 
@@ -47,8 +47,8 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
 exports.getEventBySlug = asyncHandler(async (req, res) => {
     const { slug } = req.params;
     const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE })
-        
-        .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations");
+
+        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser formFields registrations");
 
     if (!event) {
         return response(res, 404, "DigiPass event not found");
@@ -66,8 +66,8 @@ exports.getEventById = asyncHandler(async (req, res) => {
     }
 
     const event = await Event.findById(id)
-        
-        .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations");
+
+        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser formFields registrations");
 
     if (!event || event.eventType !== ALLOWED_EVENT_TYPE) {
         return response(res, 404, "DigiPass event not found");
@@ -85,6 +85,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
         description,
         defaultLanguage,
         logoUrl,
+        progressImageUrl,
         background,
         maxTasksPerUser,
         minTasksPerUser,
@@ -109,19 +110,14 @@ exports.createEvent = asyncHandler(async (req, res) => {
             parsedBackground =
                 typeof background === "string" ? JSON.parse(background) : background;
 
+            const base = env.aws.cloudfrontUrl.endsWith("/") ? env.aws.cloudfrontUrl : env.aws.cloudfrontUrl + "/";
             if (parsedBackground.en?.url) {
-                const url = parsedBackground.en.url;
-                const base = env.aws.cloudfrontUrl.endsWith("/")
-                    ? env.aws.cloudfrontUrl
-                    : env.aws.cloudfrontUrl + "/";
-                parsedBackground.en.key = decodeURIComponent(url.replace(base, ""));
+                parsedBackground.en.key = decodeURIComponent(parsedBackground.en.url.replace(base, ""));
+                parsedBackground.en.fileType = parsedBackground.en.fileType || "image";
             }
             if (parsedBackground.ar?.url) {
-                const url = parsedBackground.ar.url;
-                const base = env.aws.cloudfrontUrl.endsWith("/")
-                    ? env.aws.cloudfrontUrl
-                    : env.aws.cloudfrontUrl + "/";
-                parsedBackground.ar.key = decodeURIComponent(url.replace(base, ""));
+                parsedBackground.ar.key = decodeURIComponent(parsedBackground.ar.url.replace(base, ""));
+                parsedBackground.ar.fileType = parsedBackground.ar.fileType || "image";
             }
         } catch {
             parsedBackground = {};
@@ -187,6 +183,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
         description: description || null,
         defaultLanguage: defaultLanguage || "en",
         logoUrl: logoUrl || null,
+        progressImageUrl: progressImageUrl || null,
         ...(Object.keys(parsedBackground).length > 0
             ? { background: parsedBackground }
             : {}),
@@ -204,7 +201,7 @@ exports.createEvent = asyncHandler(async (req, res) => {
     );
 
     const eventResponse = await Event.findById(newEvent._id)
-        .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
+        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
         .populate("createdBy", "name")
         .populate("updatedBy", "name");
 
@@ -220,11 +217,13 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         description,
         defaultLanguage,
         logoUrl,
+        progressImageUrl,
         background,
         maxTasksPerUser,
         minTasksPerUser,
         formFields,
         removeLogo,
+        removeProgressImage,
         removeBackgroundEn,
         removeBackgroundAr,
     } = req.body;
@@ -257,6 +256,19 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         event.logoUrl = null;
     } else if (logoUrl) {
         event.logoUrl = logoUrl;
+    }
+
+    if (removeProgressImage === "true" || removeProgressImage === true) {
+        if (event.progressImageUrl) {
+            try {
+                await deleteFromS3(event.progressImageUrl);
+            } catch (err) {
+                console.error("Failed to delete progress image from S3:", err);
+            }
+        }
+        event.progressImageUrl = null;
+    } else if (progressImageUrl) {
+        event.progressImageUrl = progressImageUrl;
     }
 
     if (removeBackgroundEn === "true" || removeBackgroundEn === true) {
@@ -294,25 +306,24 @@ exports.updateEvent = asyncHandler(async (req, res) => {
             const parsedBackground =
                 typeof background === "string" ? JSON.parse(background) : background;
 
+            const base = env.aws.cloudfrontUrl.endsWith("/") ? env.aws.cloudfrontUrl : env.aws.cloudfrontUrl + "/";
             if (parsedBackground.en?.url) {
-                const url = parsedBackground.en.url;
-                const base = env.aws.cloudfrontUrl.endsWith("/")
-                    ? env.aws.cloudfrontUrl
-                    : env.aws.cloudfrontUrl + "/";
-                parsedBackground.en.key = decodeURIComponent(url.replace(base, ""));
+                parsedBackground.en.key = decodeURIComponent(parsedBackground.en.url.replace(base, ""));
+                parsedBackground.en.fileType = parsedBackground.en.fileType || "image";
             }
             if (parsedBackground.ar?.url) {
-                const url = parsedBackground.ar.url;
-                const base = env.aws.cloudfrontUrl.endsWith("/")
-                    ? env.aws.cloudfrontUrl
-                    : env.aws.cloudfrontUrl + "/";
-                parsedBackground.ar.key = decodeURIComponent(url.replace(base, ""));
+                parsedBackground.ar.key = decodeURIComponent(parsedBackground.ar.url.replace(base, ""));
+                parsedBackground.ar.fileType = parsedBackground.ar.fileType || "image";
             }
 
             if (Object.keys(parsedBackground).length > 0) {
                 event.background = {
-                    en: parsedBackground.en || event.background?.en || {},
-                    ar: parsedBackground.ar || event.background?.ar || {},
+                    ...(parsedBackground.en?.url || event.background?.en?.url
+                        ? { en: parsedBackground.en || event.background.en }
+                        : {}),
+                    ...(parsedBackground.ar?.url || event.background?.ar?.url
+                        ? { ar: parsedBackground.ar || event.background.ar }
+                        : {}),
                 };
             }
         } catch (err) {
@@ -385,7 +396,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     );
 
     const eventResponse = await Event.findById(event._id)
-        .select("_id name slug defaultLanguage logoUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
+        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
         .populate("createdBy", "name")
         .populate("updatedBy", "name");
 

@@ -35,6 +35,7 @@ const EventSchema = new mongoose.Schema({
   },
   description: { type: String },
   logoUrl: { type: String },
+  progressImageUrl: { type: String },
   background: {
     en: {
       key: { type: String },
