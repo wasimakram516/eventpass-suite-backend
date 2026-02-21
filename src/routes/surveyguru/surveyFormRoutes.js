@@ -25,6 +25,16 @@ router.post(
 );
 router.get("/forms", access, form.listForms);
 router.get("/forms/:id", access, form.getForm);
+router.post(
+  "/forms/:id/clone",
+  access,
+  activityLogger({
+    logType: "create",
+    itemType: "Event",
+    module: "SurveyGuru",
+  }),
+  form.cloneForm,
+);
 router.put(
   "/forms/:id",
   access,
