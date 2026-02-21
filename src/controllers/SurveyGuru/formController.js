@@ -179,6 +179,75 @@ exports.getFormBySlug = asyncHandler(async (req, res) => {
   return response(res, 200, "Survey form fetched", form);
 });
 
+// CLONE FORM BY ID (duplicate structure/questions/options)
+exports.cloneForm = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return response(res, 400, "Invalid form id");
+  }
+
+  const source = await SurveyForm.findById(id).lean();
+  if (!source) return response(res, 404, "Survey form not found");
+
+  const clonedTitle = `${source.title || "Survey Form"} (Copy)`;
+  const baseSlug = slugify(`${source.slug || source.title || "form"}-copy`);
+  let uniqueSlug = baseSlug;
+
+  const existing = await SurveyForm.findOne({
+    businessId: source.businessId,
+    slug: uniqueSlug,
+  }).collation({ locale: "en", strength: 2 });
+
+  if (existing) {
+    uniqueSlug = await generateUniqueSlug(
+      SurveyForm,
+      "slug",
+      `${baseSlug}-${Date.now().toString().slice(-4)}`
+    );
+  }
+
+  const clonedQuestions = (source.questions || []).map((q, qi) => ({
+    label: q?.label || "",
+    helpText: q?.helpText || "",
+    type: q?.type || "multi",
+    required: typeof q?.required === "boolean" ? q.required : true,
+    order: Number.isFinite(q?.order) ? q.order : qi,
+    options: (q?.options || []).map((o) => ({
+      label: o?.label || "",
+      imageUrl: o?.imageUrl || null,
+    })),
+    scale: q?.scale
+      ? {
+          min: Number(q.scale.min ?? 1),
+          max: Number(q.scale.max ?? 5),
+          step: Number(q.scale.step ?? 1),
+        }
+      : { min: 1, max: 5, step: 1 },
+  }));
+
+  const clonePayload = {
+    businessId: source.businessId,
+    eventId: source.eventId,
+    title: clonedTitle,
+    slug: uniqueSlug,
+    description: source.description || "",
+    isActive: Boolean(source.isActive),
+    isAnonymous: Boolean(source.isAnonymous),
+    defaultLanguage: source.defaultLanguage || "en",
+    emailSubject: source.emailSubject || "",
+    greetingMessage: source.greetingMessage || "",
+    questions: clonedQuestions,
+  };
+
+  const cloned = await SurveyForm.createWithAuditUser(clonePayload, req.user);
+
+  recomputeAndEmit(source.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(res, 201, "Survey form cloned", cloned);
+});
+
 exports.updateForm = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id))
