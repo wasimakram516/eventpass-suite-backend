@@ -62,7 +62,7 @@ exports.listRecipients = asyncHandler(async (req, res) => {
 
   // Optional status filter
   if (status?.trim()) {
-    match.status = status.trim().toLowerCase(); // queued | responded
+    match.status = status.trim().toLowerCase(); // queued | notified | responded
   }
 
   // Optional search filter
@@ -99,23 +99,35 @@ exports.listRecipients = asyncHandler(async (req, res) => {
 // Send Bulk Emails to survey recipients
 exports.sendBulkSurveyEmails = asyncHandler(async (req, res) => {
   const { formId } = req.params;
+  const {
+    recipientScope: rawRecipientScope = "not_responded",
+    subject: rawSubject,
+    body: rawBody,
+  } = req.body || {};
 
   if (!mongoose.Types.ObjectId.isValid(formId)) {
     return response(res, 400, "Invalid formId");
   }
 
-  const form = await SurveyForm.findById(formId).populate("eventId").lean();
+  const form = await SurveyForm.findById(formId).lean();
   if (!form) return response(res, 404, "Form not found");
 
   const event = await Event.findById(form.eventId).lean();
   if (!event) return response(res, 404, "Event not found");
 
-  const pendingRecipients = await SurveyRecipient.find({
-    formId,
-    status: "queued",
-  }).lean();
+  const scope = String(rawRecipientScope || "not_responded")
+    .trim()
+    .toLowerCase();
+  const recipientScope = scope === "all" ? "all" : "not_responded";
 
-  if (!pendingRecipients.length) {
+  const recipientFilter = { formId };
+  if (recipientScope === "not_responded") {
+    recipientFilter.status = { $ne: "responded" };
+  }
+
+  const recipients = await SurveyRecipient.find(recipientFilter).lean();
+
+  if (!recipients.length) {
     // Emit a 100% completion event so frontend resets state
     emitSurveyEmailProgress(formId, {
       sent: 0,
@@ -124,15 +136,19 @@ exports.sendBulkSurveyEmails = asyncHandler(async (req, res) => {
       total: 0,
     });
 
-    return response(res, 200, "All survey emails already sent.");
+    return response(res, 200, "No recipients match the selected criteria.");
   }
+
+  const customSubject = typeof rawSubject === "string" ? rawSubject.trim() : "";
+  const customGreetingMessage = typeof rawBody === "string" ? rawBody : "";
 
   response(res, 200, "Bulk email job started");
 
   setImmediate(() => {
-    processBulkEmails(form, event, pendingRecipients).catch((err) =>
-      console.error("Bulk email job failed:", err)
-    );
+    processBulkEmails(form, event, recipients, {
+      emailSubject: customSubject,
+      greetingMessage: customGreetingMessage,
+    }).catch((err) => console.error("Bulk email job failed:", err));
   });
 });
 

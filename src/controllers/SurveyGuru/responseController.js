@@ -7,6 +7,9 @@ const SurveyResponse = require("../../models/SurveyResponse");
 const SurveyRecipient = require("../../models/SurveyRecipient");
 const SurveyForm = require("../../models/SurveyForm");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
+const {
+  emitSurveyRecipientStatus,
+} = require("../../socket/modules/surveyguru/surveyGuruSocket");
 
 // PUBLIC: submit response by slug, optional ?token= to link a recipient
 exports.submitResponseBySlug = asyncHandler(async (req, res) => {
@@ -46,10 +49,18 @@ exports.submitResponseBySlug = asyncHandler(async (req, res) => {
   });
 
   // Update recipient status only for non-anonymous surveys
-  if (!form.isAnonymous && recipient && recipient.status !== "responded") {
+  if (!form.isAnonymous && recipient) {
     recipient.status = "responded";
-    recipient.respondedAt = new Date();
+    if (!recipient.respondedAt) {
+      recipient.respondedAt = new Date();
+    }
     await recipient.save();
+
+    emitSurveyRecipientStatus(form._id.toString(), {
+      recipientId: recipient._id?.toString(),
+      status: recipient.status,
+      respondedAt: recipient.respondedAt,
+    });
   }
 
   // Fire background recompute
