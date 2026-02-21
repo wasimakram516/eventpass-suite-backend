@@ -180,16 +180,16 @@ async function buildSurveyInvitationEmail({
 
       <!-- CONTENT BODY -->
       <div style="padding:24px 28px 28px;">
-        ${
-          customGreetingHtml
-            ? `<div style="font-size:15px;color:#333;line-height:1.6;margin-top:28px;">${customGreetingHtml}</div>`
-            : `
         <p style="font-size:15px;color:#333;margin-top:28px;">
           ${tr("Hello")} <strong>${
     form.isAnonymous ? tr("Guest") : recipient.fullName || tr("Guest")
   }</strong>,
         </p>
 
+        ${
+          customGreetingHtml
+            ? `<div style="font-size:15px;color:#333;line-height:1.6;">${customGreetingHtml}</div>`
+            : `
         <p style="font-size:15px;color:#333;line-height:1.6;">
           ${tr("We appreciate your participation in")} 
           <strong>${tr(event.name)}</strong>.

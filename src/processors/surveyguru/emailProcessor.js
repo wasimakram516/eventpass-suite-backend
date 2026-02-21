@@ -9,11 +9,25 @@ const {
 } = require("../../socket/modules/surveyguru/surveyGuruSocket");
 
 // Process bulk emails in background
-module.exports = async function processBulkEmails(form, event, recipients) {
+module.exports = async function processBulkEmails(
+  form,
+  event,
+  recipients,
+  overrides = {}
+) {
   const total = recipients.length;
   let processed = 0;
   let sentCount = 0;
   let failedCount = 0;
+  const effectiveForm = {
+    ...form,
+    ...(overrides.emailSubject !== undefined
+      ? { emailSubject: overrides.emailSubject }
+      : {}),
+    ...(overrides.greetingMessage !== undefined
+      ? { greetingMessage: overrides.greetingMessage }
+      : {}),
+  };
 
   for (const recipient of recipients) {
     processed++;
@@ -43,7 +57,7 @@ module.exports = async function processBulkEmails(form, event, recipients) {
 
       const { subject, html } = await buildSurveyInvitationEmail({
         event,
-        form,
+        form: effectiveForm,
         recipient,
         registration: {
           ...reg,
@@ -55,9 +69,16 @@ module.exports = async function processBulkEmails(form, event, recipients) {
       const result = await sendEmail(recipient.email, subject, html);
 
       if (result.success) {
+        // Keep "responded" immutable; otherwise promote queued/notified to notified.
         await SurveyRecipient.updateOne(
-          { _id: recipient._id },
-          { $set: { status: "responded" } }
+          { _id: recipient._id, status: { $ne: "responded" } },
+          {
+            $set: {
+              status: "notified",
+              notificationSent: true,
+              notificationSentAt: new Date(),
+            },
+          }
         );
         sentCount++;
       } else {

@@ -14,10 +14,12 @@ const SurveyRecipientSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["queued", "responded"],
+      enum: ["queued", "notified", "responded"],
       default: "queued",
       index: true,
     },
+    notificationSent: { type: Boolean, default: false, index: true },
+    notificationSentAt: { type: Date, default: null },
     respondedAt: { type: Date, default: null },
   },
   { timestamps: true }

@@ -17,7 +17,16 @@ function emitSurveyEmailProgress(formId, data) {
   });
 }
 
+// Emit recipient status changes (e.g. responded)
+function emitSurveyRecipientStatus(formId, data) {
+  emitUpdate("surveyRecipientStatus", {
+    formId,
+    ...data,
+  });
+}
+
 module.exports = {
   emitSurveySyncProgress,
   emitSurveyEmailProgress,
+  emitSurveyRecipientStatus,
 };
