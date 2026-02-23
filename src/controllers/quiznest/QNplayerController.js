@@ -112,6 +112,9 @@ exports.joinGame = asyncHandler(async (req, res) => {
     startTime: new Date(),
   });
 
+  player.sessionId = session._id;
+  await player.save();
+
   return response(res, 201, "Solo game session started", {
     playerId: player._id,
     sessionId: session._id,
