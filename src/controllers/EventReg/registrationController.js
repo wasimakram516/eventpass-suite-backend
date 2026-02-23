@@ -36,7 +36,6 @@ const {
 } = require("../../utils/countryCodes");
 const {
   buildRestoreDuplicateFilter,
-  buildDuplicateOr,
   buildPhoneDuplicateCheck,
 } = require("../../utils/registrationDuplicateUtils");
 const {
@@ -1247,7 +1246,7 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     }
   }
 
-  // ---------- DUPLICATE CHECK ----------
+  // ---------- DUPLICATE CHECK (same as creation: index excludes current reg) ----------
   const originalEmailKey = originalEmailRaw
     ? String(originalEmailRaw).trim().toLowerCase()
     : null;
@@ -1264,27 +1263,14 @@ exports.updateRegistration = asyncHandler(async (req, res) => {
     phoneForDuplicateCheck && phoneForDuplicateCheck !== originalPhoneKey;
 
   if (emailChanged || phoneChanged) {
-    const duplicateOr = buildDuplicateOr({
-      hasCustomFields,
-      formFields: event.formFields || [],
-      extractedEmail,
-      phoneForDuplicateCheck,
-      phoneLocalNumber,
-      phoneIsoCode,
-      alsoClassic: hasCustomFields,
-      includeEmail: emailChanged,
-      includePhone: phoneChanged,
-    });
-
-    const duplicateFilter = {
-      eventId: event._id,
-      _id: { $ne: reg._id },
-      isDeleted: { $ne: true },
-      ...(duplicateOr.length > 0 ? { $or: duplicateOr } : {}),
-    };
-
-    const dup = await Registration.findOne(duplicateFilter);
-    if (dup) {
+    const dupIndex = await buildDuplicateIndexForEvent(event._id, reg._id);
+    if (
+      hasDuplicate(dupIndex, {
+        email: extractedEmail,
+        phoneLocalNumber,
+        phoneForDuplicateCheck,
+      })
+    ) {
       return response(res, 409, "Already registered with this email or phone");
     }
   }

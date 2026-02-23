@@ -69,12 +69,13 @@ function hasDuplicate(index, { email, phoneLocalNumber, phoneForDuplicateCheck }
   return emailDup || phoneDup;
 }
 
-async function buildDuplicateIndexForEvent(eventId) {
+async function buildDuplicateIndexForEvent(eventId, excludeRegistrationId = null) {
   const index = createDuplicateIndex();
-  const existingRegs = await Registration.find({
-    eventId,
-    isDeleted: { $ne: true },
-  })
+  const query = { eventId };
+  if (excludeRegistrationId) {
+    query._id = { $ne: excludeRegistrationId };
+  }
+  const existingRegs = await Registration.find(query)
     .select("email phone isoCode customFields")
     .lean();
 

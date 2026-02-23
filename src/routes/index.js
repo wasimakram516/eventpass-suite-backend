@@ -12,6 +12,7 @@ const userRoutes = require("./userRoutes");
 const globalConfigRoutes = require("./globalConfigRoutes");
 const businessRoutes = require("./businessRoutes");
 const logRoutes = require("./logRoutes");
+const globalSearchRoutes = require("./globalSearchRoutes");
 
 // QuizNest
 const quizGameRoutes = require("./quiznest/gameRoutes");
@@ -85,6 +86,7 @@ router.use("/media", deleteMediaRoutes);
 router.use("/notifications/whatsapp-logs", whatsappLogs);
 router.use("/notifications/whatsapp-inbox", whatsappInboxRoutes);
 router.use("/logs", logRoutes);
+router.use("/global-search", globalSearchRoutes);
 
 router.use("/webhooks/twilio/whatsapp", twilioWhatsAppStatusWebhookRoutes);
 
