@@ -4,6 +4,7 @@ const Registration = require("../../models/Registration");
 const Event = require("../../models/Event");
 const SurveyRecipient = require("../../models/SurveyRecipient");
 const SurveyForm = require("../../models/SurveyForm");
+const SurveyResponse = require("../../models/SurveyResponse");
 const SpinWheelParticipant = require("../../models/SpinWheelParticipant");
 const SpinWheel = require("../../models/SpinWheel");
 const Visitor = require("../../models/Visitor");
@@ -162,6 +163,7 @@ async function searchRegistrations(regex, matchingIsoCodes, escapedTerm) {
       phone: phoneDisplay,
       email: email || "-",
       country: countryName,
+      itemType: "Registration",
       module: moduleName,
       eventName: r.eventName || "-",
       time: r.createdAt,
@@ -195,10 +197,61 @@ async function searchSurveyRecipients(regex) {
     phone: "-",
     email: r.email || "-",
     country: "-",
+    itemType: "SurveyRecipient",
     module: "SurveyGuru",
     eventName: formTitleById[r.formId?.toString()] || "-",
     time: r.createdAt,
   }));
+}
+
+async function searchSurveyResponses(regex) {
+  const responses = await SurveyResponse.find({
+    $or: [
+      stringFieldMatches("attendee.name", regex),
+      stringFieldMatches("attendee.email", regex),
+      stringFieldMatches("attendee.company", regex),
+    ],
+  })
+    .select("attendee.name attendee.email attendee.company createdAt formId")
+    .lean();
+
+  if (responses.length === 0) return [];
+
+  const formIds = [
+    ...new Set(
+      responses
+        .map((r) => r.formId && r.formId.toString())
+        .filter(Boolean)
+    ),
+  ];
+
+  let formTitleById = {};
+
+  if (formIds.length > 0) {
+    const forms = await SurveyForm.find({ _id: { $in: formIds } })
+      .select("title")
+      .lean();
+
+    formTitleById = forms.reduce((acc, f) => {
+      acc[f._id.toString()] = f.title || "-";
+      return acc;
+    }, {});
+  }
+
+  return responses.map((r) => {
+    const attendee = r.attendee || {};
+    return {
+      fullName: attendee.name || "-",
+      company: attendee.company || "-",
+      phone: "-",
+      email: attendee.email || "-",
+      country: "-",
+      itemType: "SurveyResponse",
+      module: "SurveyGuru",
+      eventName: formTitleById[r.formId?.toString()] || "-",
+      time: r.createdAt,
+    };
+  });
 }
 
 async function searchSpinWheelParticipants(regex, matchingIsoCodes) {
@@ -234,6 +287,7 @@ async function searchSpinWheelParticipants(regex, matchingIsoCodes) {
     email: "-",
     country:
       (p.isoCode && getCountryByIsoCode(p.isoCode)?.country) || "-",
+    itemType: "SpinWheelParticipant",
     module: "Event Wheel",
     eventName: titleById[p.spinWheel?.toString()] || "-",
     time: p.createdAt,
@@ -256,6 +310,7 @@ async function searchVisitors(regex) {
     phone: v.phone || "-",
     email: "-",
     country: "-",
+    itemType: "Visitor",
     module: "StageQ",
     eventName: "-",
     time: v.createdAt,
@@ -308,6 +363,7 @@ async function searchPlayers(regex) {
       phone: p.phone || "-",
       email: "-",
       country: "-",
+      itemType: "Player",
       module: moduleName,
       eventName,
       time: p.createdAt,
@@ -331,18 +387,26 @@ exports.globalSearch = asyncHandler(async (req, res) => {
   const regex = new RegExp(escapedTerm, "i");
   const matchingIsoCodes = getMatchingIsoCodes(q);
 
-  const [regResults, surveyResults, wheelResults, visitorResults, playerResults] =
-    await Promise.all([
-      searchRegistrations(regex, matchingIsoCodes, escapedTerm),
-      searchSurveyRecipients(regex),
-      searchSpinWheelParticipants(regex, matchingIsoCodes),
-      searchVisitors(regex),
-      searchPlayers(regex),
-    ]);
+  const [
+    regResults,
+    surveyRecipientResults,
+    surveyResponseResults,
+    wheelResults,
+    visitorResults,
+    playerResults,
+  ] = await Promise.all([
+    searchRegistrations(regex, matchingIsoCodes, escapedTerm),
+    searchSurveyRecipients(regex),
+    searchSurveyResponses(regex),
+    searchSpinWheelParticipants(regex, matchingIsoCodes),
+    searchVisitors(regex),
+    searchPlayers(regex),
+  ]);
 
   let combined = [
     ...regResults,
-    ...surveyResults,
+    ...surveyRecipientResults,
+    ...surveyResponseResults,
     ...wheelResults,
     ...visitorResults,
     ...playerResults,
