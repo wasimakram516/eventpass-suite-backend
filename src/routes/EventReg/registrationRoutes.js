@@ -20,6 +20,7 @@ const {
   bulkUpdateRegistrationApproval,
   exportRegistrations,
   createWalkIn,
+  getRegistrationMeta,
 } = require("../../controllers/EventReg/registrationController");
 const activityLogger = require("../../middlewares/activityLogger");
 const { protect, optionalProtect, checkPermission } = require("../../middlewares/auth");
@@ -128,5 +129,11 @@ router.delete(
 router.get("/event/:slug/sample-excel", eventRegAccess, downloadSampleExcel);
 router.get("/country-reference", eventRegAccess, downloadCountryReference);
 router.post("/event/:slug/upload", eventRegAccess, upload.single("file"), uploadRegistrations);
+
+router.get(
+  "/:id/meta",
+  eventRegAccess,
+  getRegistrationMeta
+);
 
 module.exports = router;

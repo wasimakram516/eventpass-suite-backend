@@ -1967,6 +1967,39 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 });
 
+exports.getRegistrationMeta = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return response(res, 400, "Invalid registration id");
+  }
+
+  const registration = await Registration.findById(id)
+    .select("eventId token")
+    .lean();
+
+  if (!registration || !registration.eventId) {
+    return response(res, 404, "Registration not found");
+  }
+
+  const event = await Event.findById(registration.eventId)
+    .withDeleted()
+    .select("slug eventType businessId")
+    .lean();
+
+  if (!event) {
+    return response(res, 404, "Event not found for registration");
+  }
+
+  return response(res, 200, "Registration meta fetched", {
+    eventId: registration.eventId,
+    token: registration.token || null,
+    eventSlug: event.slug || null,
+    eventType: event.eventType || null,
+    businessId: event.businessId || null,
+  });
+});
+
 // VERIFY registration by QR token and create a WalkIn
 exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   const { token } = req.query;

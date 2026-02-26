@@ -4,12 +4,14 @@ const Registration = require("../../models/Registration");
 const Event = require("../../models/Event");
 const SurveyRecipient = require("../../models/SurveyRecipient");
 const SurveyForm = require("../../models/SurveyForm");
+const SurveyResponse = require("../../models/SurveyResponse");
 const SpinWheelParticipant = require("../../models/SpinWheelParticipant");
 const SpinWheel = require("../../models/SpinWheel");
 const Visitor = require("../../models/Visitor");
 const Player = require("../../models/Player");
 const GameSession = require("../../models/GameSession");
 const Game = require("../../models/Game");
+const Business = require("../../models/Business");
 const {
   pickFullName,
   pickEmail,
@@ -101,6 +103,7 @@ async function searchRegistrations(regex, matchingIsoCodes, escapedTerm) {
           { fullName: regex },
           { email: regex },
           { phone: regex },
+          { token: regex },
           { company: regex },
           { isoCode: { $in: matchingIsoCodes } },
           {
@@ -120,13 +123,16 @@ async function searchRegistrations(regex, matchingIsoCodes, escapedTerm) {
         as: "_event",
         pipeline: [
           { $match: notDeletedMatch() },
-          { $project: { name: 1, eventType: 1 } },
+          { $project: { name: 1, eventType: 1, slug: 1 } },
         ],
       },
     },
     { $unwind: { path: "$_event", preserveNullAndEmptyArrays: true } },
     {
       $project: {
+        _id: 1,
+        eventId: 1,
+        token: 1,
         fullName: 1,
         email: 1,
         phone: 1,
@@ -136,6 +142,7 @@ async function searchRegistrations(regex, matchingIsoCodes, escapedTerm) {
         createdAt: 1,
         eventName: { $ifNull: ["$_event.name", "-"] },
         eventType: "$_event.eventType",
+        eventSlug: "$_event.slug",
       },
     },
   ];
@@ -157,11 +164,16 @@ async function searchRegistrations(regex, matchingIsoCodes, escapedTerm) {
     const countryName = (r.isoCode && getCountryByIsoCode(r.isoCode)?.country) || "-";
     const phoneDisplay = formatPhoneForDisplay(rawPhone, r.isoCode);
     return {
+      registrationId: r._id,
+      eventId: r.eventId,
+      eventSlug: r.eventSlug || null,
+      token: r.token || null,
       fullName: fullName || "-",
       company: company || "-",
       phone: phoneDisplay,
       email: email || "-",
       country: countryName,
+      itemType: "Registration",
       module: moduleName,
       eventName: r.eventName || "-",
       time: r.createdAt,
@@ -180,25 +192,118 @@ async function searchSurveyRecipients(regex) {
     .select("fullName email company createdAt formId")
     .lean();
   if (recipients.length === 0) return [];
+
   const formIds = [...new Set(recipients.map((r) => r.formId?.toString()).filter(Boolean))];
   const forms = await SurveyForm.find({ _id: { $in: formIds } })
-    .select("title")
+    .select("title slug businessId eventId")
     .lean();
-  const formTitleById = {};
+
+  const formMetaById = {};
+  const businessIds = new Set();
+
   forms.forEach((f) => {
-    formTitleById[f._id.toString()] = f.title || "-";
+    const businessId = f.businessId || null;
+    if (businessId) {
+      businessIds.add(businessId.toString());
+    }
+    formMetaById[f._id.toString()] = {
+      title: f.title || "-",
+      slug: f.slug || null,
+      businessId,
+      eventId: f.eventId || null,
+    };
     return null;
   });
-  return recipients.map((r) => ({
-    fullName: r.fullName || "-",
-    company: r.company || "-",
-    phone: "-",
-    email: r.email || "-",
-    country: "-",
-    module: "SurveyGuru",
-    eventName: formTitleById[r.formId?.toString()] || "-",
-    time: r.createdAt,
-  }));
+
+  let businessSlugById = {};
+  if (businessIds.size > 0) {
+    const businesses = await Business.find({ _id: { $in: [...businessIds] } })
+      .select("slug")
+      .lean();
+    businesses.forEach((b) => {
+      if (b && b._id) {
+        businessSlugById[b._id.toString()] = b.slug || null;
+      }
+    });
+  }
+
+  return recipients.map((r) => {
+    const meta = formMetaById[r.formId?.toString()] || {};
+    const businessId = meta.businessId || null;
+    const businessSlug = businessId ? businessSlugById[businessId.toString()] || null : null;
+    return {
+      formId: r.formId,
+      formSlug: meta.slug || null,
+      businessId: meta.businessId || null,
+      businessSlug,
+      eventId: meta.eventId || null,
+      fullName: r.fullName || "-",
+      company: r.company || "-",
+      phone: "-",
+      email: r.email || "-",
+      country: "-",
+      itemType: "SurveyRecipient",
+      module: "SurveyGuru",
+      eventName: meta.title || "-",
+      time: r.createdAt,
+    };
+  });
+}
+
+async function searchSurveyResponses(regex) {
+  const responses = await SurveyResponse.find({
+    $or: [
+      stringFieldMatches("attendee.name", regex),
+      stringFieldMatches("attendee.email", regex),
+      stringFieldMatches("attendee.company", regex),
+    ],
+  })
+    .select("attendee.name attendee.email attendee.company createdAt formId")
+    .lean();
+
+  if (responses.length === 0) return [];
+
+  const formIds = [
+    ...new Set(
+      responses
+        .map((r) => r.formId && r.formId.toString())
+        .filter(Boolean)
+    ),
+  ];
+
+  let formTitleById = {};
+
+  if (formIds.length > 0) {
+    const forms = await SurveyForm.find({ _id: { $in: formIds } })
+      .select("title slug")
+      .lean();
+
+    formTitleById = forms.reduce((acc, f) => {
+      acc[f._id.toString()] = {
+        title: f.title || "-",
+        slug: f.slug || null,
+      };
+      return acc;
+    }, {});
+  }
+
+  return responses.map((r) => {
+    const attendee = r.attendee || {};
+    const meta = formTitleById[r.formId?.toString()] || {};
+    return {
+      formId: r.formId,
+      formSlug: meta.slug || null,
+      fullName: attendee.name || "-",
+      company: attendee.company || "-",
+      phone: "-",
+      email: attendee.email || "-",
+      country: "-",
+      itemType: "SurveyResponse",
+      module: "SurveyGuru",
+      eventName: meta.title || "-",
+      time: r.createdAt,
+    };
+  });
 }
 
 async function searchSpinWheelParticipants(regex, matchingIsoCodes) {
@@ -220,24 +325,33 @@ async function searchSpinWheelParticipants(regex, matchingIsoCodes) {
   if (participants.length === 0) return [];
   const wheelIds = [...new Set(participants.map((p) => p.spinWheel?.toString()).filter(Boolean))];
   const wheels = await SpinWheel.find({ _id: { $in: wheelIds } })
-    .select("title")
+    .select("title slug")
     .lean();
-  const titleById = {};
+  const wheelMetaById = {};
   wheels.forEach((w) => {
-    titleById[w._id.toString()] = w.title || "-";
+    wheelMetaById[w._id.toString()] = {
+      title: w.title || "-",
+      slug: w.slug || null,
+    };
     return null;
   });
-  return participants.map((p) => ({
-    fullName: p.name || "-",
-    company: p.company || "-",
-    phone: formatPhoneForDisplay(p.phone, p.isoCode),
-    email: "-",
-    country:
-      (p.isoCode && getCountryByIsoCode(p.isoCode)?.country) || "-",
-    module: "Event Wheel",
-    eventName: titleById[p.spinWheel?.toString()] || "-",
-    time: p.createdAt,
-  }));
+  return participants.map((p) => {
+    const meta = wheelMetaById[p.spinWheel?.toString()] || {};
+    return {
+      spinWheelId: p.spinWheel,
+      spinWheelSlug: meta.slug || null,
+      fullName: p.name || "-",
+      company: p.company || "-",
+      phone: formatPhoneForDisplay(p.phone, p.isoCode),
+      email: "-",
+      country:
+        (p.isoCode && getCountryByIsoCode(p.isoCode)?.country) || "-",
+      itemType: "SpinWheelParticipant",
+      module: "Event Wheel",
+      eventName: meta.title || "-",
+      time: p.createdAt,
+    };
+  });
 }
 
 async function searchVisitors(regex) {
@@ -248,18 +362,49 @@ async function searchVisitors(regex) {
       stringFieldMatches("company", regex),
     ],
   })
-    .select("name phone company createdAt")
+    .select("name phone company createdAt eventHistory")
     .lean();
-  return visitors.map((v) => ({
-    fullName: v.name || "-",
-    company: v.company || "-",
-    phone: v.phone || "-",
-    email: "-",
-    country: "-",
-    module: "StageQ",
-    eventName: "-",
-    time: v.createdAt,
-  }));
+
+  if (visitors.length === 0) return [];
+
+  const businessIds = new Set();
+  visitors.forEach((v) => {
+    const primaryBusiness = v.eventHistory?.[0]?.business;
+    if (primaryBusiness) {
+      businessIds.add(primaryBusiness.toString());
+    }
+  });
+
+  let businessSlugById = {};
+  if (businessIds.size > 0) {
+    const businesses = await Business.find({ _id: { $in: [...businessIds] } })
+      .select("slug")
+      .lean();
+    businesses.forEach((b) => {
+      if (b && b._id) {
+        businessSlugById[b._id.toString()] = b.slug || null;
+      }
+    });
+  }
+
+  return visitors.map((v) => {
+    const primaryBusiness = v.eventHistory?.[0]?.business;
+    const businessId = primaryBusiness ? primaryBusiness.toString() : null;
+    const businessSlug = businessId ? businessSlugById[businessId] || null : null;
+    return {
+      fullName: v.name || "-",
+      company: v.company || "-",
+      phone: v.phone || "-",
+      email: "-",
+      country: "-",
+      itemType: "Visitor",
+      module: "StageQ",
+      eventName: "-",
+      time: v.createdAt,
+      businessId: primaryBusiness || null,
+      businessSlug,
+    };
+  });
 }
 
 function gameModuleFromGame(game) {
@@ -286,7 +431,7 @@ async function searchPlayers(regex) {
     .lean();
   const gameIds = [...new Set(sessions.map((s) => s.gameId?.toString()).filter(Boolean))];
   const games = await Game.find({ _id: { $in: gameIds } })
-    .select("title type mode")
+    .select("title type mode slug")
     .lean();
   const gameById = {};
   games.forEach((g) => {
@@ -303,11 +448,14 @@ async function searchPlayers(regex) {
     const moduleName = gameModuleFromGame(game);
     const eventName = game?.title || "-";
     return {
+      gameId: game?._id || null,
+      gameSlug: game?.slug || null,
       fullName: p.name || "-",
       company: p.company || "-",
       phone: p.phone || "-",
       email: "-",
       country: "-",
+      itemType: "Player",
       module: moduleName,
       eventName,
       time: p.createdAt,
@@ -331,18 +479,26 @@ exports.globalSearch = asyncHandler(async (req, res) => {
   const regex = new RegExp(escapedTerm, "i");
   const matchingIsoCodes = getMatchingIsoCodes(q);
 
-  const [regResults, surveyResults, wheelResults, visitorResults, playerResults] =
-    await Promise.all([
-      searchRegistrations(regex, matchingIsoCodes, escapedTerm),
-      searchSurveyRecipients(regex),
-      searchSpinWheelParticipants(regex, matchingIsoCodes),
-      searchVisitors(regex),
-      searchPlayers(regex),
-    ]);
+  const [
+    regResults,
+    surveyRecipientResults,
+    surveyResponseResults,
+    wheelResults,
+    visitorResults,
+    playerResults,
+  ] = await Promise.all([
+    searchRegistrations(regex, matchingIsoCodes, escapedTerm),
+    searchSurveyRecipients(regex),
+    searchSurveyResponses(regex),
+    searchSpinWheelParticipants(regex, matchingIsoCodes),
+    searchVisitors(regex),
+    searchPlayers(regex),
+  ]);
 
   let combined = [
     ...regResults,
-    ...surveyResults,
+    ...surveyRecipientResults,
+    ...surveyResponseResults,
     ...wheelResults,
     ...visitorResults,
     ...playerResults,
