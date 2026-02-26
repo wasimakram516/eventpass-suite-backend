@@ -34,6 +34,35 @@ exports.getPolls = asyncHandler(async (req, res) => {
   return response(res, 200, "Polls fetched", polls);
 });
 
+exports.getPollMeta = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return response(res, 400, "Invalid poll id");
+  }
+
+  const poll = await Poll.findById(id).select("eventId").lean();
+
+  if (!poll || !poll.eventId) {
+    return response(res, 404, "Poll not found");
+  }
+
+  const event = await Event.findById(poll.eventId)
+    .withDeleted()
+    .select("slug businessId")
+    .lean();
+
+  if (!event) {
+    return response(res, 404, "VoteCast event not found for poll");
+  }
+
+  return response(res, 200, "Poll meta fetched", {
+    eventId: poll.eventId,
+    eventSlug: event.slug || null,
+    businessId: event.businessId || null,
+  });
+});
+
 // POST create poll
 exports.createPoll = asyncHandler(async (req, res) => {
   const { question, options, eventId, type } = req.body;

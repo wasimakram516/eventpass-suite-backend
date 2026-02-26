@@ -1,6 +1,7 @@
 const Game = require("../../models/Game");
 const User = require("../../models/User");
 const Business = require("../../models/Business");
+const mongoose = require("mongoose");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const XLSX = require("xlsx");
@@ -180,6 +181,33 @@ exports.getQuestions = asyncHandler(async (req, res) => {
   });
 
   return response(res, 200, "Questions fetched", withUserNames);
+});
+
+// Lightweight meta lookup: find game by questionId and return its slug/businessId
+exports.getQuestionMeta = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return response(res, 400, "Invalid question id");
+  }
+
+  const game = await Game.findOne({
+    mode: "pvp",
+    type: "quiz",
+    "questions._id": id,
+  })
+    .select("slug businessId")
+    .lean();
+
+  if (!game) {
+    return response(res, 404, "Game not found for question");
+  }
+
+  return response(res, 200, "Question meta fetched", {
+    gameId: game._id,
+    gameSlug: game.slug || null,
+    businessId: game.businessId || null,
+  });
 });
 
 // Add a single question

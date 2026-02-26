@@ -25,6 +25,8 @@ const preFetchPollCreateBusinessId = async (req) => {
 // GET all polls (protected)
 router.get("/", votecastAccess, pollController.getPolls);
 
+router.get("/:id/meta", votecastAccess, pollController.getPollMeta);
+
 // POST create poll with images
 router.post(
   "/",

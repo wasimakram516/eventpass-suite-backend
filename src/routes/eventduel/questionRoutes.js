@@ -9,6 +9,7 @@ const {
   deleteQuestion,
   getQuestions,
   downloadSampleTemplate,
+  getQuestionMeta,
 } = require("../../controllers/eventduel/pvpQuestionController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
@@ -28,6 +29,13 @@ router.post("/upload/:gameId", eventduelAccess, upload.single("file"), uploadQue
 
 // Manual CRUD
 router.get("/:gameId", eventduelAccess, getQuestions);
+
+// Meta lookup for a question by its id (used for logs routing)
+router.get(
+  "/meta/:id",
+  eventduelAccess,
+  getQuestionMeta,
+);
 router.post(
   "/:gameId",
   eventduelAccess,

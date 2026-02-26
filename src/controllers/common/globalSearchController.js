@@ -11,6 +11,7 @@ const Visitor = require("../../models/Visitor");
 const Player = require("../../models/Player");
 const GameSession = require("../../models/GameSession");
 const Game = require("../../models/Game");
+const Business = require("../../models/Business");
 const {
   pickFullName,
   pickEmail,
@@ -102,6 +103,7 @@ async function searchRegistrations(regex, matchingIsoCodes, escapedTerm) {
           { fullName: regex },
           { email: regex },
           { phone: regex },
+          { token: regex },
           { company: regex },
           { isoCode: { $in: matchingIsoCodes } },
           {
@@ -130,6 +132,7 @@ async function searchRegistrations(regex, matchingIsoCodes, escapedTerm) {
       $project: {
         _id: 1,
         eventId: 1,
+        token: 1,
         fullName: 1,
         email: 1,
         phone: 1,
@@ -164,6 +167,7 @@ async function searchRegistrations(regex, matchingIsoCodes, escapedTerm) {
       registrationId: r._id,
       eventId: r.eventId,
       eventSlug: r.eventSlug || null,
+      token: r.token || null,
       fullName: fullName || "-",
       company: company || "-",
       phone: phoneDisplay,
@@ -188,23 +192,51 @@ async function searchSurveyRecipients(regex) {
     .select("fullName email company createdAt formId")
     .lean();
   if (recipients.length === 0) return [];
+
   const formIds = [...new Set(recipients.map((r) => r.formId?.toString()).filter(Boolean))];
   const forms = await SurveyForm.find({ _id: { $in: formIds } })
-    .select("title slug")
+    .select("title slug businessId eventId")
     .lean();
+
   const formMetaById = {};
+  const businessIds = new Set();
+
   forms.forEach((f) => {
+    const businessId = f.businessId || null;
+    if (businessId) {
+      businessIds.add(businessId.toString());
+    }
     formMetaById[f._id.toString()] = {
       title: f.title || "-",
       slug: f.slug || null,
+      businessId,
+      eventId: f.eventId || null,
     };
     return null;
   });
+
+  let businessSlugById = {};
+  if (businessIds.size > 0) {
+    const businesses = await Business.find({ _id: { $in: [...businessIds] } })
+      .select("slug")
+      .lean();
+    businesses.forEach((b) => {
+      if (b && b._id) {
+        businessSlugById[b._id.toString()] = b.slug || null;
+      }
+    });
+  }
+
   return recipients.map((r) => {
     const meta = formMetaById[r.formId?.toString()] || {};
+    const businessId = meta.businessId || null;
+    const businessSlug = businessId ? businessSlugById[businessId.toString()] || null : null;
     return {
       formId: r.formId,
       formSlug: meta.slug || null,
+      businessId: meta.businessId || null,
+      businessSlug,
+      eventId: meta.eventId || null,
       fullName: r.fullName || "-",
       company: r.company || "-",
       phone: "-",
@@ -330,19 +362,49 @@ async function searchVisitors(regex) {
       stringFieldMatches("company", regex),
     ],
   })
-    .select("name phone company createdAt")
+    .select("name phone company createdAt eventHistory")
     .lean();
-  return visitors.map((v) => ({
-    fullName: v.name || "-",
-    company: v.company || "-",
-    phone: v.phone || "-",
-    email: "-",
-    country: "-",
-    itemType: "Visitor",
-    module: "StageQ",
-    eventName: "-",
-    time: v.createdAt,
-  }));
+
+  if (visitors.length === 0) return [];
+
+  const businessIds = new Set();
+  visitors.forEach((v) => {
+    const primaryBusiness = v.eventHistory?.[0]?.business;
+    if (primaryBusiness) {
+      businessIds.add(primaryBusiness.toString());
+    }
+  });
+
+  let businessSlugById = {};
+  if (businessIds.size > 0) {
+    const businesses = await Business.find({ _id: { $in: [...businessIds] } })
+      .select("slug")
+      .lean();
+    businesses.forEach((b) => {
+      if (b && b._id) {
+        businessSlugById[b._id.toString()] = b.slug || null;
+      }
+    });
+  }
+
+  return visitors.map((v) => {
+    const primaryBusiness = v.eventHistory?.[0]?.business;
+    const businessId = primaryBusiness ? primaryBusiness.toString() : null;
+    const businessSlug = businessId ? businessSlugById[businessId] || null : null;
+    return {
+      fullName: v.name || "-",
+      company: v.company || "-",
+      phone: v.phone || "-",
+      email: "-",
+      country: "-",
+      itemType: "Visitor",
+      module: "StageQ",
+      eventName: "-",
+      time: v.createdAt,
+      businessId: primaryBusiness || null,
+      businessSlug,
+    };
+  });
 }
 
 function gameModuleFromGame(game) {

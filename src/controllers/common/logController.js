@@ -13,6 +13,12 @@ const User = require("../../models/User");
 const response = require("../../utils/response");
 const mongoose = require("mongoose");
 
+function escapeCsvValue(value) {
+    if (value === null || value === undefined) return "";
+    const str = String(value).replace(/"/g, '""');
+    return /[",\n]/.test(str) ? `"${str}"` : str;
+}
+
 async function resolveItemNames(logs) {
     if (!logs || logs.length === 0) return logs;
 
@@ -268,3 +274,138 @@ exports.getLogStats = asyncHandler(async (req, res) => {
         total: Object.values(logTypeCounts).reduce((a, b) => a + b, 0),
     });
 });
+
+/**
+ * Super Admin only — export logs as CSV (all or filtered by query).
+ */
+exports.exportLogs = asyncHandler(async (req, res) => {
+    const {
+        logType,
+        itemType,
+        module,
+        businessId,
+        userId,
+        from,
+        to,
+        timezone,
+    } = req.query;
+
+    const filter = {};
+
+    if (logType) filter.logType = logType;
+    if (itemType) filter.itemType = itemType;
+    if (module) filter.module = module;
+
+    if (businessId && mongoose.Types.ObjectId.isValid(businessId)) {
+        filter.businessId = new mongoose.Types.ObjectId(businessId);
+    }
+
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+        filter.userId = new mongoose.Types.ObjectId(userId);
+    }
+
+    if (from || to) {
+        filter.createdAt = {};
+        if (from) filter.createdAt.$gte = new Date(from);
+        if (to) filter.createdAt.$lte = new Date(to);
+    }
+
+    const [rawLogs, total, totalAll] = await Promise.all([
+        Log.find(filter)
+            .sort({ createdAt: -1 })
+            .populate("userId", "name email")
+            .populate("businessId", "name slug"),
+        Log.countDocuments(filter),
+        Log.countDocuments({}),
+    ]);
+
+    const logs = await resolveItemNames(rawLogs);
+
+    // Build metadata rows
+    const activeFilters = [];
+    if (logType) activeFilters.push(`Log Type: ${logType}`);
+    if (itemType) activeFilters.push(`Item Type: ${itemType}`);
+    if (module) activeFilters.push(`Module: ${module}`);
+    if (businessId) activeFilters.push(`Business ID: ${businessId}`);
+    if (userId) activeFilters.push(`User ID: ${userId}`);
+
+    const dateFormatterOptions = {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+        ...(timezone ? { timeZone: timezone } : {}),
+    };
+
+    if (from) {
+        const fromStr = new Intl.DateTimeFormat("en-GB", dateFormatterOptions).format(
+            new Date(from),
+        );
+        activeFilters.push(`From: ${fromStr}`);
+    }
+    if (to) {
+        const toStr = new Intl.DateTimeFormat("en-GB", dateFormatterOptions).format(
+            new Date(to),
+        );
+        activeFilters.push(`To: ${toStr}`);
+    }
+
+    const exportedAt = new Intl.DateTimeFormat("en-GB", dateFormatterOptions).format(
+        new Date(),
+    );
+
+    const lines = [];
+    lines.push([escapeCsvValue("Total Logs"), escapeCsvValue(totalAll)].join(","));
+    lines.push([escapeCsvValue("Exported Logs"), escapeCsvValue(logs.length)].join(","));
+    lines.push([escapeCsvValue("Exported At"), escapeCsvValue(exportedAt)].join(","));
+    lines.push([
+        escapeCsvValue("Applied Filters"),
+        escapeCsvValue(activeFilters.length ? activeFilters.join("; ") : "None"),
+    ].join(","));
+    lines.push(""); // blank line before header
+
+    // Match UI column order in Activity Logs table:
+    // User, Log Type, Item Type, Item Name, Business, Module, Time
+    const header = [
+        "User",
+        "Log Type",
+        "Item Type",
+        "Item Name",
+        "Business",
+        "Module",
+        "Time",
+    ];
+
+    lines.push(header.map(escapeCsvValue).join(","));
+
+    logs.forEach((log) => {
+        const userName = log.userId?.name || "";
+        const businessName = log.businessId?.name || "";
+        const dateObj = log.createdAt ? new Date(log.createdAt) : null;
+        const timeFormatted = dateObj
+            ? new Intl.DateTimeFormat("en-GB", dateFormatterOptions).format(dateObj)
+            : "";
+        const cols = [
+            userName,
+            log.logType || "",
+            log.itemType || "",
+            log.itemName || "",
+            businessName,
+            log.module || "",
+            timeFormatted,
+        ];
+        lines.push(cols.map(escapeCsvValue).join(","));
+    });
+
+    const csv = lines.join("\n");
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+        "Content-Disposition",
+        "attachment; filename=\"audit_logs.csv\""
+    );
+    return res.send(csv);
+});
+

@@ -33,6 +33,13 @@ router.post(
 
 // Manual CRUD
 router.get("/:gameId", quiznestAccess, questionController.getQuestions);
+
+// Meta lookup for a question by its id (used for logs routing)
+router.get(
+  "/meta/:id",
+  quiznestAccess,
+  questionController.getQuestionMeta,
+);
 router.post(
   "/:gameId",
   quiznestAccess,
