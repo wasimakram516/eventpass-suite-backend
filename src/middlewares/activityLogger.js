@@ -53,6 +53,17 @@ async function resolveAndLog(config, req, body) {
         req.query?.businessId ??
         null;
 
+    let itemNameSnapshot = null;
+    if (typeof config.getItemName === "function") {
+        try {
+            itemNameSnapshot = config.getItemName(req, data) ?? null;
+        } catch (err) {
+            console.error("[ActivityLogger] getItemName failed:", err.message);
+        }
+    }
+    if (itemNameSnapshot != null && String(itemNameSnapshot).trim() === "")
+        itemNameSnapshot = null;
+
     createLog({
         userId,
         logType: config.logType,
@@ -60,6 +71,7 @@ async function resolveAndLog(config, req, body) {
         itemId,
         businessId,
         module: config.module ?? "Other",
+        itemNameSnapshot: itemNameSnapshot || undefined,
     });
 }
 

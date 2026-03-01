@@ -10,6 +10,7 @@ const SurveyForm = require("../../models/SurveyForm");
 const SurveyRecipient = require("../../models/SurveyRecipient");
 const EventQuestion = require("../../models/EventQuestion");
 const User = require("../../models/User");
+const Business = require("../../models/Business");
 const response = require("../../utils/response");
 const mongoose = require("mongoose");
 
@@ -17,6 +18,21 @@ function escapeCsvValue(value) {
     if (value === null || value === undefined) return "";
     const str = String(value).replace(/"/g, '""');
     return /[",\n]/.test(str) ? `"${str}"` : str;
+}
+
+/** Normalize 12h time so midnight shows as 12:00 am instead of 00:00 am */
+function formatTime12h(date, options = {}) {
+    const opts = {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+        ...options,
+    };
+    let str = new Intl.DateTimeFormat("en-GB", opts).format(date);
+    return str.replace(/\b0?0:00\s*am\b/i, "12:00 am");
 }
 
 async function resolveItemNames(logs) {
@@ -321,13 +337,19 @@ exports.exportLogs = asyncHandler(async (req, res) => {
 
     const logs = await resolveItemNames(rawLogs);
 
-    // Build metadata rows
+    // Build metadata rows (use names for business/user when filtering by them)
     const activeFilters = [];
     if (logType) activeFilters.push(`Log Type: ${logType}`);
     if (itemType) activeFilters.push(`Item Type: ${itemType}`);
     if (module) activeFilters.push(`Module: ${module}`);
-    if (businessId) activeFilters.push(`Business ID: ${businessId}`);
-    if (userId) activeFilters.push(`User ID: ${userId}`);
+    if (businessId && mongoose.Types.ObjectId.isValid(businessId)) {
+        const biz = await Business.findById(businessId).select("name").lean();
+        activeFilters.push(`Business: ${biz?.name || businessId}`);
+    }
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+        const u = await User.findById(userId).select("name email").lean();
+        activeFilters.push(`User: ${u?.name || u?.email || userId}`);
+    }
 
     const dateFormatterOptions = {
         day: "2-digit",
@@ -340,21 +362,15 @@ exports.exportLogs = asyncHandler(async (req, res) => {
     };
 
     if (from) {
-        const fromStr = new Intl.DateTimeFormat("en-GB", dateFormatterOptions).format(
-            new Date(from),
-        );
+        const fromStr = formatTime12h(new Date(from), dateFormatterOptions);
         activeFilters.push(`From: ${fromStr}`);
     }
     if (to) {
-        const toStr = new Intl.DateTimeFormat("en-GB", dateFormatterOptions).format(
-            new Date(to),
-        );
+        const toStr = formatTime12h(new Date(to), dateFormatterOptions);
         activeFilters.push(`To: ${toStr}`);
     }
 
-    const exportedAt = new Intl.DateTimeFormat("en-GB", dateFormatterOptions).format(
-        new Date(),
-    );
+    const exportedAt = formatTime12h(new Date(), dateFormatterOptions);
 
     const lines = [];
     lines.push([escapeCsvValue("Total Logs"), escapeCsvValue(totalAll)].join(","));
@@ -385,7 +401,7 @@ exports.exportLogs = asyncHandler(async (req, res) => {
         const businessName = log.businessId?.name || "";
         const dateObj = log.createdAt ? new Date(log.createdAt) : null;
         const timeFormatted = dateObj
-            ? new Intl.DateTimeFormat("en-GB", dateFormatterOptions).format(dateObj)
+            ? formatTime12h(dateObj, dateFormatterOptions)
             : "";
         const cols = [
             userName,

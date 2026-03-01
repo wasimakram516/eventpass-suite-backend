@@ -281,8 +281,8 @@ async function searchSurveyResponses(regex) {
     formTitleById = forms.reduce((acc, f) => {
       acc[f._id.toString()] = {
         title: f.title || "-",
-        slug: f.slug || null,
-      };
+      slug: f.slug || null,
+    };
       return acc;
     }, {});
   }
@@ -464,7 +464,7 @@ async function searchPlayers(regex) {
 }
 
 exports.globalSearch = asyncHandler(async (req, res) => {
-  const q = (req.query.q || req.body.q || "").toString().trim();
+  const q = (req.query?.q || req.body?.q || "").toString().trim();
   if (!q) {
     return response(res, 400, "Search query is required", []);
   }
@@ -496,14 +496,14 @@ exports.globalSearch = asyncHandler(async (req, res) => {
   ]);
 
   let combined = [
-    ...regResults,
-    ...surveyRecipientResults,
-    ...surveyResponseResults,
-    ...wheelResults,
-    ...visitorResults,
-    ...playerResults,
-  ];
-  combined = combined.filter((row) => rowContainsTerm(row, q));
+    ...(regResults || []),
+    ...(surveyRecipientResults || []),
+    ...(surveyResponseResults || []),
+    ...(wheelResults || []),
+    ...(visitorResults || []),
+    ...(playerResults || []),
+  ].filter(Boolean);
+  combined = combined.filter((row) => row && rowContainsTerm(row, q));
   combined.sort((a, b) => new Date(b.time) - new Date(a.time));
 
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
