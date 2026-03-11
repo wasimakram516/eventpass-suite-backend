@@ -135,7 +135,7 @@ const BASE = [
   },
   {
     key: "mosaicwall",
-    labels: { en: "MosaicWall", ar: "MosaicWall" },
+    labels: { en: "MemoryWall", ar: "MemoryWall" },
     descriptions: {
       en: "Show photo & text submissions in real time.",
       ar: "عرض المشاركات النصية والصور في الوقت الفعلي.",
