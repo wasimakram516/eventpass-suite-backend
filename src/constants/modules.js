@@ -134,7 +134,7 @@ const BASE = [
     routes: { admin: "/cms/modules/stageq", staff: null },
   },
   {
-    key: "mosaicwall",
+    key: "memorywall",
     labels: { en: "MemoryWall", ar: "MemoryWall" },
     descriptions: {
       en: "Show photo & text submissions in real time.",
@@ -146,7 +146,7 @@ const BASE = [
     },
     icon: "image",
     color: "#4e342e",
-    routes: { admin: "/cms/modules/mosaicwall", staff: null },
+    routes: { admin: "/cms/modules/memorywall", staff: null },
   },
 
   {
