@@ -11,9 +11,9 @@ const MODULE_CONFIGS = {
   eventduel: { folderName: "EventDuel", permissionKey: "eventduel" },
   eventreg: { folderName: "EventReg", permissionKey: "eventreg" },
   eventwheel: { folderName: "EventWheel", permissionKey: "eventwheel" },
-  mosaicwall: {
-    folderName: "MosaicWall",
-    permissionKey: "mosaicwall",
+  memorywall: {
+    folderName: "MemoryWall",
+    permissionKey: "memorywall",
     allowAnonymousWallUploads: true,
   },
   quiznest: { folderName: "QuizNest", permissionKey: "quiznest" },
