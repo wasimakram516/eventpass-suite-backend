@@ -7,13 +7,13 @@ const {
   createDisplayMedia,
   updateDisplayMedia,
   deleteDisplayMedia
-} = require("../../controllers/mosaicwall/displayMediaController");
+} = require("../../controllers/memorywall/displayMediaController");
 const upload = require("../../middlewares/uploadMiddleware");
-const mosaicwallAccess = [protect, checkPermission.mosaicwall];
+const memorywallAccess = [protect, checkPermission.memorywall];
 
 // Protected Routes
-router.put("/:id", mosaicwallAccess, updateDisplayMedia);
-router.delete("/:id", mosaicwallAccess, deleteDisplayMedia);
+router.put("/:id", memorywallAccess, updateDisplayMedia);
+router.delete("/:id", memorywallAccess, deleteDisplayMedia);
 
 // Public Routes
 router.post("/upload/:slug", createDisplayMedia);

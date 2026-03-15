@@ -1,4 +1,4 @@
-const mosaicWallSocket = require("./modules/mosaicwall/mosaicWallSocket");
+const memorywallSocket = require("./modules/memorywall/memorywallSocket");
 const eventDuelSocket = require("./modules/eventduel/eventDuelSocket");
 const { dashboardSocket } = require("./dashboardSocket");
 
@@ -6,7 +6,7 @@ const socketHandler = (io) => {
   io.on("connection", (socket) => {
     console.log(`🔌 New client connected: ${socket.id}`);
 
-    mosaicWallSocket(io, socket);
+    memorywallSocket(io, socket);
     eventDuelSocket(io, socket);
     dashboardSocket(io, socket);
 
