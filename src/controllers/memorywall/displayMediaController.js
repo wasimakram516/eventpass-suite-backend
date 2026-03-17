@@ -33,7 +33,7 @@ exports.getMediaById = asyncHandler(async (req, res) => {
 // Create new media (linked to wall config via slug)
 exports.createDisplayMedia = asyncHandler(async (req, res) => {
   const wallSlug = req.params.slug;
-  const { imageUrl, text = "" } = req.body;
+  const { imageUrl, text = "", signatureUrl = "" } = req.body;
 
   if (!imageUrl) return response(res, 400, "Image URL is required.");
   if (!wallSlug) return response(res, 400, "Wall slug is required.");
@@ -46,7 +46,11 @@ exports.createDisplayMedia = asyncHandler(async (req, res) => {
 
   const media = await DisplayMedia.create({
     imageUrl,
-    text: wall.mode === "card" ? text : "",
+    text: wall.mode === "card" && wall.cardSettings?.inputType !== "signature" ? text : "",
+    signatureUrl:
+      wall.mode === "card" && wall.cardSettings?.inputType === "signature"
+        ? signatureUrl
+        : "",
     wall: wall._id,
   });
 
@@ -69,6 +73,7 @@ exports.updateDisplayMedia = asyncHandler(async (req, res) => {
   if (!item) return response(res, 404, "Media not found.");
 
   if (req.body.text !== undefined) item.text = req.body.text;
+  if (req.body.signatureUrl !== undefined) item.signatureUrl = req.body.signatureUrl;
 
   if (req.body.imageUrl) {
     const wall = await WallConfig.findById(item.wall).populate("business", "slug");

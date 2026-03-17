@@ -34,6 +34,28 @@ const WallConfigSchema = new mongoose.Schema({
         default: 300,
       },
     },
+    mosaicGrid: {
+      rows: {
+        type: Number,
+        default: 10,
+      },
+      cols: {
+        type: Number,
+        default: 15,
+      },
+    },
+    cardSettings: {
+      order: {
+        type: String,
+        enum: ["sequential", "random"],
+        default: "sequential",
+      },
+      inputType: {
+        type: String,
+        enum: ["text", "signature"],
+        default: "text",
+      },
+    },
     background: {
       key: { type: String },
       url: { type: String },

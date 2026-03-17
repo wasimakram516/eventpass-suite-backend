@@ -23,6 +23,32 @@ function normalizeRandomSizes(randomSizes) {
   return { enabled, min, max };
 }
 
+function normalizeMosaicGrid(mosaicGrid) {
+  const defaults = { rows: 10, cols: 15 };
+  if (!mosaicGrid || typeof mosaicGrid !== "object") return defaults;
+  const rows =
+    typeof mosaicGrid.rows === "number" && Number.isFinite(mosaicGrid.rows)
+      ? Math.max(1, Math.trunc(mosaicGrid.rows))
+      : defaults.rows;
+  const cols =
+    typeof mosaicGrid.cols === "number" && Number.isFinite(mosaicGrid.cols)
+      ? Math.max(1, Math.trunc(mosaicGrid.cols))
+      : defaults.cols;
+  return { rows, cols };
+}
+
+function normalizeCardSettings(cardSettings) {
+  const defaults = { order: "sequential", inputType: "text" };
+  if (!cardSettings || typeof cardSettings !== "object") return defaults;
+  const order = ["sequential", "random"].includes(cardSettings.order)
+    ? cardSettings.order
+    : defaults.order;
+  const inputType = ["text", "signature"].includes(cardSettings.inputType)
+    ? cardSettings.inputType
+    : defaults.inputType;
+  return { order, inputType };
+}
+
 function validateRandomSizesPayload(randomSizes) {
   if (!randomSizes || typeof randomSizes !== "object") return null;
   const enabled = Boolean(randomSizes.enabled);
@@ -40,6 +66,33 @@ function validateRandomSizesPayload(randomSizes) {
   }
   if (randomSizes.min > randomSizes.max) {
     return "randomSizes min cannot be greater than max.";
+  }
+  return null;
+}
+
+function validateMosaicGridPayload(mosaicGrid) {
+  if (!mosaicGrid || typeof mosaicGrid !== "object") return null;
+  if (
+    typeof mosaicGrid.rows !== "number" ||
+    !Number.isFinite(mosaicGrid.rows) ||
+    typeof mosaicGrid.cols !== "number" ||
+    !Number.isFinite(mosaicGrid.cols)
+  ) {
+    return "mosaicGrid rows and cols must be valid numbers.";
+  }
+  if (mosaicGrid.rows <= 0 || mosaicGrid.cols <= 0) {
+    return "mosaicGrid rows and cols must be positive values.";
+  }
+  return null;
+}
+
+function validateCardSettingsPayload(cardSettings) {
+  if (!cardSettings || typeof cardSettings !== "object") return null;
+  if (cardSettings.order && !["sequential", "random"].includes(cardSettings.order)) {
+    return "cardSettings order must be either sequential or random.";
+  }
+  if (cardSettings.inputType && !["text", "signature"].includes(cardSettings.inputType)) {
+    return "cardSettings inputType must be either text or signature.";
   }
   return null;
 }
@@ -69,6 +122,8 @@ function normalizeBackgroundLogo(backgroundLogo) {
 
 function buildWallResponse(wall) {
   const randomSizes = normalizeRandomSizes(wall.randomSizes);
+  const mosaicGrid = normalizeMosaicGrid(wall.mosaicGrid);
+  const cardSettings = normalizeCardSettings(wall.cardSettings);
   const background = normalizeBackground(wall.background);
   const backgroundLogo = normalizeBackgroundLogo(wall.backgroundLogo);
 
@@ -78,6 +133,8 @@ function buildWallResponse(wall) {
     slug: wall.slug,
     mode: wall.mode,
     randomSizes,
+    mosaicGrid,
+    cardSettings,
     background,
     backgroundLogo,
     business: wall.business
@@ -96,7 +153,7 @@ function buildWallResponse(wall) {
 
 exports.createWallConfig = asyncHandler(async (req, res) => {
   const { name, slug, mode, businessId } = req.body;
-  const { randomSizes, background, backgroundLogo } = req.body;
+  const { randomSizes, mosaicGrid, cardSettings, background, backgroundLogo } = req.body;
 
   if (!name || !slug || !["mosaic", "card", "bubble"].includes(mode)) {
     return response(res, 400, "Name, slug, and a valid mode are required.");
@@ -105,6 +162,16 @@ exports.createWallConfig = asyncHandler(async (req, res) => {
   const randomSizesError = validateRandomSizesPayload(randomSizes);
   if (randomSizesError) {
     return response(res, 400, randomSizesError);
+  }
+
+  const mosaicGridError = validateMosaicGridPayload(mosaicGrid);
+  if (mosaicGridError) {
+    return response(res, 400, mosaicGridError);
+  }
+
+  const cardSettingsError = validateCardSettingsPayload(cardSettings);
+  if (cardSettingsError) {
+    return response(res, 400, cardSettingsError);
   }
 
   const business = await Business.findById(businessId);
@@ -123,6 +190,14 @@ exports.createWallConfig = asyncHandler(async (req, res) => {
 
   if (randomSizes && typeof randomSizes === "object") {
     wallPayload.randomSizes = normalizeRandomSizes(randomSizes);
+  }
+
+  if (mosaicGrid && typeof mosaicGrid === "object") {
+    wallPayload.mosaicGrid = normalizeMosaicGrid(mosaicGrid);
+  }
+
+  if (cardSettings && typeof cardSettings === "object") {
+    wallPayload.cardSettings = normalizeCardSettings(cardSettings);
   }
 
   if (background && typeof background === "object") {
@@ -157,7 +232,7 @@ exports.updateWallConfig = asyncHandler(async (req, res) => {
     .populate("updatedBy", "name");
   if (!wall) return response(res, 404, "Wall configuration not found.");
 
-  const { name, slug, mode, randomSizes, background, backgroundLogo } = req.body;
+  const { name, slug, mode, randomSizes, mosaicGrid, cardSettings, background, backgroundLogo } = req.body;
 
   if (name) wall.name = name;
   if (mode) {
@@ -172,8 +247,26 @@ exports.updateWallConfig = asyncHandler(async (req, res) => {
     return response(res, 400, randomSizesError);
   }
 
+  const mosaicGridError = validateMosaicGridPayload(mosaicGrid);
+  if (mosaicGridError) {
+    return response(res, 400, mosaicGridError);
+  }
+
+  const cardSettingsError = validateCardSettingsPayload(cardSettings);
+  if (cardSettingsError) {
+    return response(res, 400, cardSettingsError);
+  }
+
   if (randomSizes && typeof randomSizes === "object") {
     wall.randomSizes = normalizeRandomSizes(randomSizes);
+  }
+
+  if (mosaicGrid && typeof mosaicGrid === "object") {
+    wall.mosaicGrid = normalizeMosaicGrid(mosaicGrid);
+  }
+
+  if (cardSettings && typeof cardSettings === "object") {
+    wall.cardSettings = normalizeCardSettings(cardSettings);
   }
 
   if (background && typeof background === "object") {

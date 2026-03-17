@@ -9,6 +9,10 @@ const DisplayMediaSchema = new mongoose.Schema({
     type: String,
     default: ""
   },
+  signatureUrl: {
+    type: String,
+    default: ""
+  },
   wall: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "WallConfig",
