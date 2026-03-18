@@ -14,7 +14,7 @@ const LogSchema = new mongoose.Schema(
         },
         itemType: {
             type: String,
-            enum: [null, "Event", "Registration", "WheelSpin", "SpinWheel", "MosaicWall", "Poll", "Game", "Question", "User", "SurveyRecipient"],
+            enum: [null, "Event", "Registration", "WheelSpin", "SpinWheel", "MemoryWall", "DisplayMedia", "Poll", "Game", "Question", "User", "SurveyRecipient"],
             default: null,
         },
         itemId: {
@@ -28,7 +28,7 @@ const LogSchema = new mongoose.Schema(
         },
         module: {
             type: String,
-            enum: [null, "EventReg", "QuizNest", "EventDuel", "TapMatch", "VoteCast", "SurveyGuru", "CheckIn", "DigiPass", "StageQ", "MosaicWall", "EventWheel", "Auth", "User", "Other"],
+            enum: [null, "EventReg", "QuizNest", "EventDuel", "TapMatch", "VoteCast", "SurveyGuru", "CheckIn", "DigiPass", "StageQ", "MemoryWall", "EventWheel", "Auth", "User", "Other"],
             default: null,
         },
         itemNameSnapshot: { type: String, default: null },

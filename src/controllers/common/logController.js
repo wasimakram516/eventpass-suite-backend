@@ -6,6 +6,7 @@ const Game = require("../../models/Game");
 const Poll = require("../../models/Poll");
 const SpinWheel = require("../../models/SpinWheel");
 const WallConfig = require("../../models/WallConfig");
+const DisplayMedia = require("../../models/DisplayMedia");
 const SurveyForm = require("../../models/SurveyForm");
 const SurveyRecipient = require("../../models/SurveyRecipient");
 const EventQuestion = require("../../models/EventQuestion");
@@ -45,7 +46,8 @@ async function resolveItemNames(logs) {
         Poll: [],
         WheelSpin: [],
         SpinWheel: [],
-        MosaicWall: [],
+        MemoryWall: [],
+        DisplayMedia: [],
         Question: [],
         User: [],
         SurveyRecipient: [],
@@ -104,9 +106,19 @@ async function resolveItemNames(logs) {
             nameMap[`SpinWheel:${idStr}`] = d.title || null;
         });
     }
-    if (byType.MosaicWall.length) {
-        const docs = await WallConfig.find({ _id: { $in: uniq(byType.MosaicWall) } }).withDeleted().select("_id name").lean();
-        docs.forEach((d) => { nameMap[`MosaicWall:${d._id.toString()}`] = d.name || null; });
+    if (byType.MemoryWall.length) {
+        const docs = await WallConfig.find({ _id: { $in: uniq(byType.MemoryWall) } }).withDeleted().select("_id name").lean();
+        docs.forEach((d) => { nameMap[`MemoryWall:${d._id.toString()}`] = d.name || null; });
+    }
+    if (byType.DisplayMedia.length) {
+        const docs = await DisplayMedia.find({ _id: { $in: uniq(byType.DisplayMedia) } })
+            .withDeleted()
+            .select("_id text imageUrl")
+            .lean();
+        docs.forEach((d) => {
+            const label = (d.text && String(d.text).trim()) || (d.imageUrl ? "Image" : null);
+            nameMap[`DisplayMedia:${d._id.toString()}`] = label;
+        });
     }
     if (byType.Question.length) {
         const questionIds = uniq(byType.Question);
