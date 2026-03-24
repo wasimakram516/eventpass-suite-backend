@@ -6,12 +6,12 @@ const {
   getWallConfigBySlug,
   updateWallConfig,
   deleteWallConfig
-} = require("../../controllers/mosaicwall/wallConfigController");
+} = require("../../controllers/memorywall/wallConfigController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
 const activityLogger = require("../../middlewares/activityLogger");
 const WallConfig = require("../../models/WallConfig");
-const mosaicwallAccess = [protect, checkPermission.mosaicwall];
+const memorywallAccess = [protect, checkPermission.memorywall];
 
 const preFetchWallBusinessId = async (req) => {
   const config = await WallConfig.findById(req.params.id).select("business").lean();
@@ -22,11 +22,11 @@ const preFetchCreateBusinessId = async (req) => req.body?.businessId ?? null;
 
 router.post(
   "/",
-  mosaicwallAccess,
+  memorywallAccess,
   activityLogger({
     logType: "create",
-    itemType: "MosaicWall",
-    module: "MosaicWall",
+    itemType: "MemoryWall",
+    module: "MemoryWall",
     preFetchBusinessId: preFetchCreateBusinessId,
   }),
   createWallConfig,
@@ -35,11 +35,11 @@ router.get("/", getWallConfigs);
 router.get("/slug/:slug", getWallConfigBySlug);
 router.put(
   "/:id",
-  mosaicwallAccess,
+  memorywallAccess,
   activityLogger({
     logType: "update",
-    itemType: "MosaicWall",
-    module: "MosaicWall",
+    itemType: "MemoryWall",
+    module: "MemoryWall",
     getItemId: (req) => req.params.id,
     preFetchBusinessId: preFetchWallBusinessId,
   }),
@@ -47,11 +47,11 @@ router.put(
 );
 router.delete(
   "/:id",
-  mosaicwallAccess,
+  memorywallAccess,
   activityLogger({
     logType: "delete",
-    itemType: "MosaicWall",
-    module: "MosaicWall",
+    itemType: "MemoryWall",
+    module: "MemoryWall",
     getItemId: (req) => req.params.id,
     preFetchBusinessId: preFetchWallBusinessId,
   }),

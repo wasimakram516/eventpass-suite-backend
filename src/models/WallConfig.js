@@ -1,26 +1,72 @@
 const mongoose = require("mongoose");
 
 const WallConfigSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
+    name: {
+      type: String,
+      required: true,
+    },
+    slug: {
+      type: String,
+      required: true,
+      lowercase: true,
+    },
+    mode: {
+      type: String,
+      enum: ["mosaic", "card", "bubble"],
+      required: true,
+    },
+    business: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Business",
+      required: true,
+    },
+    randomSizes: {
+      enabled: {
+        type: Boolean,
+        default: false,
+      },
+      min: {
+        type: Number,
+        default: 150,
+      },
+      max: {
+        type: Number,
+        default: 300,
+      },
+    },
+    mosaicGrid: {
+      rows: {
+        type: Number,
+        default: 10,
+      },
+      cols: {
+        type: Number,
+        default: 15,
+      },
+    },
+    cardSettings: {
+      order: {
+        type: String,
+        enum: ["sequential", "random"],
+        default: "sequential",
+      },
+      inputType: {
+        type: String,
+        enum: ["text", "signature"],
+        default: "text",
+      },
+    },
+    background: {
+      key: { type: String },
+      url: { type: String },
+    },
+    backgroundLogo: {
+      key: { type: String },
+      url: { type: String },
+    },
   },
-  slug: {
-    type: String,
-    required: true,
-    lowercase: true,
-  },
-  mode: {
-    type: String,
-    enum: ["mosaic", "card"],
-    required: true,
-  },
-  business: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Business",
-    required: true,
-  },
-}, { timestamps: true });
+  { timestamps: true },
+);
 
 WallConfigSchema.index({ business: 1, isDeleted: 1 });
 

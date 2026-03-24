@@ -5,6 +5,7 @@ const Game = require("../models/Game");
 const Poll = require("../models/Poll");
 const SpinWheel = require("../models/SpinWheel");
 const WallConfig = require("../models/WallConfig");
+const DisplayMedia = require("../models/DisplayMedia");
 const SurveyForm = require("../models/SurveyForm");
 const SurveyRecipient = require("../models/SurveyRecipient");
 const User = require("../models/User");
@@ -37,9 +38,15 @@ async function getItemName(itemType, itemId) {
             const d = await SpinWheel.findOne({ _id: id }).withDeleted().select("title").lean();
             return d?.title || null;
         }
-        if (itemType === "MosaicWall") {
+        if (itemType === "MemoryWall") {
             const d = await WallConfig.findOne({ _id: id }).withDeleted().select("name").lean();
             return d?.name || null;
+        }
+        if (itemType === "DisplayMedia") {
+            const d = await DisplayMedia.findOne({ _id: id }).withDeleted().select("text imageUrl").lean();
+            if (d?.text && String(d.text).trim()) return String(d.text).trim();
+            if (d?.imageUrl) return "Image";
+            return null;
         }
         if (itemType === "Question") {
             const game = await Game.findOne({ "questions._id": id }).withDeleted().select("questions").lean();
@@ -72,7 +79,7 @@ async function getItemName(itemType, itemId) {
  * Every log record stores:
  *  - userId      (who did it)
  *  - logType     (login | create | update | delete)
- *  - itemType    (Event | Registration | WheelSpin | MosaicWall | Poll | Game)
+ *  - itemType    (Event | Registration | WheelSpin | MemoryWall | Poll | Game)
  *  - itemId      (MongoDB _id of the affected document)
  *  - businessId  (which business this action belongs to)
  *  - module      (EventReg | QuizNest | DigiPass | VoteCast | Auth | Other)

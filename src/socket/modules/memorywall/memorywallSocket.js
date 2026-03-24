@@ -10,12 +10,12 @@ const mosaicWallSocket = (io, socket) => {
       }
 
       socket.join(wallSlug);
-      console.log(`🧱 ${socket.id} joined MosaicWall room: ${wallSlug}`);
+      console.log(`${socket.id} joined MemoryWall room: ${wallSlug}`);
 
       const media = await DisplayMedia.find({ wall: wall._id }).sort({ createdAt: -1 });
       socket.emit("mediaUpdate", media);
     } catch (error) {
-      console.error("❌ mosaicWall register error:", error.message);
+      console.error("memorywall register error:", error.message);
       socket.emit("error", "Wall registration failed");
     }
   });

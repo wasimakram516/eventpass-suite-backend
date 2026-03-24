@@ -56,9 +56,9 @@ const digiPassRegistrationRoutes = require("./DigiPass/registrationRoutes");
 const stageqQuestionRoutes = require("./stageq/questionRoutes");
 const stageqVisitorRoutes = require("./stageq/visitorRoutes");
 
-// MosaicWall
-const mosaicWallWallConfigRoutes = require("./mosaicwall/wallConfigRoutes");
-const mosaicWallDisplayMediaRoutes = require("./mosaicwall/displayMediaRoutes");
+// memorywall
+const memorywallWallConfigRoutes = require("./memorywall/wallConfigRoutes");
+const memorywallDisplayMediaRoutes = require("./memorywall/displayMediaRoutes");
 
 // EventWheel
 const spinWheelRoutes = require("./eventWheel/spinWheelRoutes");
@@ -133,9 +133,9 @@ router.use("/digipass/registrations", digiPassRegistrationRoutes);
 router.use("/stageq/questions", stageqQuestionRoutes);
 router.use("/stageq/visitors", stageqVisitorRoutes);
 
-// ------------------ MosaicWall ------------------
-router.use("/mosaicwall/wall-configs", mosaicWallWallConfigRoutes);
-router.use("/mosaicwall/display-media", mosaicWallDisplayMediaRoutes);
+// ------------------ memorywall ------------------
+router.use("/memorywall/wall-configs", memorywallWallConfigRoutes);
+router.use("/memorywall/display-media", memorywallDisplayMediaRoutes);
 
 // ------------------ EventWheel ------------------
 router.use("/eventwheel/wheels", spinWheelRoutes);
