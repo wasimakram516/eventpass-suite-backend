@@ -30,7 +30,6 @@ const tapmatchGameRoutes = require("./tapmatch/gameRoutes");
 const tapmatchPlayerRoutes = require("./tapmatch/playerRoutes");
 
 // Votecast
-const votecastEventRoutes = require("./votecast/eventRoutes");
 const pollRoutes = require("./votecast/pollRoutes");
 
 // EventReg
@@ -107,7 +106,6 @@ router.use("/tapmatch/games", tapmatchGameRoutes);
 router.use("/tapmatch/player", tapmatchPlayerRoutes);
 
 // ------------------ Votecast ------------------
-router.use("/votecast/events", votecastEventRoutes);
 router.use("/votecast/polls", pollRoutes);
 
 // ------------------ EventReg ------------------
