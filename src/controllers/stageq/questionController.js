@@ -1,6 +1,9 @@
 const Business = require("../../models/Business");
 const EventQuestion = require("../../models/EventQuestion");
 const Visitor = require("../../models/Visitor");
+const StageQSession = require("../../models/StageQSession");
+const Registration = require("../../models/Registration");
+const Event = require("../../models/Event");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
@@ -200,6 +203,104 @@ exports.permanentDeleteAllQuestions = asyncHandler(async (req, res) => {
     200,
     `Permanently deleted ${questions.length} questions`
   );
+});
+
+// Helper: extract a field value from classic or custom fields
+const extractField = (reg, classicKey, customKeys, primaryField = null, formFields = []) => {
+  if (reg[classicKey]) return reg[classicKey];
+  const cf = reg.customFields instanceof Map
+    ? Object.fromEntries(reg.customFields)
+    : (reg.customFields || {});
+  if (cf[classicKey]) return cf[classicKey];
+  for (const key of customKeys) {
+    if (cf[key]) return cf[key];
+  }
+  for (const field of formFields) {
+    const label = (field.label || "").toLowerCase();
+    const inputName = (field.inputName || "").toLowerCase();
+    if (label.includes(classicKey.toLowerCase()) || inputName.includes(classicKey.toLowerCase())) {
+      if (cf[field.inputName]) return cf[field.inputName];
+    }
+  }
+  if (primaryField && cf[primaryField]) return cf[primaryField];
+  return null;
+};
+
+// GET all questions for a session (by session slug)
+exports.getQuestionsBySession = asyncHandler(async (req, res) => {
+  const { sessionSlug } = req.params;
+
+  const session = await StageQSession.findOne({ slug: sessionSlug }).select("_id linkedEventRegId primaryField").lean();
+  if (!session) return response(res, 404, "Session not found");
+
+  let formFields = [];
+  if (session.linkedEventRegId) {
+    const linkedEvent = await Event.findById(session.linkedEventRegId).select("formFields").lean();
+    formFields = linkedEvent?.formFields || [];
+  }
+
+  const questions = await EventQuestion.find({ sessionId: session._id })
+    .populate("registrationId", "fullName company phone isoCode customFields")
+    .populate("createdBy", "name")
+    .populate("updatedBy", "name")
+    .sort({ createdAt: -1 });
+
+  const primaryField = session.primaryField;
+
+  const result = questions.map(q => {
+    const obj = q.toObject();
+    const reg = obj.registrationId;
+    if (reg) {
+      obj.submitterName = extractField(reg, "fullName", ["Name", "name", "FullName", "full_name"], primaryField, formFields);
+      obj.submitterCompany = extractField(reg, "company", ["Company", "organization", "Organization"], null, formFields);
+      obj.submitterPhone = extractField(reg, "phone", ["Phone", "phoneNumber", "mobile", "Mobile"], null, formFields);
+      obj.submitterIsoCode = reg.isoCode || null;
+    }
+    return obj;
+  });
+
+  return response(res, 200, "Questions fetched", result);
+});
+
+// POST a new question to a session (no auth, uses registrationId)
+exports.submitQuestionToSession = asyncHandler(async (req, res) => {
+  const { sessionSlug } = req.params;
+  const { text, registrationId } = req.body;
+
+  if (!text) return response(res, 400, "Question text is required");
+
+  const session = await StageQSession.findOne({ slug: sessionSlug });
+  if (!session) return response(res, 404, "Session not found");
+
+  if (session.linkedEventRegId && session.primaryField && !registrationId) {
+    return response(res, 400, "Registration verification is required for this session");
+  }
+
+  const question = await EventQuestion.create({
+    business: session.business,
+    sessionId: session._id,
+    registrationId: registrationId || null,
+    text,
+  });
+
+  recomputeAndEmit(session.business || null).catch(err =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  const populated = await EventQuestion.findById(question._id)
+    .populate("registrationId", "fullName company customFields");
+
+  const obj = populated.toObject();
+  const reg = obj.registrationId;
+  if (reg) {
+    const cf = reg.customFields || {};
+    obj.submitterName = reg.fullName
+      || cf.Name || cf.name || cf.fullName || cf.FullName || cf.full_name || null;
+    obj.submitterCompany = reg.company
+      || cf.Company || cf.company || cf.organization || cf.Organization || null;
+  }
+
+  return response(res, 201, "Question submitted", obj);
 });
 
 // PUT: Vote (add/remove)

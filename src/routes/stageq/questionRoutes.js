@@ -6,6 +6,8 @@ const {
   updateQuestion,
   deleteQuestion,
   voteQuestion,
+  getQuestionsBySession,
+  submitQuestionToSession,
 } = require("../../controllers/stageq/questionController");
 
 const { protect } = require("../../middlewares/auth");
@@ -47,5 +49,9 @@ router.delete(
   }),
   deleteQuestion
 );
+
+// Session-scoped routes (public)
+router.get("/session/:sessionSlug", getQuestionsBySession);
+router.post("/session/:sessionSlug", submitQuestionToSession);
 
 module.exports = router;

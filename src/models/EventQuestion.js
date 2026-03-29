@@ -13,7 +13,17 @@ const EventQuestionSchema = new mongoose.Schema(
     visitor: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Visitor",
-      required: true,
+      default: null,
+    },
+    sessionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "StageQSession",
+      default: null,
+    },
+    registrationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Registration",
+      default: null,
     },
   },
   { timestamps: true }
