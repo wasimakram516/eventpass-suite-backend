@@ -2320,3 +2320,93 @@ exports.permanentDeleteAllRegistrations = asyncHandler(async (req, res) => {
     `Permanently deleted ${result.deletedCount} registrations and their walk-ins`,
   );
 });
+
+// ─── PUBLIC: Lookup registration by submitted field values ───────────────────
+exports.lookupRegistration = asyncHandler(async (req, res) => {
+  const { slug, fields, isoCode } = req.body;
+
+  if (!slug) return response(res, 400, "Event slug is required");
+  if (!fields || typeof fields !== "object" || !Object.keys(fields).length)
+    return response(res, 400, "At least one field is required");
+
+  const event = await Event.findOne({ slug, eventType: "public" }).lean();
+  if (!event) return response(res, 404, "Event not found");
+
+  const formFields = event.formFields || [];
+  const hasCustomFields = formFields.length > 0;
+
+  const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const andConditions = [
+    { eventId: event._id },
+    { isDeleted: { $ne: true } },
+  ];
+
+  if (hasCustomFields) {
+    // Only AND on required fields — optional fields are skipped
+    for (const [key, value] of Object.entries(fields)) {
+      if (!value || String(value).trim() === "") continue;
+      const formField = formFields.find((f) => f.inputName === key);
+      if (!formField || !formField.required) continue; // skip optional fields
+
+      const val = String(value).trim();
+
+      if (
+        formField.inputType === "phone" ||
+        key.toLowerCase().includes("phone")
+      ) {
+        const { phoneForDuplicateCheck, phoneLocalNumber } =
+          buildPhoneDuplicateCheck(val, isoCode || DEFAULT_ISO_CODE);
+        const phoneOr = [];
+        if (phoneForDuplicateCheck)
+          phoneOr.push({ [`customFields.${key}`]: phoneForDuplicateCheck });
+        if (phoneLocalNumber && phoneLocalNumber !== phoneForDuplicateCheck)
+          phoneOr.push({ [`customFields.${key}`]: phoneLocalNumber });
+        if (phoneOr.length) andConditions.push({ $or: phoneOr });
+      } else {
+        andConditions.push({
+          [`customFields.${key}`]: {
+            $regex: new RegExp(`^${escapeRegex(val)}$`, "i"),
+          },
+        });
+      }
+    }
+  } else {
+    // Classic fields: only match on fullName + email (always required).
+    // Phone and company are optional — excluded from AND to avoid false negatives.
+    const { fullName, email } = fields;
+    if (email)
+      andConditions.push({
+        email: { $regex: new RegExp(`^${escapeRegex(email.trim())}$`, "i") },
+      });
+    if (fullName)
+      andConditions.push({
+        fullName: {
+          $regex: new RegExp(`^${escapeRegex(fullName.trim())}$`, "i"),
+        },
+      });
+  }
+
+  if (andConditions.length <= 2)
+    return response(
+      res,
+      400,
+      "Please provide your name and email to look up your registration",
+    );
+
+  const registration = await Registration.findOne({ $and: andConditions })
+    .populate(
+      "eventId",
+      "name slug logoUrl startDate endDate startTime endTime timezone venue formFields",
+    )
+    .lean();
+
+  if (!registration)
+    return response(
+      res,
+      404,
+      "No registration found matching the provided details",
+    );
+
+  return response(res, 200, "Registration found", registration);
+});

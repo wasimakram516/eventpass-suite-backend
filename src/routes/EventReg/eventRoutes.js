@@ -9,6 +9,7 @@ const {
   createEvent,
   updateEvent,
   deleteEvent,
+  getUpcomingEvents,
 } = require("../../controllers/EventReg/eventController");
 const { updateEventCustomQrWrapper } = require("../../controllers/common/eventCustomQrWrapperController");
 const { protect, checkPermission } = require("../../middlewares/auth");
@@ -24,6 +25,9 @@ const qrWrapperUpload = multer.fields([
 ]);
 // GET all events for a business
 router.get("/", eventRegAccess, getEventDetails);
+
+// GET current and upcoming public events (no auth)
+router.get("/upcoming", getUpcomingEvents);
 
 // GET a single event by slug
 router.get("/slug/:slug", getEventBySlug);

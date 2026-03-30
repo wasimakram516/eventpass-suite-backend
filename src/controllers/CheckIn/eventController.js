@@ -822,3 +822,22 @@ exports.permanentDeleteAllEvents = asyncHandler(async (req, res) => {
     `Permanently deleted ${result.deletedCount} closed events and their registrations`
   );
 });
+
+// ─── PUBLIC: Get current and upcoming closed events ──────────────────────────
+exports.getUpcomingEvents = asyncHandler(async (req, res) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const events = await Event.find({
+    eventType: "closed",
+    isDeleted: { $ne: true },
+    endDate: { $gte: today },
+  })
+    .select(
+      "name slug logoUrl startDate endDate startTime endTime timezone venue formFields useInternationalNumbers defaultLanguage",
+    )
+    .sort({ startDate: 1 })
+    .lean();
+
+  return response(res, 200, "Upcoming events fetched", events);
+});
