@@ -21,6 +21,7 @@ const {
   exportRegistrations,
   createWalkIn,
   getRegistrationMeta,
+  lookupRegistration,
 } = require("../../controllers/EventReg/registrationController");
 const activityLogger = require("../../middlewares/activityLogger");
 const { protect, optionalProtect, checkPermission } = require("../../middlewares/auth");
@@ -135,5 +136,8 @@ router.get(
   eventRegAccess,
   getRegistrationMeta
 );
+
+// Public badge lookup — no auth required
+router.post("/lookup", lookupRegistration);
 
 module.exports = router;

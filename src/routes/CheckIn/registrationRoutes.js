@@ -20,6 +20,7 @@ const {
   updateAttendanceStatus,
   sendBulkEmails,
   sendBulkWhatsApp,
+  lookupRegistration,
 } = require("../../controllers/CheckIn/registrationController");
 
 const { protect, optionalProtect, checkPermission } = require("../../middlewares/auth");
@@ -150,5 +151,8 @@ router.post(
   upload.single("file"),
   uploadRegistrations
 );
+
+// Public badge lookup — no auth required
+router.post("/lookup", lookupRegistration);
 
 module.exports = router;

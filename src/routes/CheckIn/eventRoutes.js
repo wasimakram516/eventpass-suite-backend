@@ -7,6 +7,7 @@ const {
   createEvent,
   updateEvent,
   deleteEvent,
+  getUpcomingEvents,
 } = require("../../controllers/CheckIn/eventController");
 const { updateEventCustomQrWrapper } = require("../../controllers/common/eventCustomQrWrapperController");
 const { protect, checkPermission } = require("../../middlewares/auth");
@@ -23,6 +24,9 @@ const qrWrapperUpload = multer.fields([
 
 // Get all events
 router.get("/", checkInAccess, getEventDetails);
+
+// GET current and upcoming closed events (no auth)
+router.get("/upcoming", getUpcomingEvents);
 
 // Get a single event by slug
 router.get("/slug/:slug", getEventBySlug);
