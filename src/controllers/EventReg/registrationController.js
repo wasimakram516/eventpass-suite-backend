@@ -47,6 +47,7 @@ const {
   buildRegistrationEmail,
 } = require("../../utils/emailTemplateBuilder/eventRegEmailTemplateBuilder");
 const sendEmail = require("../../services/emailService");
+const { buildCalendarInvite } = require("../../utils/calendarInviteBuilder");
 
 // PROCESSORS
 const uploadProcessor = require("../../processors/eventreg/uploadProcessor");
@@ -1035,14 +1036,22 @@ exports.createRegistration = asyncHandler(async (req, res) => {
       customFields,
     });
 
+    const icsAttachment = {
+      filename: "event.ics",
+      content: buildCalendarInvite(event, newRegistration._id.toString(), emailForSending),
+      contentType: "text/calendar",
+      contentDisposition: "attachment",
+    };
+    const attachments = event.agendaUrl
+      ? [{ filename: "Agenda.pdf", path: event.agendaUrl }, icsAttachment]
+      : [icsAttachment];
+
     const result = await sendEmail(
       emailForSending,
       subject,
       html,
       qrCodeDataUrl,
-      event.agendaUrl
-        ? [{ filename: "Agenda.pdf", path: event.agendaUrl }]
-        : [],
+      attachments,
     );
 
     if (result.success) {
@@ -1340,14 +1349,22 @@ exports.updateRegistrationApproval = asyncHandler(async (req, res) => {
         customFields: cf,
       });
 
+      const icsAttachment = {
+        filename: "event.ics",
+        content: buildCalendarInvite(event, registration._id.toString(), emailForSending),
+        contentType: "text/calendar",
+        contentDisposition: "attachment",
+      };
+      const attachments = event.agendaUrl
+        ? [{ filename: "Agenda.pdf", path: event.agendaUrl }, icsAttachment]
+        : [icsAttachment];
+
       const result = await sendEmail(
         emailForSending,
         subject,
         html,
         qrCodeDataUrl,
-        event.agendaUrl
-          ? [{ filename: "Agenda.pdf", path: event.agendaUrl }]
-          : [],
+        attachments,
       );
 
       if (result.success) {
@@ -1544,14 +1561,22 @@ exports.bulkUpdateRegistrationApproval = asyncHandler(async (req, res) => {
           customFields: cf,
         });
 
+        const icsAttachment = {
+          filename: "event.ics",
+          content: buildCalendarInvite(event, registration._id.toString(), emailForSending),
+          contentType: "text/calendar",
+          contentDisposition: "attachment",
+        };
+        const attachments = event.agendaUrl
+          ? [{ filename: "Agenda.pdf", path: event.agendaUrl }, icsAttachment]
+          : [icsAttachment];
+
         const result = await sendEmail(
           emailForSending,
           subject,
           html,
           qrCodeDataUrl,
-          event.agendaUrl
-            ? [{ filename: "Agenda.pdf", path: event.agendaUrl }]
-            : [],
+          attachments,
         );
 
         if (result.success) {
