@@ -7,6 +7,8 @@ const Event = require("../../models/Event");
 const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
+const { emitToRoom } = require("../../utils/socketUtils");
+const { roomKey } = require("../../socket/modules/stageq/stageqSocket");
 
 // GET all questions for a business
 exports.getQuestionsByBusiness = asyncHandler(async (req, res) => {
@@ -100,6 +102,30 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
 
   question.setAuditUser(req.user);
   await question.save();
+
+  if (question.sessionId && answered !== undefined) {
+    const session = await StageQSession.findById(question.sessionId).select("slug").lean();
+    if (session) {
+      const payload = { questionId: question._id, answered: question.answered };
+      if (!question.answered) {
+        const populated = await EventQuestion.findById(question._id)
+          .populate("registrationId", "fullName company phone isoCode customFields")
+          .lean();
+        if (populated) {
+          const reg = populated.registrationId;
+          if (reg) {
+            const cf = reg.customFields instanceof Map
+              ? Object.fromEntries(reg.customFields)
+              : (reg.customFields || {});
+            populated.submitterName = reg.fullName || cf.Name || cf.name || cf.fullName || cf.full_name || null;
+            populated.submitterCompany = reg.company || cf.Company || cf.company || cf.organization || cf.Organization || null;
+          }
+          payload.question = populated;
+        }
+      }
+      emitToRoom(roomKey(session.slug), "questionAnsweredUpdated", payload);
+    }
+  }
 
   // Fire background recompute
   recomputeAndEmit(question.business._id || null).catch((err) =>
@@ -287,18 +313,25 @@ exports.submitQuestionToSession = asyncHandler(async (req, res) => {
     console.error("Background recompute failed:", err.message)
   );
 
+  let formFields = [];
+  if (session.linkedEventRegId) {
+    const linkedEvent = await Event.findById(session.linkedEventRegId).select("formFields").lean();
+    formFields = linkedEvent?.formFields || [];
+  }
+
   const populated = await EventQuestion.findById(question._id)
-    .populate("registrationId", "fullName company customFields");
+    .populate("registrationId", "fullName company phone isoCode customFields");
 
   const obj = populated.toObject();
   const reg = obj.registrationId;
   if (reg) {
-    const cf = reg.customFields || {};
-    obj.submitterName = reg.fullName
-      || cf.Name || cf.name || cf.fullName || cf.FullName || cf.full_name || null;
-    obj.submitterCompany = reg.company
-      || cf.Company || cf.company || cf.organization || cf.Organization || null;
+    obj.submitterName = extractField(reg, "fullName", ["Name", "name", "FullName", "full_name"], session.primaryField, formFields);
+    obj.submitterCompany = extractField(reg, "company", ["Company", "organization", "Organization"], null, formFields);
+    obj.submitterPhone = extractField(reg, "phone", ["Phone", "phoneNumber", "mobile", "Mobile"], null, formFields);
+    obj.submitterIsoCode = reg.isoCode || null;
   }
+
+  emitToRoom(roomKey(sessionSlug), "newQuestion", obj);
 
   return response(res, 201, "Question submitted", obj);
 });
@@ -320,5 +353,16 @@ exports.voteQuestion = asyncHandler(async (req, res) => {
   }
 
   await question.save();
+
+  if (question.sessionId) {
+    const session = await StageQSession.findById(question.sessionId).select("slug").lean();
+    if (session) {
+      emitToRoom(roomKey(session.slug), "questionVoteUpdated", {
+        questionId: question._id,
+        votes: question.votes,
+      });
+    }
+  }
+
   return response(res, 200, "Vote updated", { votes: question.votes });
 });
