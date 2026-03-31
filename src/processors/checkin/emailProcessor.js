@@ -8,6 +8,9 @@ const {
   buildCheckInInvitationEmail,
 } = require("../../utils/emailTemplateBuilder/checkinEmailTemplateBuilder");
 const {
+  buildCalendarInvite,
+} = require("../../utils/calendarInviteBuilder");
+const {
   pickEmail,
   pickFullName,
   pickCompany,
@@ -85,6 +88,17 @@ module.exports = async function emailProcessor(
       }
 
       const attachments = [];
+      if (!customEmail?.subject) {
+        // Attach calendar invite only for system check-in invitation emails
+        const icsContent = buildCalendarInvite(event, r._id.toString(), email);
+        console.log("[emailProcessor] Attaching ICS for", r._id.toString());
+        attachments.push({
+          filename: "event.ics",
+          content: icsContent,
+          contentType: "text/calendar",
+          contentDisposition: "attachment",
+        });
+      }
       if (event.agendaUrl) {
         attachments.push({ filename: "Agenda.pdf", path: event.agendaUrl });
       }
