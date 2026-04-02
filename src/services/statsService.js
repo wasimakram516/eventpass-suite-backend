@@ -632,7 +632,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
       },
     },
 
-    mosaicwall: {
+    memorywall: {
       totals: { configs: totalWallConfigs, media: totalDisplayMedia },
       trash: { configs: trashWallConfigs, media: trashDisplayMedia },
     },

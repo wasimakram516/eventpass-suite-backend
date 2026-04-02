@@ -120,7 +120,7 @@ exports.authorizeUpload = asyncHandler(async (req, res) => {
       return response(
         res,
         400,
-        "Public MosaicWall uploads only support image files."
+        "Public MemoryWall uploads only support image files."
       );
     }
 
