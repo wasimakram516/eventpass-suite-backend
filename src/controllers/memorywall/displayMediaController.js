@@ -34,23 +34,28 @@ exports.getMediaById = asyncHandler(async (req, res) => {
 exports.createDisplayMedia = asyncHandler(async (req, res) => {
   const wallSlug = req.params.slug;
   const { imageUrl, text = "", signatureUrl = "" } = req.body;
-
-  if (!imageUrl) return response(res, 400, "Image URL is required.");
   if (!wallSlug) return response(res, 400, "Wall slug is required.");
 
   const wall = await WallConfig.findOne({ slug: wallSlug }).populate("business", "slug");
   if (!wall) return response(res, 404, "Wall configuration not found.");
+
+  if (wall.mode === "card") {
+    const mediaType = wall.cardSettings?.mediaType || "type1";
+    if (mediaType === "type1" && !imageUrl) {
+      return response(res, 400, "Image is required for media type 1.");
+    }
+    if (mediaType === "type2" && (!text || text.trim() === "")) {
+      return response(res, 400, "Text message is required for media type 2.");
+    }
+  }
 
   const business = await Business.findById(wall.business);
   if (!business) return response(res, 404, "Business not found.");
 
   const media = await DisplayMedia.create({
     imageUrl,
-    text: wall.mode === "card" && wall.cardSettings?.inputType !== "signature" ? text : "",
-    signatureUrl:
-      wall.mode === "card" && wall.cardSettings?.inputType === "signature"
-        ? signatureUrl
-        : "",
+    text: wall.mode === "card" ? text : "",
+    signatureUrl: wall.mode === "card" ? signatureUrl : "",
     wall: wall._id,
   });
 
