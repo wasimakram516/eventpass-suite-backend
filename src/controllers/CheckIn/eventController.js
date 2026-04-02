@@ -276,6 +276,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     showQrAfterRegistration,
     showQrOnBadge,
     requiresApproval,
+    allowMultipleBadgePrinting,
     useInternationalNumbers,
     defaultLanguage,
     logoUrl,
@@ -531,6 +532,15 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   ) {
     updates.requiresApproval =
       requiresApproval === "true" || requiresApproval === true;
+  }
+
+  if (
+    typeof allowMultipleBadgePrinting === "boolean" ||
+    allowMultipleBadgePrinting === "true" ||
+    allowMultipleBadgePrinting === "false"
+  ) {
+    updates.allowMultipleBadgePrinting =
+      allowMultipleBadgePrinting === "true" || allowMultipleBadgePrinting === true;
   }
 
   if (

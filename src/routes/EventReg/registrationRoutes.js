@@ -22,6 +22,7 @@ const {
   createWalkIn,
   getRegistrationMeta,
   lookupRegistration,
+  trackBadgePrint,
 } = require("../../controllers/EventReg/registrationController");
 const activityLogger = require("../../middlewares/activityLogger");
 const { protect, optionalProtect, checkPermission } = require("../../middlewares/auth");
@@ -136,6 +137,9 @@ router.get(
   eventRegAccess,
   getRegistrationMeta
 );
+
+// Track badge print — increments printCount and updates printTimestamp (protected)
+router.patch("/:id/track-print", eventRegAccess, trackBadgePrint);
 
 // Public badge lookup — no auth required
 router.post("/lookup", lookupRegistration);

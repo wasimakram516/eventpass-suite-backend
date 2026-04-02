@@ -35,6 +35,9 @@ const RegistrationSchema = new mongoose.Schema(
     },
     respondedAt: { type: Date, default: null },
     tasksCompleted: { type: Number, default: 0 },
+
+    printTimestamp: { type: Date, default: null },
+    printCount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

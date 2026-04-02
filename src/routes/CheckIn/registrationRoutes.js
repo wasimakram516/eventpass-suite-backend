@@ -21,6 +21,7 @@ const {
   sendBulkEmails,
   sendBulkWhatsApp,
   lookupRegistration,
+  trackBadgePrint,
 } = require("../../controllers/CheckIn/registrationController");
 
 const { protect, optionalProtect, checkPermission } = require("../../middlewares/auth");
@@ -151,6 +152,9 @@ router.post(
   upload.single("file"),
   uploadRegistrations
 );
+
+// Track badge print — increments printCount and updates printTimestamp (protected)
+router.patch("/:id/track-print", CheckInAccess, trackBadgePrint);
 
 // Public badge lookup — no auth required
 router.post("/lookup", lookupRegistration);

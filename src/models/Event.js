@@ -106,6 +106,9 @@ const EventSchema = new mongoose.Schema({
     body: { type: String },
   },
 
+  /** ===== Badge Printing Settings ===== */
+  allowMultipleBadgePrinting: { type: Boolean, default: true },
+
   /** ===== Badge Customizations ===== */
   customizations: {
     type: mongoose.Schema.Types.Mixed,

@@ -35,4 +35,14 @@ function emitNewRegistration(eventId, registrationData) {
   });
 }
 
-module.exports = { emitUploadProgress, emitEmailProgress, emitLoadingProgress, emitNewRegistration };
+// Emit badge print update
+function emitBadgePrinted(eventId, registrationId, printCount, printTimestamp) {
+  emitUpdate("registrationBadgePrinted", {
+    eventId,
+    registrationId,
+    printCount,
+    printTimestamp,
+  });
+}
+
+module.exports = { emitUploadProgress, emitEmailProgress, emitLoadingProgress, emitNewRegistration, emitBadgePrinted };

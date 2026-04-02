@@ -23,6 +23,7 @@ const {
   emitLoadingProgress,
   emitNewRegistration,
   emitPresenceConfirmed,
+  emitBadgePrinted,
 } = require("../../socket/modules/checkin/checkInSocket");
 const uploadProcessor = require("../../processors/checkin/uploadProcessor");
 const emailProcessor = require("../../processors/checkin/emailProcessor");
@@ -1283,12 +1284,17 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   return response(res, 200, "Registration verified and walk-in recorded", {
     registrationId: reg._id,
     token: reg.token,
+    printCount: reg.printCount || 0,
+    printTimestamp: reg.printTimestamp || null,
     walkinId: walkin._id,
     scannedAt: walkin.scannedAt,
     scannedBy: {
       name: staffUser.name || staffUser.email,
     },
     zpl,
+    eventDetails: {
+      allowMultipleBadgePrinting: reg.eventId?.allowMultipleBadgePrinting ?? true,
+    },
   });
 });
 
@@ -1356,6 +1362,35 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
       name: adminUser.name || adminUser.email,
       id: adminUser.id,
     },
+  });
+});
+
+// Track badge print — increments printCount and updates printTimestamp
+exports.trackBadgePrint = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return response(res, 400, "Invalid registration ID");
+  }
+
+  const registration = await Registration.findByIdAndUpdate(
+    id,
+    { $inc: { printCount: 1 }, $set: { printTimestamp: new Date() } },
+    { new: true }
+  ).select("printCount printTimestamp eventId");
+
+  if (!registration) return response(res, 404, "Registration not found");
+
+  emitBadgePrinted(
+    registration.eventId?.toString(),
+    id,
+    registration.printCount,
+    registration.printTimestamp
+  );
+
+  return response(res, 200, "Print tracked", {
+    printCount: registration.printCount,
+    printTimestamp: registration.printTimestamp,
   });
 });
 
