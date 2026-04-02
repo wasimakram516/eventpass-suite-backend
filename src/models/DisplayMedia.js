@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const DisplayMediaSchema = new mongoose.Schema({
   imageUrl: {
     type: String,
-    required: true
+    required: false
   },
   text: {
     type: String,

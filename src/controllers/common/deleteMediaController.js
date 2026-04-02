@@ -18,6 +18,7 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
     deleteAllMemoryImages,
     defaultQrWrapperBrandingId,
     defaultQrWrapperClearAllBranding,
+    wallConfigId,
   } = req.body;
 
   const isMemoryImageOperation = mediaType === "memoryImage" && gameId;
@@ -286,6 +287,34 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
           new: true,
         });
         return response(res, 200, "Media deleted successfully", updatedWheel);
+      }
+    }
+    
+    if (wallConfigId && mediaType && mongoose.Types.ObjectId.isValid(wallConfigId)) {
+      const WallConfig = require("../../models/WallConfig");
+      const wall = await WallConfig.findById(wallConfigId);
+
+      if (!wall) {
+        return response(res, 404, "Wall configuration not found");
+      }
+
+      const updates = {};
+
+      if (mediaType === "background") {
+        updates.background = { url: "", key: "" };
+      } else if (mediaType === "backgroundLogo") {
+        updates.backgroundLogo = {
+          ...(wall.backgroundLogo || {}),
+          url: "",
+          key: "",
+        };
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const updatedWall = await WallConfig.findByIdAndUpdate(wallConfigId, updates, {
+          new: true,
+        });
+        return response(res, 200, "Media deleted successfully", updatedWall);
       }
     }
 

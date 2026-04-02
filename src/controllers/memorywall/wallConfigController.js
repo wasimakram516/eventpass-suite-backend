@@ -38,15 +38,28 @@ function normalizeMosaicGrid(mosaicGrid) {
 }
 
 function normalizeCardSettings(cardSettings) {
-  const defaults = { order: "sequential", inputType: "text" };
+  const defaults = { order: "sequential", backgroundColor: "#ffffff", randomColors: false, imageShape: "circle", mediaType: "type1" };
   if (!cardSettings || typeof cardSettings !== "object") return defaults;
   const order = ["sequential", "random"].includes(cardSettings.order)
     ? cardSettings.order
     : defaults.order;
-  const inputType = ["text", "signature"].includes(cardSettings.inputType)
-    ? cardSettings.inputType
-    : defaults.inputType;
-  return { order, inputType };
+  const backgroundColor = typeof cardSettings.backgroundColor === "string"
+    ? cardSettings.backgroundColor
+    : defaults.backgroundColor;
+  const randomColors = Boolean(cardSettings.randomColors);
+  const imageShape = ["circle", "top-70", "full"].includes(cardSettings.imageShape)
+    ? cardSettings.imageShape
+    : defaults.imageShape;
+  const mediaType = ["type1", "type2"].includes(cardSettings.mediaType)
+    ? cardSettings.mediaType
+    : defaults.mediaType;
+  const mediaType2TextColor = typeof cardSettings.mediaType2TextColor === "string"
+    ? cardSettings.mediaType2TextColor
+    : "#000000";
+  const mediaType2SignatureColor = typeof cardSettings.mediaType2SignatureColor === "string"
+    ? cardSettings.mediaType2SignatureColor
+    : "#000000";
+  return { order, backgroundColor, randomColors, imageShape, mediaType, mediaType2TextColor, mediaType2SignatureColor };
 }
 
 function validateRandomSizesPayload(randomSizes) {
@@ -91,8 +104,20 @@ function validateCardSettingsPayload(cardSettings) {
   if (cardSettings.order && !["sequential", "random"].includes(cardSettings.order)) {
     return "cardSettings order must be either sequential or random.";
   }
-  if (cardSettings.inputType && !["text", "signature"].includes(cardSettings.inputType)) {
-    return "cardSettings inputType must be either text or signature.";
+  if (cardSettings.backgroundColor && !/^#([A-Fa-f0-9]{3}){1,2}$/.test(cardSettings.backgroundColor)) {
+    return "cardSettings backgroundColor must be a valid hex color code.";
+  }
+  if (cardSettings.imageShape && !["circle", "top-70", "full"].includes(cardSettings.imageShape)) {
+    return "cardSettings imageShape must be circle, top-70, or full.";
+  }
+  if (cardSettings.mediaType && !["type1", "type2"].includes(cardSettings.mediaType)) {
+    return "cardSettings mediaType must be either type1 or type2.";
+  }
+  if (cardSettings.mediaType2TextColor && !/^#([A-Fa-f0-9]{3}){1,2}$/.test(cardSettings.mediaType2TextColor)) {
+    return "cardSettings mediaType2TextColor must be a valid hex color code.";
+  }
+  if (cardSettings.mediaType2SignatureColor && !/^#([A-Fa-f0-9]{3}){1,2}$/.test(cardSettings.mediaType2SignatureColor)) {
+    return "cardSettings mediaType2SignatureColor must be a valid hex color code.";
   }
   return null;
 }
@@ -112,11 +137,14 @@ function normalizeBackgroundLogo(backgroundLogo) {
   const hasUrl = typeof backgroundLogo.url === "string" && backgroundLogo.url;
   if (!hasUrl) return null;
   return {
-    key:
-      typeof backgroundLogo.key === "string"
-        ? backgroundLogo.key
-        : "",
+    key: typeof backgroundLogo.key === "string" ? backgroundLogo.key : "",
     url: backgroundLogo.url,
+    overlayEnabled: Boolean(backgroundLogo.overlayEnabled),
+    opacity: typeof backgroundLogo.opacity === "number" ? backgroundLogo.opacity : 100,
+    stampOnImages: Boolean(backgroundLogo.stampOnImages),
+    stampPosition: ["top-left", "top-right", "bottom-left", "bottom-right"].includes(backgroundLogo.stampPosition)
+      ? backgroundLogo.stampPosition
+      : "bottom-right",
   };
 }
 
