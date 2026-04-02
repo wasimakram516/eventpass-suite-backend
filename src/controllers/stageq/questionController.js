@@ -97,33 +97,43 @@ exports.updateQuestion = asyncHandler(async (req, res) => {
 
   if (!isAdmin && !isOwner) return response(res, 403, "Not authorized");
 
+  const textChanged = text && text !== question.text;
   if (answered !== undefined) question.answered = answered;
   if (text) question.text = text;
 
   question.setAuditUser(req.user);
   await question.save();
 
-  if (question.sessionId && answered !== undefined) {
+  if (question.sessionId) {
     const session = await StageQSession.findById(question.sessionId).select("slug").lean();
     if (session) {
-      const payload = { questionId: question._id, answered: question.answered };
-      if (!question.answered) {
-        const populated = await EventQuestion.findById(question._id)
-          .populate("registrationId", "fullName company phone isoCode customFields")
-          .lean();
-        if (populated) {
-          const reg = populated.registrationId;
-          if (reg) {
-            const cf = reg.customFields instanceof Map
-              ? Object.fromEntries(reg.customFields)
-              : (reg.customFields || {});
-            populated.submitterName = reg.fullName || cf.Name || cf.name || cf.fullName || cf.full_name || null;
-            populated.submitterCompany = reg.company || cf.Company || cf.company || cf.organization || cf.Organization || null;
+      if (answered !== undefined) {
+        const payload = { questionId: question._id, answered: question.answered };
+        if (!question.answered) {
+          const populated = await EventQuestion.findById(question._id)
+            .populate("registrationId", "fullName company phone isoCode customFields")
+            .lean();
+          if (populated) {
+            const reg = populated.registrationId;
+            if (reg) {
+              const cf = reg.customFields instanceof Map
+                ? Object.fromEntries(reg.customFields)
+                : (reg.customFields || {});
+              populated.submitterName = reg.fullName || cf.Name || cf.name || cf.fullName || cf.full_name || null;
+              populated.submitterCompany = reg.company || cf.Company || cf.company || cf.organization || cf.Organization || null;
+            }
+            payload.question = populated;
           }
-          payload.question = populated;
         }
+        emitToRoom(roomKey(session.slug), "questionAnsweredUpdated", payload);
       }
-      emitToRoom(roomKey(session.slug), "questionAnsweredUpdated", payload);
+
+      if (textChanged) {
+        emitToRoom(roomKey(session.slug), "questionTextUpdated", {
+          questionId: question._id,
+          text: question.text,
+        });
+      }
     }
   }
 
@@ -148,6 +158,13 @@ exports.deleteQuestion = asyncHandler(async (req, res) => {
   const isAdmin = user.role === "admin" || user.role === "superadmin";
   const isOwner = String(question.business.owner) === user.id;
   if (!isAdmin && !isOwner) return response(res, 403, "Not authorized");
+
+  if (question.sessionId) {
+    const session = await StageQSession.findById(question.sessionId).select("slug").lean();
+    if (session) {
+      emitToRoom(roomKey(session.slug), "questionDeleted", { questionId: question._id });
+    }
+  }
 
   await question.softDelete(req.user.id);
 
