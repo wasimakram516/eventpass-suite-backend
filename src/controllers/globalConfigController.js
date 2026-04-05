@@ -295,22 +295,16 @@ exports.updateConfig = asyncHandler(async (req, res) => {
 // Sync fonts from frontend
 exports.syncFonts = asyncHandler(async (req, res) => {
   const { fonts } = req.body;
-  
+
   if (!fonts || !Array.isArray(fonts)) {
     return response(res, 400, "Fonts array is required");
   }
 
-  let config = await GlobalConfig.findOne({ isDeleted: false });
-  
-  if (!config) {
-    config = await GlobalConfig.create({
-      appName: "EventPass Suite",
-      fonts: fonts
-    });
-  } else {
-    config.fonts = fonts;
-    await config.save();
-  }
+  const config = await GlobalConfig.findOneAndUpdate(
+    { isDeleted: false },
+    { $set: { fonts }, $setOnInsert: { appName: "EventPass Suite" } },
+    { new: true, upsert: true }
+  );
 
   return response(res, 200, "Fonts synced successfully", { fonts: config.fonts });
 });
