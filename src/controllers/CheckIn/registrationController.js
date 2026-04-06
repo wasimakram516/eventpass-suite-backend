@@ -1911,11 +1911,10 @@ exports.lookupRegistration = asyncHandler(async (req, res) => {
   ];
 
   if (hasCustomFields) {
-    // Only AND on required fields — optional fields are skipped
     for (const [key, value] of Object.entries(fields)) {
       if (!value || String(value).trim() === "") continue;
       const formField = formFields.find((f) => f.inputName === key);
-      if (!formField || !formField.required) continue; // skip optional fields
+      if (!formField) continue;
 
       const val = String(value).trim();
 
