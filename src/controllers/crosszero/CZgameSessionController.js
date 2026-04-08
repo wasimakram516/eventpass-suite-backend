@@ -42,8 +42,8 @@ function isDraw(board) {
 
 function populateSession(query) {
   return query.populate([
-    { path: "players.playerId", select: "name company" },
-    { path: "winner", select: "name company" },
+    { path: "players.playerId", select: "name company department" },
+    { path: "winner", select: "name company department" },
     { path: "gameId", select: "title slug mode type moveTimer countdownTimer gameSessionTimer xImage oImage" },
   ]);
 }
@@ -140,7 +140,7 @@ exports.startGameSession = asyncHandler(async (req, res) => {
 });
 
 exports.joinGameSession = asyncHandler(async (req, res) => {
-  const { gameSlug, sessionId, name, company, playerType } = req.body;
+  const { gameSlug, sessionId, name, company, department, playerType } = req.body;
 
   if (!name || !playerType || !["p1", "p2"].includes(playerType)) {
     return response(
@@ -188,6 +188,7 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
   const player = await Player.create({
     name,
     company,
+    department,
     sessionId: session._id,
   });
 
@@ -405,9 +406,11 @@ exports.exportResults = asyncHandler(async (req, res) => {
     "Session ID",
     "Player 1 Name",
     "Player 1 Company",
+    "Player 1 Department",
     "Player 1 Mark",
     "Player 2 Name",
     "Player 2 Company",
+    "Player 2 Department",
     "Player 2 Mark",
     "Outcome",
     "Winner",
@@ -427,9 +430,11 @@ exports.exportResults = asyncHandler(async (req, res) => {
       session._id.toString(),
       p1?.playerId?.name || "-",
       p1?.playerId?.company || "-",
+      p1?.playerId?.department || "-",
       "X",
       p2?.playerId?.name || "-",
       p2?.playerId?.company || "-",
+      p2?.playerId?.department || "-",
       "O",
       getPvpOutcomeLabel(session.xoStats?.result),
       winnerName,
@@ -445,9 +450,11 @@ exports.exportResults = asyncHandler(async (req, res) => {
     28,
     22,
     22,
+    20,
     14,
     22,
     22,
+    20,
     14,
     20,
     22,
