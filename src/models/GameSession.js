@@ -76,6 +76,17 @@ const GameSessionSchema = new mongoose.Schema(
 
     startTime: { type: Date },
     endTime: { type: Date },
+
+    // CrossZero stats
+    xoStats: {
+      board: { type: [mongoose.Schema.Types.Mixed], default: () => Array(9).fill(null) },
+      currentTurn: { type: String, enum: ["X", "O"], default: "X" },
+      moves: { type: Number, default: 0 },
+      result: { type: String, enum: ["X_wins", "O_wins", "draw", null], default: null },
+      difficulty: { type: String, enum: ["easy", "medium", "hard", null], default: null },
+      timeTaken: { type: Number, default: 0 },
+    },
+
     memoryStats: {
       moves: { type: Number, default: 0 },
       matches: { type: Number, default: 0 },
