@@ -17,14 +17,14 @@ const {
 // ─────────────────────────────────────────────────────────────
 exports.joinGame = asyncHandler(async (req, res) => {
   const { gameId } = req.params;
-  const { name, company } = req.body;
+  const { name, company, department } = req.body;
 
   if (!name) return response(res, 400, "Name is required");
 
   const game = await Game.findOne({ _id: gameId, type: "xo", mode: "solo" });
   if (!game) return response(res, 404, "CrossZero AI game not found");
 
-  const player = await Player.create({ name, company });
+  const player = await Player.create({ name, company, department });
 
   const session = await GameSession.create({
     gameId,
@@ -103,7 +103,7 @@ exports.getSessionHistory = asyncHandler(async (req, res) => {
   const totalCount = await GameSession.countDocuments({ gameId, status: "completed" });
 
   const sessions = await GameSession.find({ gameId, status: "completed" })
-    .populate("players.playerId", "name company")
+    .populate("players.playerId", "name company department")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit);
@@ -138,6 +138,7 @@ exports.exportResults = asyncHandler(async (req, res) => {
     "Session ID",
     "Player Name",
     "Company",
+    "Department",
     "Outcome",
     "Difficulty",
     "Moves",
@@ -153,6 +154,7 @@ exports.exportResults = asyncHandler(async (req, res) => {
       s._id.toString(),
       p?.playerId?.name || "Unknown",
       p?.playerId?.company || "-",
+      p?.playerId?.department || "-",
       getAiOutcomeLabel(s.xoStats?.result),
       s.xoStats?.difficulty || "-",
       s.xoStats?.moves || 0,
@@ -162,7 +164,7 @@ exports.exportResults = asyncHandler(async (req, res) => {
     ];
   });
 
-  const worksheet = buildWorksheet(metadataRows, headers, dataRows, [10, 28, 24, 24, 20, 14, 10, 14, 22, 22]);
+  const worksheet = buildWorksheet(metadataRows, headers, dataRows, [10, 28, 24, 24, 20, 20, 14, 10, 14, 22, 22]);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Results");
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx", compression: true });
