@@ -1077,7 +1077,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
         return response(res, 404, "User not found");
     }
 
-    const allowedRoles = ["admin", "business"];
+    const allowedRoles = ["admin", "business", "superadmin"];
     if (!allowedRoles.includes(userDoc.role)) {
         return response(
             res,
