@@ -33,13 +33,16 @@ const gameSchema = new mongoose.Schema(
       },
     },
     countdownTimer: { type: Number, default: 3 },
-    gameSessionTimer: { type: Number, required: true },
-    mode: { type: String, enum: ["solo", "pvp"], required: true }, // Solo = QuizNest, TapMatch | pvp = EventDuel
+    gameSessionTimer: { type: Number, default: 0 },
+    moveTimer: { type: Number, default: 0 }, // CrossZero: seconds per move (0 = no timer)
+    xImage: { type: String, default: null }, // CrossZero: optional custom image for X player
+    oImage: { type: String, default: null }, // CrossZero: optional custom image for O player
+    mode: { type: String, enum: ["solo", "pvp"], required: true }, // Solo = QuizNest, TapMatch, CrossZero(AI) | pvp = EventDuel, CrossZero(PvP)
     questions: [questionSchema],
 
     type: {
       type: String,
-      enum: ["quiz", "memory"], // quiz = QuizNest, EventDuel | memory = TapMatch
+      enum: ["quiz", "memory", "xo"], // quiz = QuizNest, EventDuel | memory = TapMatch | xo = CrossZero
       default: "quiz",
     },
 

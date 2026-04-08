@@ -20,6 +20,7 @@ const MODULE_CONFIGS = {
   surveyguru: { folderName: "SurveyGuru", permissionKey: "surveyguru" },
   tapmatch: { folderName: "TapMatch", permissionKey: "tapmatch" },
   votecast: { folderName: "VoteCast", permissionKey: "votecast" },
+  crosszero: { folderName: "CrossZero", permissionKey: "crosszero" },
 };
 
 const VALID_CONTENT_TYPE_REGEX = /^[\w.+-]+\/[\w.+-]+$/;

@@ -25,6 +25,11 @@ const eventduelGameRoutes = require("./eventduel/gameRoutes");
 const eventduelSessionRoutes = require("./eventduel/gameSessionRoutes");
 const eventduelQuestionRoutes = require("./eventduel/questionRoutes");
 
+// CrossZero
+const crosszeroGameRoutes = require("./crosszero/gameRoutes");
+const crosszeroSessionRoutes = require("./crosszero/gameSessionRoutes");
+const crosszeroPlayerRoutes = require("./crosszero/playerRoutes");
+
 // TapMatch
 const tapmatchGameRoutes = require("./tapmatch/gameRoutes");
 const tapmatchPlayerRoutes = require("./tapmatch/playerRoutes");
@@ -101,6 +106,11 @@ router.use("/quiznest/questions", quizQuestionRoutes);
 router.use("/eventduel/games", eventduelGameRoutes);
 router.use("/eventduel/sessions", eventduelSessionRoutes);
 router.use("/eventduel/questions", eventduelQuestionRoutes);
+
+// ------------------ CrossZero ------------------
+router.use("/crosszero/games", crosszeroGameRoutes);
+router.use("/crosszero/sessions", crosszeroSessionRoutes);
+router.use("/crosszero/player", crosszeroPlayerRoutes);
 
 // ------------------ TapMatch ------------------
 router.use("/tapmatch/games", tapmatchGameRoutes);

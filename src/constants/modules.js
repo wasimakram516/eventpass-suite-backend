@@ -30,6 +30,21 @@ const BASE = [
     routes: { admin: "/cms/modules/eventduel", staff: null },
   },
   {
+    key: "crosszero",
+    labels: { en: "CrossZero", ar: "CrossZero" },
+    descriptions: {
+      en: "Play Tic-Tac-Toe solo vs AI or live 1v1.",
+      ar: "العب إكس-أو ضد الذكاء الاصطناعي أو مباشرةً 1v1.",
+    },
+    buttonsByRole: {
+      admin: { en: "Manage Games", ar: "إدارة الألعاب" },
+      staff: { en: "View Games", ar: "عرض الألعاب" },
+    },
+    icon: "close",
+    color: "#6a1b9a",
+    routes: { admin: "/cms/modules/crosszero", staff: null },
+  },
+  {
     key: "tapmatch",
     labels: { en: "TapMatch", ar: "TapMatch" },
     descriptions: {
