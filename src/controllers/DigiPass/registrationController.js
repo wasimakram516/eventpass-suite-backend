@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const XLSX = require("xlsx");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const Registration = require("../../models/Registration");
+const DigiPassParticipationLog = require("../../models/DigiPassParticipationLog");
 const Event = require("../../models/Event");
 const WalkIn = require("../../models/WalkIn");
 const User = require("../../models/User");
@@ -47,23 +48,45 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
 
     await recountEventRegistrations(eventId);
 
-    const totalRegistrations = await Registration.countDocuments({
-        eventId,
-        isDeleted: { $ne: true },
-    });
+    let totalRegistrations = 0;
+    let registrations = [];
 
-    const registrations = await Registration.find({ eventId })
-        
-        .populate("createdBy", "name")
-        .populate("updatedBy", "name")
-        .skip((page - 1) * limit)
-        .limit(limit);
+    if (event.linkedEventRegId) {
+        totalRegistrations = await DigiPassParticipationLog.countDocuments({ digipassEventId: eventId });
+        const logs = await DigiPassParticipationLog.find({ digipassEventId: eventId })
+            .populate({
+                path: "eventRegRegistrationId",
+                populate: [
+                    { path: "createdBy", select: "name" },
+                    { path: "updatedBy", select: "name" }
+                ]
+            })
+            .skip((page - 1) * limit)
+            .limit(limit);
+            
+        registrations = logs.map(log => log.eventRegRegistrationId).filter(r => r && r.isDeleted !== true);
+    } else {
+        totalRegistrations = await Registration.countDocuments({
+            eventId,
+            isDeleted: { $ne: true },
+        });
 
-    const enhanced = await Promise.all(
+        registrations = await Registration.find({ eventId })
+            .populate("createdBy", "name")
+            .populate("updatedBy", "name")
+            .skip((page - 1) * limit)
+            .limit(limit);
+    }
+
+       const enhanced = await Promise.all(
         registrations.map(async (reg) => {
-            const walkIns = await WalkIn.find({ registrationId: reg._id })
+            const walkIns = await WalkIn.find({ 
+                registrationId: reg._id,
+                eventId: eventId
+            })
                 .populate("scannedBy", "name email staffType")
-                .sort({ scannedAt: -1 });
+                .sort({ scannedAt: -1 })
+                .lean();
 
             return {
                 _id: reg._id,
@@ -95,30 +118,51 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
 
 async function loadRemainingRecords(eventId, total) {
     try {
+        const event = await Event.findById(eventId);
         const BATCH_SIZE = 50;
         const startFrom = 50;
 
         for (let skip = startFrom; skip < total; skip += BATCH_SIZE) {
             const limit = Math.min(BATCH_SIZE, total - skip);
+            let registrations = [];
 
-            const registrations = await Registration.find({ eventId })
-                .where("isDeleted")
-                .ne(true)
-                .sort({ createdAt: 1, _id: 1 })
-                .skip(skip)
-                .limit(limit)
-                .populate("createdBy", "name")
-                .populate("updatedBy", "name")
-                .lean();
+            if (event && event.linkedEventRegId) {
+                const logs = await DigiPassParticipationLog.find({ digipassEventId: eventId })
+                    .sort({ createdAt: 1, _id: 1 })
+                    .skip(skip)
+                    .limit(limit)
+                    .populate({
+                        path: "eventRegRegistrationId",
+                        populate: [
+                            { path: "createdBy", select: "name" },
+                            { path: "updatedBy", select: "name" }
+                        ]
+                    })
+                    .lean();
+                registrations = logs.map(log => log.eventRegRegistrationId).filter(r => r && r.isDeleted !== true);
+            } else {
+                registrations = await Registration.find({ eventId })
+                    .where("isDeleted")
+                    .ne(true)
+                    .sort({ createdAt: 1, _id: 1 })
+                    .skip(skip)
+                    .limit(limit)
+                    .populate("createdBy", "name")
+                    .populate("updatedBy", "name")
+                    .lean();
+            }
 
             if (!registrations.length) break;
 
             const enhanced = await Promise.all(
                 registrations.map(async (reg) => {
-                    const walkIns = await WalkIn.find({ registrationId: reg._id })
-                        .populate("scannedBy", "name email staffType")
-                        .sort({ scannedAt: -1 })
-                        .lean();
+                const walkIns = await WalkIn.find({ 
+                    registrationId: reg._id,
+                    eventId: eventId
+                })
+                    .populate("scannedBy", "name email staffType")
+                    .sort({ scannedAt: -1 })
+                    .lean();
 
                     return {
                         _id: reg._id,
@@ -160,23 +204,47 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
 
     const eventId = event._id;
     await recountEventRegistrations(eventId);
-    const totalCount = await Registration.countDocuments({
-        eventId,
-        isDeleted: { $ne: true },
-    });
 
-    const registrations = await Registration.find({ eventId })
-        .where("isDeleted")
-        .ne(true)
-        .sort({ createdAt: 1 })
-        .limit(50)
-        .populate("createdBy", "name")
-        .populate("updatedBy", "name")
-        .lean();
+    let totalCount = 0;
+    let registrations = [];
+
+    if (event.linkedEventRegId) {
+        totalCount = await DigiPassParticipationLog.countDocuments({ digipassEventId: eventId });
+        const logs = await DigiPassParticipationLog.find({ digipassEventId: eventId })
+            .sort({ createdAt: 1 })
+            .limit(50)
+            .populate({
+                path: "eventRegRegistrationId",
+                populate: [
+                    { path: "createdBy", select: "name" },
+                    { path: "updatedBy", select: "name" }
+                ]
+            })
+            .lean();
+            
+        registrations = logs.map(log => log.eventRegRegistrationId).filter(r => r && r.isDeleted !== true);
+    } else {
+        totalCount = await Registration.countDocuments({
+            eventId,
+            isDeleted: { $ne: true },
+        });
+
+        registrations = await Registration.find({ eventId })
+            .where("isDeleted")
+            .ne(true)
+            .sort({ createdAt: 1 })
+            .limit(50)
+            .populate("createdBy", "name")
+            .populate("updatedBy", "name")
+            .lean();
+    }
 
     const enhanced = await Promise.all(
         registrations.map(async (reg) => {
-            const walkIns = await WalkIn.find({ registrationId: reg._id })
+            const walkIns = await WalkIn.find({ 
+                registrationId: reg._id,
+                eventId: eventId
+            })
                 .populate("scannedBy", "name email staffType")
                 .sort({ scannedAt: -1 })
                 .lean();
@@ -879,24 +947,56 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
         return response(res, 404, "Registration not found");
     }
 
-    if (registration.eventId?.eventType !== ALLOWED_EVENT_TYPE) {
-        return response(res, 400, "This registration is not for a DigiPass event");
-    }
-
-    const eventBusinessId = registration.eventId?.businessId?.toString();
     const staffBusinessId = staffUser.business?.toString();
+    const eventBusinessId = registration.eventId?.businessId?.toString();
 
+    // Initial business check for the registration's own event
     if (!staffBusinessId || staffBusinessId !== eventBusinessId) {
-        return response(
-            res,
-            403,
-            "You are not authorized to scan registrations for this business"
-        );
+        // We might allow it if it's a linked event and the staff belongs to the DigiPass business.
+        // But for now, let's keep it strict or adjust inside the linked block.
     }
 
     const registrationId = registration._id;
-    const eventId = registration.eventId._id;
+    let eventId = registration.eventId._id;
     const scannedBy = staffUser.id;
+
+    // Handle Linked EventReg Registration
+    if (registration.eventId?.eventType !== ALLOWED_EVENT_TYPE) {
+        // Look for participation log for this registration
+        const participation = await DigiPassParticipationLog.findOne({
+            eventRegRegistrationId: registrationId,
+        }).populate("digipassEventId");
+
+        if (!participation || !participation.digipassEventId) {
+            return response(
+                res,
+                404,
+                "This registration is not signed into any DigiPass event"
+            );
+        }
+
+        // Verify business match for the DigiPass event
+        const digipassBusinessId = participation.digipassEventId.businessId?.toString();
+        if (digipassBusinessId !== staffBusinessId) {
+            return response(
+                res,
+                403,
+                "You are not authorized to scan for this DigiPass event"
+            );
+        }
+
+        // Use the DigiPass event ID for the walk-in and tasks
+        eventId = participation.digipassEventId._id;
+    } else {
+        // Standalone DigiPass business check
+        if (!staffBusinessId || staffBusinessId !== eventBusinessId) {
+            return response(
+                res,
+                403,
+                "You are not authorized to scan registrations for this business"
+            );
+        }
+    }
 
     const existingWalkIn = await WalkIn.findOne({
         registrationId,
@@ -913,7 +1013,12 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
         });
     }
 
-    const maxTasksLimit = registration.eventId?.maxTasksPerUser;
+    // Check task limit from the resolved event if possible
+    const targetEvent = registration.eventId?.eventType === ALLOWED_EVENT_TYPE 
+        ? registration.eventId 
+        : (await Event.findById(eventId));
+
+    const maxTasksLimit = targetEvent?.maxTasksPerUser;
     if (maxTasksLimit !== null && maxTasksLimit !== undefined) {
         const currentTasks = registration.tasksCompleted || 0;
         if (currentTasks >= maxTasksLimit) {
@@ -939,7 +1044,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
 
     const eventIdStr = eventId.toString();
     const registrationIdStr = registration._id.toString();
-    const maxTasksForEmit = registration.eventId?.maxTasksPerUser || null;
+    const maxTasksForEmit = maxTasksLimit || null;
 
     emitTaskCompletedUpdate(
         eventIdStr,
@@ -995,6 +1100,62 @@ exports.signIn = asyncHandler(async (req, res) => {
     }
 
     const formFields = event.formFields || [];
+    
+    // Linked Event Sign In
+    if (event.linkedEventRegId) {
+        const { primaryField } = event;
+        const primaryFieldsArray = Array.isArray(primaryField) ? primaryField : (primaryField ? [primaryField] : []);
+        
+        if (primaryFieldsArray.length === 0) {
+            return response(res, 400, "Event is linked but has no primary field configured");
+        }
+
+        const queryObj = { eventId: event.linkedEventRegId };
+        const missingFields = [];
+
+        for (const pField of primaryFieldsArray) {
+            const value = req.body[pField];
+            if (!value || String(value).trim() === "") {
+                missingFields.push(pField);
+            } else {
+                queryObj[`customFields.${pField}`] = String(value).trim();
+            }
+        }
+
+        if (missingFields.length > 0) {
+            return response(res, 400, `Missing required identity field(s): ${missingFields.join(", ")}`);
+        }
+
+        const registration = await Registration.findOne(queryObj);
+
+        if (!registration) {
+            return response(res, 404, "No registration found with the provided identity information");
+        }
+
+        await DigiPassParticipationLog.findOneAndUpdate(
+            { digipassEventId: event._id, eventRegRegistrationId: registration._id },
+            {},
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
+        return response(res, 200, "Sign in successful", {
+            registration: {
+                _id: registration._id,
+                token: registration.token,
+                tasksCompleted: registration.tasksCompleted || 0,
+                customFields: registration.customFields,
+                createdAt: registration.createdAt,
+            },
+            event: {
+                _id: event._id,
+                name: event.name,
+                maxTasksPerUser: event.maxTasksPerUser,
+                linkedEventRegId: event.linkedEventRegId,
+            },
+        });
+    }
+
+    // Standalone Event Sign In
     const identityFields = formFields.filter((f) => f.identity === true);
 
     if (identityFields.length === 0) {
@@ -1094,13 +1255,49 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
         return response(res, 404, "Registration not found");
     }
 
-    if (registration.eventId?.eventType !== ALLOWED_EVENT_TYPE) {
-        return response(res, 400, "This registration is not for a DigiPass event");
-    }
+    const staffBusinessId = adminUser.business?.toString();
+    const eventBusinessId = registration.eventId?.businessId?.toString();
 
+    let eventId = registration.eventId._id;
     const registrationId = registration._id;
-    const eventId = registration.eventId._id;
     const scannedBy = adminUser.id;
+
+    // Handle Linked EventReg Registration
+    if (registration.eventId?.eventType !== ALLOWED_EVENT_TYPE) {
+        // Resolve unique DigiPass event for this EventReg registration
+        // We check participation log as per business rule: only for those who have signed in
+        const participation = await DigiPassParticipationLog.findOne({
+            eventRegRegistrationId: registrationId,
+        }).populate("digipassEventId");
+
+        if (!participation || !participation.digipassEventId) {
+            return response(
+                res,
+                404,
+                "This registration is not signed into any DigiPass event"
+            );
+        }
+        eventId = participation.digipassEventId._id;
+
+        // Verify business authorization for the resolved DigiPass event
+        const targetEvent = await Event.findById(eventId).select("businessId");
+        if (targetEvent?.businessId?.toString() !== staffBusinessId) {
+            return response(
+                res,
+                403,
+                "You are not authorized to create records for this event"
+            );
+        }
+    } else {
+        // Standalone DigiPass business check
+        if (!staffBusinessId || staffBusinessId !== eventBusinessId) {
+            return response(
+                res,
+                403,
+                "You are not authorized to scan registrations for this business"
+            );
+        }
+    }
 
     const existingWalkIn = await WalkIn.findOne({
         registrationId,
@@ -1670,7 +1867,10 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
         });
     }
 
-    const walkins = await WalkIn.find({ eventId })
+    const walkins = await WalkIn.find({ 
+        eventId,
+        registrationId: { $in: regs.map(r => r._id) }
+    })
         .populate("scannedBy", "name email staffType")
         .lean();
 

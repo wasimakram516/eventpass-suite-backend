@@ -83,6 +83,9 @@ const EventSchema = new mongoose.Schema({
   maxTasksPerUser: { type: Number, default: null },
   minTasksPerUser: { type: Number, default: null },
 
+  linkedEventRegId: { type: mongoose.Schema.Types.ObjectId, ref: "Event", default: null },
+  primaryField: { type: [String], default: [] },
+
   /** ===== Custom Form Fields ===== */
   formFields: [
     {

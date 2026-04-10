@@ -458,7 +458,10 @@ exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
 
   const enhanced = await Promise.all(
     initialRegs.map(async (reg) => {
-      const walkIns = await WalkIn.find({ registrationId: reg._id })
+      const walkIns = await WalkIn.find({ 
+        registrationId: reg._id,
+        eventId: eventId
+      })
         .populate("scannedBy", "name email staffType")
         .sort({ scannedAt: -1 })
         .lean();
@@ -497,7 +500,10 @@ exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
 
       const enhancedRegs = await Promise.all(
         regs.map(async (reg) => {
-          const walkIns = await WalkIn.find({ registrationId: reg._id })
+          const walkIns = await WalkIn.find({ 
+            registrationId: reg._id,
+            eventId: eventId
+          })
             .populate("scannedBy", "name email staffType")
             .sort({ scannedAt: -1 })
             .lean();
@@ -670,7 +676,10 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     });
   }
 
-  const walkins = await WalkIn.find({ eventId })
+  const walkins = await WalkIn.find({ 
+    eventId,
+    registrationId: { $in: regs.map(r => r._id) }
+  })
     .populate("scannedBy", "name email staffType")
     .lean();
 
