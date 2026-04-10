@@ -111,6 +111,7 @@ const EventSchema = new mongoose.Schema({
 
   /** ===== Badge Printing Settings ===== */
   allowMultipleBadgePrinting: { type: Boolean, default: true },
+  createCheckinOnFirstPrint: { type: Boolean, default: false },
 
   /** ===== Badge Customizations ===== */
   customizations: {

@@ -121,6 +121,8 @@ exports.createEvent = asyncHandler(async (req, res) => {
     showQrAfterRegistration,
     showQrOnBadge,
     requiresApproval,
+    allowMultipleBadgePrinting,
+    createCheckinOnFirstPrint,
     useInternationalNumbers,
     defaultLanguage,
     organizerName,
@@ -245,6 +247,8 @@ exports.createEvent = asyncHandler(async (req, res) => {
     showQrAfterRegistration,
     showQrOnBadge,
     requiresApproval: requiresApproval === "true" || requiresApproval === true,
+    allowMultipleBadgePrinting: allowMultipleBadgePrinting === "false" || allowMultipleBadgePrinting === false ? false : true,
+    createCheckinOnFirstPrint: createCheckinOnFirstPrint === "true" || createCheckinOnFirstPrint === true,
     useInternationalNumbers: useInternationalNumbers === "true" || useInternationalNumbers === true,
     defaultLanguage: defaultLanguage || "en",
     organizerName: organizerName || "",
@@ -308,6 +312,7 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     showQrOnBadge,
     requiresApproval,
     allowMultipleBadgePrinting,
+    createCheckinOnFirstPrint,
     useInternationalNumbers,
     defaultLanguage,
     removeLogo,
@@ -552,6 +557,15 @@ exports.updateEvent = asyncHandler(async (req, res) => {
   ) {
     updates.allowMultipleBadgePrinting =
       allowMultipleBadgePrinting === "true" || allowMultipleBadgePrinting === true;
+  }
+
+  if (
+    typeof createCheckinOnFirstPrint === "boolean" ||
+    createCheckinOnFirstPrint === "true" ||
+    createCheckinOnFirstPrint === "false"
+  ) {
+    updates.createCheckinOnFirstPrint =
+      createCheckinOnFirstPrint === "true" || createCheckinOnFirstPrint === true;
   }
 
   if (

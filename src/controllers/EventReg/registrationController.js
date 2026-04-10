@@ -2196,7 +2196,7 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
   });
 });
 
-// Track badge print — increments printCount and updates printTimestamp
+// Track badge print — increments printCount, updates printTimestamp, and optionally creates a check-in record on first print
 exports.trackBadgePrint = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
@@ -2219,9 +2219,30 @@ exports.trackBadgePrint = asyncHandler(async (req, res) => {
     registration.printTimestamp
   );
 
+  // Create a check-in record on the first badge print if the event has this enabled
+  let checkinCreated = false;
+  if (registration.printCount === 1) {
+    const event = await Event.findById(registration.eventId).select("createCheckinOnFirstPrint businessId");
+    if (event?.createCheckinOnFirstPrint) {
+      const walkin = new WalkIn({
+        registrationId: id,
+        eventId: registration.eventId,
+        scannedBy: req.user.id,
+      });
+      walkin.setAuditUser(req.user);
+      await walkin.save();
+      checkinCreated = true;
+
+      recomputeAndEmit(event.businessId || null).catch((err) =>
+        console.error("Background recompute failed:", err.message)
+      );
+    }
+  }
+
   return response(res, 200, "Print tracked", {
     printCount: registration.printCount,
     printTimestamp: registration.printTimestamp,
+    checkinCreated,
   });
 });
 
