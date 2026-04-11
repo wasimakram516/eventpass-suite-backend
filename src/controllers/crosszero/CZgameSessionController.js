@@ -136,6 +136,11 @@ exports.startGameSession = asyncHandler(async (req, res) => {
   });
 
   const populated = await emitSessionAndLobby(session._id);
+
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 201, "CrossZero session started", populated);
 });
 
@@ -202,6 +207,10 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
   await session.save();
 
   const populated = await emitSessionAndLobby(session._id);
+
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 201, `${name} joined as ${playerType}`, {
     playerId: player._id,
@@ -376,6 +385,10 @@ exports.resetGameSessions = asyncHandler(async (req, res) => {
 
   emitToRoom(gameSlug, "cz:sessionsUpdate", []);
   emitToRoom(gameSlug, "cz:allSessions", []);
+
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
 
   return response(res, 200, "All CrossZero sessions reset");
 });
