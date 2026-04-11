@@ -44,6 +44,20 @@ const MetricsSchema = new mongoose.Schema(
           sessions: { type: Number, default: 0 },
         },
       },
+      crosszero: {
+        totals: {
+          soloGames: { type: Number, default: 0 },
+          pvpGames: { type: Number, default: 0 },
+          soloPlayers: { type: Number, default: 0 },
+          pvpSessions: { type: Number, default: 0 },
+        },
+        trash: {
+          soloGames: { type: Number, default: 0 },
+          pvpGames: { type: Number, default: 0 },
+          soloPlayers: { type: Number, default: 0 },
+          pvpSessions: { type: Number, default: 0 },
+        },
+      },
       eventreg: {
         totals: {
           events: { type: Number, default: 0 },
