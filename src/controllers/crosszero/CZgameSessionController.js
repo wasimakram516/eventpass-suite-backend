@@ -380,6 +380,100 @@ exports.resetGameSessions = asyncHandler(async (req, res) => {
   return response(res, 200, "All CrossZero sessions reset");
 });
 
+// ─────────────────────────────────────────────────────────────
+// TRASH — RESTORE / PERMANENT DELETE
+// ─────────────────────────────────────────────────────────────
+exports.restoreGameSession = asyncHandler(async (req, res) => {
+  const session = await GameSession.findOne({ _id: req.params.id, isDeleted: true }).populate("gameId");
+  if (!session) return response(res, 404, "Deleted CrossZero session not found");
+
+  const game = session.gameId;
+  if (!game || game.type !== "xo") return response(res, 404, "Game not found or not CrossZero");
+
+  await session.restore();
+
+  const playerIds = session.players.map((p) => p.playerId);
+  const players = await Player.find({ _id: { $in: playerIds }, isDeleted: true });
+  for (const player of players) await player.restore();
+
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(res, 200, "CrossZero session and players restored");
+});
+
+exports.permanentDeleteGameSession = asyncHandler(async (req, res) => {
+  const session = await GameSession.findOne({ _id: req.params.id, isDeleted: true }).populate("gameId");
+  if (!session) return response(res, 404, "Deleted CrossZero session not found");
+
+  const game = session.gameId;
+  if (!game || game.type !== "xo") return response(res, 404, "Game not found or not CrossZero");
+
+  const playerIds = session.players.map((p) => p.playerId);
+  if (playerIds.length) await Player.deleteMany({ _id: { $in: playerIds } });
+  await session.deleteOne();
+
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(res, 200, "CrossZero session permanently deleted");
+});
+
+exports.restoreAllGameSessions = asyncHandler(async (req, res) => {
+  const sessions = await GameSession.aggregate([
+    { $match: { isDeleted: true } },
+    { $lookup: { from: "games", localField: "gameId", foreignField: "_id", as: "game" } },
+    { $unwind: "$game" },
+    { $match: { "game.type": "xo" } },
+  ]);
+
+  if (!sessions.length) return response(res, 404, "No deleted CrossZero sessions found");
+
+  for (const sessionData of sessions) {
+    const session = await GameSession.findById(sessionData._id);
+    if (!session) continue;
+    await session.restore();
+    const playerIds = sessionData.players.map((p) => p.playerId);
+    if (playerIds.length) {
+      await Player.updateMany(
+        { _id: { $in: playerIds }, isDeleted: true },
+        { $set: { isDeleted: false, deletedAt: null } }
+      );
+    }
+  }
+
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(res, 200, `Restored ${sessions.length} CrossZero session(s)`);
+});
+
+exports.permanentDeleteAllGameSessions = asyncHandler(async (req, res) => {
+  const sessions = await GameSession.aggregate([
+    { $match: { isDeleted: true } },
+    { $lookup: { from: "games", localField: "gameId", foreignField: "_id", as: "game" } },
+    { $unwind: "$game" },
+    { $match: { "game.type": "xo" } },
+  ]);
+
+  if (!sessions.length) return response(res, 404, "No deleted CrossZero sessions found");
+
+  for (const sessionData of sessions) {
+    const playerIds = sessionData.players.map((p) => p.playerId);
+    if (playerIds.length) await Player.deleteMany({ _id: { $in: playerIds } });
+    await GameSession.deleteOne({ _id: sessionData._id });
+  }
+
+  recomputeAndEmit(null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
+  return response(res, 200, `Permanently deleted ${sessions.length} CrossZero session(s)`);
+});
+
 exports.exportResults = asyncHandler(async (req, res) => {
   const game = await Game.findOne({
     slug: req.params.gameSlug,
