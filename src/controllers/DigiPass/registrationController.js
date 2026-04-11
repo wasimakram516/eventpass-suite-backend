@@ -96,6 +96,10 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
                 createdBy: reg.createdBy,
                 updatedBy: reg.updatedBy,
                 isoCode: reg.isoCode,
+                fullName: reg.fullName || "",
+                email: reg.email || "",
+                phone: reg.phone || "",
+                company: reg.company || "",
                 customFields: reg.customFields || {},
                 walkIns: walkIns.map((w) => ({
                     scannedAt: w.scannedAt,
@@ -172,6 +176,10 @@ async function loadRemainingRecords(eventId, total) {
                         createdBy: reg.createdBy,
                         updatedBy: reg.updatedBy,
                         isoCode: reg.isoCode,
+                        fullName: reg.fullName || "",
+                        email: reg.email || "",
+                        phone: reg.phone || "",
+                        company: reg.company || "",
                         customFields: reg.customFields || {},
                         walkIns: walkIns.map((w) => ({
                             scannedAt: w.scannedAt,
@@ -257,6 +265,10 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
                 createdBy: reg.createdBy,
                 updatedBy: reg.updatedBy,
                 isoCode: reg.isoCode,
+                fullName: reg.fullName || "",
+                email: reg.email || "",
+                phone: reg.phone || "",
+                company: reg.company || "",
                 customFields: reg.customFields || {},
                 walkIns: walkIns.map((w) => ({
                     scannedAt: w.scannedAt,
@@ -1113,12 +1125,28 @@ exports.signIn = asyncHandler(async (req, res) => {
         const queryObj = { eventId: event.linkedEventRegId };
         const missingFields = [];
 
+        const classicFieldsMap = {
+            fullName: "fullName",
+            email: "email",
+            phone: "phone",
+            company: "company"
+        };
+
+        const escapeRegex = (str) => {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        };
+
         for (const pField of primaryFieldsArray) {
             const value = req.body[pField];
             if (!value || String(value).trim() === "") {
                 missingFields.push(pField);
             } else {
-                queryObj[`customFields.${pField}`] = String(value).trim();
+                const searchRegex = new RegExp(`^${escapeRegex(String(value).trim())}$`, "i");
+                if (classicFieldsMap[pField]) {
+                    queryObj[classicFieldsMap[pField]] = searchRegex;
+                } else {
+                    queryObj[`customFields.${pField}`] = searchRegex;
+                }
             }
         }
 
@@ -1143,6 +1171,10 @@ exports.signIn = asyncHandler(async (req, res) => {
                 _id: registration._id,
                 token: registration.token,
                 tasksCompleted: registration.tasksCompleted || 0,
+                fullName: registration.fullName || "",
+                email: registration.email || "",
+                phone: registration.phone || "",
+                company: registration.company || "",
                 customFields: registration.customFields,
                 createdAt: registration.createdAt,
             },
@@ -1187,10 +1219,15 @@ exports.signIn = asyncHandler(async (req, res) => {
     };
 
     const $and = [];
+    const escapeRegex = (str) => {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    };
+
     for (const field of identityFields) {
         const value = identityValues[field.inputName];
         if (value) {
-            $and.push({ [`customFields.${field.inputName}`]: value });
+            const searchRegex = new RegExp(`^${escapeRegex(value)}$`, "i");
+            $and.push({ [`customFields.${field.inputName}`]: searchRegex });
         }
     }
 
@@ -1209,6 +1246,10 @@ exports.signIn = asyncHandler(async (req, res) => {
             _id: registration._id,
             token: registration.token,
             tasksCompleted: registration.tasksCompleted,
+            fullName: registration.fullName || "",
+            email: registration.email || "",
+            phone: registration.phone || "",
+            company: registration.company || "",
             customFields: registration.customFields,
             createdAt: registration.createdAt,
         },
