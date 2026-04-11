@@ -50,10 +50,31 @@ const WallConfigSchema = new mongoose.Schema({
         enum: ["sequential", "random"],
         default: "sequential",
       },
-      inputType: {
+      backgroundColor: {
         type: String,
-        enum: ["text", "signature"],
-        default: "text",
+        default: "#ffffff",
+      },
+      randomColors: {
+        type: Boolean,
+        default: false,
+      },
+      imageShape: {
+        type: String,
+        enum: ["circle", "top-70", "full"],
+        default: "circle",
+      },
+      mediaType: {
+        type: String,
+        enum: ["type1", "type2"],
+        default: "type1",
+      },
+      mediaType2TextColor: {
+        type: String,
+        default: "#000000",
+      },
+      mediaType2SignatureColor: {
+        type: String,
+        default: "#000000",
       },
     },
     background: {
@@ -63,6 +84,14 @@ const WallConfigSchema = new mongoose.Schema({
     backgroundLogo: {
       key: { type: String },
       url: { type: String },
+      overlayEnabled: { type: Boolean, default: false },
+      opacity: { type: Number, default: 100 },
+      stampOnImages: { type: Boolean, default: false },
+      stampPosition: {
+        type: String,
+        enum: ["top-left", "top-right", "bottom-left", "bottom-right"],
+        default: "bottom-right",
+      },
     },
   },
   { timestamps: true },

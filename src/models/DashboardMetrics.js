@@ -92,7 +92,7 @@ const MetricsSchema = new mongoose.Schema(
           visitors: { type: Number, default: 0 },
         },
       },
-      mosaicwall: {
+      memorywall: {
         totals: {
           configs: { type: Number, default: 0 },
           media: { type: Number, default: 0 },

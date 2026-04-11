@@ -83,6 +83,9 @@ const EventSchema = new mongoose.Schema({
   maxTasksPerUser: { type: Number, default: null },
   minTasksPerUser: { type: Number, default: null },
 
+  linkedEventRegId: { type: mongoose.Schema.Types.ObjectId, ref: "Event", default: null },
+  primaryField: { type: [String], default: [] },
+
   /** ===== Custom Form Fields ===== */
   formFields: [
     {
@@ -105,6 +108,10 @@ const EventSchema = new mongoose.Schema({
     subject: { type: String },
     body: { type: String },
   },
+
+  /** ===== Badge Printing Settings ===== */
+  allowMultipleBadgePrinting: { type: Boolean, default: true },
+  createCheckinOnFirstPrint: { type: Boolean, default: false },
 
   /** ===== Badge Customizations ===== */
   customizations: {

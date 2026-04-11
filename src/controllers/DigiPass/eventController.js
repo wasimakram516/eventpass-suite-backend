@@ -33,9 +33,13 @@ exports.getEventDetails = asyncHandler(async (req, res) => {
     })
 
         .sort({ createdAt: -1 })
-        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
+        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser linkedEventRegId primaryField formFields registrations createdAt updatedAt createdBy updatedBy")
         .populate("createdBy", "name")
-        .populate("updatedBy", "name");
+        .populate("updatedBy", "name")
+        .populate({
+            path: "linkedEventRegId",
+            select: "name slug"
+        });
 
     return response(res, 200, "DigiPass Events fetched successfully", {
         events,
@@ -48,7 +52,7 @@ exports.getEventBySlug = asyncHandler(async (req, res) => {
     const { slug } = req.params;
     const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE })
 
-        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser formFields registrations");
+        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser linkedEventRegId primaryField formFields registrations");
 
     if (!event) {
         return response(res, 404, "DigiPass event not found");
@@ -67,7 +71,7 @@ exports.getEventById = asyncHandler(async (req, res) => {
 
     const event = await Event.findById(id)
 
-        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser formFields registrations");
+        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser linkedEventRegId primaryField formFields registrations");
 
     if (!event || event.eventType !== ALLOWED_EVENT_TYPE) {
         return response(res, 404, "DigiPass event not found");
@@ -89,6 +93,8 @@ exports.createEvent = asyncHandler(async (req, res) => {
         background,
         maxTasksPerUser,
         minTasksPerUser,
+        linkedEventRegId,
+        primaryField,
         formFields,
     } = req.body;
 
@@ -175,6 +181,22 @@ exports.createEvent = asyncHandler(async (req, res) => {
         );
     }
 
+    let eventIdToLink = linkedEventRegId || null;
+    if (eventIdToLink) {
+        const existingLink = await Event.findOne({
+            linkedEventRegId: eventIdToLink,
+            eventType: ALLOWED_EVENT_TYPE,
+            isDeleted: { $ne: true },
+        });
+        if (existingLink) {
+            return response(
+                res,
+                400,
+                `This EventReg is already linked to another DigiPass event: ${existingLink.name}`
+            );
+        }
+    }
+
     const eventPayload = {
         name,
         slug: uniqueSlug,
@@ -189,6 +211,8 @@ exports.createEvent = asyncHandler(async (req, res) => {
             : {}),
         maxTasksPerUser: maxTasksPerUser !== undefined && maxTasksPerUser !== null ? Number(maxTasksPerUser) : null,
         minTasksPerUser: minTasksPerUser !== undefined && minTasksPerUser !== null ? Number(minTasksPerUser) : null,
+        linkedEventRegId: eventIdToLink,
+        primaryField: Array.isArray(primaryField) ? primaryField : (primaryField ? [primaryField] : []),
         formFields: parsedFormFields,
     };
 
@@ -201,9 +225,13 @@ exports.createEvent = asyncHandler(async (req, res) => {
     );
 
     const eventResponse = await Event.findById(newEvent._id)
-        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
+        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser linkedEventRegId primaryField formFields registrations createdAt updatedAt createdBy updatedBy")
         .populate("createdBy", "name")
-        .populate("updatedBy", "name");
+        .populate("updatedBy", "name")
+        .populate({
+            path: "linkedEventRegId",
+            select: "name slug"
+        });
 
     return response(res, 201, "DigiPass event created successfully", eventResponse || newEvent);
 });
@@ -226,6 +254,8 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         removeProgressImage,
         removeBackgroundEn,
         removeBackgroundAr,
+        linkedEventRegId,
+        primaryField,
     } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -388,6 +418,27 @@ exports.updateEvent = asyncHandler(async (req, res) => {
         }
     }
 
+    if (linkedEventRegId !== undefined) {
+        const eventIdToLink = linkedEventRegId || null;
+        if (eventIdToLink) {
+            const existingLink = await Event.findOne({
+                linkedEventRegId: eventIdToLink,
+                eventType: ALLOWED_EVENT_TYPE,
+                isDeleted: { $ne: true },
+                _id: { $ne: id },
+            });
+            if (existingLink) {
+                return response(
+                    res,
+                    400,
+                    `This EventReg is already linked to another DigiPass event: ${existingLink.name}`
+                );
+            }
+        }
+        event.linkedEventRegId = eventIdToLink;
+    }
+    if (primaryField !== undefined) event.primaryField = Array.isArray(primaryField) ? primaryField : (primaryField ? [primaryField] : []);
+
     if (req.user) event.setAuditUser(req.user);
     await event.save();
 
@@ -396,9 +447,13 @@ exports.updateEvent = asyncHandler(async (req, res) => {
     );
 
     const eventResponse = await Event.findById(event._id)
-        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser formFields registrations createdAt updatedAt createdBy updatedBy")
+        .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser linkedEventRegId primaryField formFields registrations createdAt updatedAt createdBy updatedBy")
         .populate("createdBy", "name")
-        .populate("updatedBy", "name");
+        .populate("updatedBy", "name")
+        .populate({
+            path: "linkedEventRegId",
+            select: "name slug"
+        });
 
     return response(res, 200, "DigiPass event updated successfully", eventResponse || event);
 });

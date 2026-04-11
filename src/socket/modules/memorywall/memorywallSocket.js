@@ -1,7 +1,7 @@
 const WallConfig = require("../../../models/WallConfig");
 const DisplayMedia = require("../../../models/DisplayMedia");
 
-const mosaicWallSocket = (io, socket) => {
+const memoryWallSocket = (io, socket) => {
   socket.on("register", async (wallSlug) => {
     try {
       const wall = await WallConfig.findOne({ slug: wallSlug });
@@ -21,4 +21,4 @@ const mosaicWallSocket = (io, socket) => {
   });
 };
 
-module.exports = mosaicWallSocket;
+module.exports = memoryWallSocket;

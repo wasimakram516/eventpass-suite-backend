@@ -35,7 +35,6 @@ const tapmatchGameRoutes = require("./tapmatch/gameRoutes");
 const tapmatchPlayerRoutes = require("./tapmatch/playerRoutes");
 
 // Votecast
-const votecastEventRoutes = require("./votecast/eventRoutes");
 const pollRoutes = require("./votecast/pollRoutes");
 
 // EventReg
@@ -59,7 +58,7 @@ const digiPassRegistrationRoutes = require("./DigiPass/registrationRoutes");
 
 // StageQ
 const stageqQuestionRoutes = require("./stageq/questionRoutes");
-const stageqVisitorRoutes = require("./stageq/visitorRoutes");
+const stageqSessionRoutes = require("./stageq/sessionRoutes");
 
 // memorywall
 const memorywallWallConfigRoutes = require("./memorywall/wallConfigRoutes");
@@ -117,7 +116,6 @@ router.use("/tapmatch/games", tapmatchGameRoutes);
 router.use("/tapmatch/player", tapmatchPlayerRoutes);
 
 // ------------------ Votecast ------------------
-router.use("/votecast/events", votecastEventRoutes);
 router.use("/votecast/polls", pollRoutes);
 
 // ------------------ EventReg ------------------
@@ -141,7 +139,7 @@ router.use("/digipass/registrations", digiPassRegistrationRoutes);
 
 // ------------------ StageQ ------------------
 router.use("/stageq/questions", stageqQuestionRoutes);
-router.use("/stageq/visitors", stageqVisitorRoutes);
+router.use("/stageq/sessions", stageqSessionRoutes);
 
 // ------------------ memorywall ------------------
 router.use("/memorywall/wall-configs", memorywallWallConfigRoutes);

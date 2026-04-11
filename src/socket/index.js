@@ -2,6 +2,7 @@ const memorywallSocket = require("./modules/memorywall/memorywallSocket");
 const eventDuelSocket = require("./modules/eventduel/eventDuelSocket");
 const crosszeroSocket = require("./modules/crosszero/crosszeroSocket");
 const { dashboardSocket } = require("./dashboardSocket");
+const { stageqSocket } = require("./modules/stageq/stageqSocket");
 
 const socketHandler = (io) => {
   io.on("connection", (socket) => {
@@ -11,6 +12,7 @@ const socketHandler = (io) => {
     eventDuelSocket(io, socket);
     crosszeroSocket(io, socket);
     dashboardSocket(io, socket);
+    stageqSocket(io, socket);
 
     socket.on("ping", () => {
       socket.emit("pong");

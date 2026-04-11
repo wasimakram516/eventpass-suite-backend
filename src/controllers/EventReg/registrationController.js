@@ -24,6 +24,7 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const {
   emitLoadingProgress,
   emitNewRegistration,
+  emitBadgePrinted,
 } = require("../../socket/modules/eventreg/eventRegSocket");
 
 const { normalizePhone } = require("../../utils/whatsappProcessorUtils");
@@ -630,7 +631,10 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   // -------------------------
   // WALK-IN FILTERS
   // -------------------------
-  const walkins = await WalkIn.find({ eventId })
+  const walkins = await WalkIn.find({ 
+    eventId,
+    registrationId: { $in: regs.map(r => r._id) }
+  })
     .populate("scannedBy", "name email staffType")
     .lean();
 
@@ -1838,6 +1842,8 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
         company: reg.company,
 
         customFields: reg.customFields || {},
+        printCount: reg.printCount || 0,
+        printTimestamp: reg.printTimestamp || null,
 
         walkIns: walkIns.map((w) => ({
           scannedAt: w.scannedAt,
@@ -1880,7 +1886,10 @@ async function loadRemainingRecords(eventId, total) {
 
       const enhanced = await Promise.all(
         registrations.map(async (reg) => {
-          const walkIns = await WalkIn.find({ registrationId: reg._id })
+          const walkIns = await WalkIn.find({ 
+            registrationId: reg._id,
+            eventId: eventId
+          })
             .populate("scannedBy", "name email staffType")
             .sort({ scannedAt: -1 })
             .lean();
@@ -1900,6 +1909,8 @@ async function loadRemainingRecords(eventId, total) {
             phone: reg.phone,
             company: reg.company,
             customFields: reg.customFields || {},
+            printCount: reg.printCount || 0,
+            printTimestamp: reg.printTimestamp || null,
             walkIns: walkIns.map((w) => ({
               scannedAt: w.scannedAt,
               scannedBy: w.scannedBy,
@@ -1949,7 +1960,10 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
 
   const enhanced = await Promise.all(
     registrations.map(async (reg) => {
-      const walkIns = await WalkIn.find({ registrationId: reg._id })
+      const walkIns = await WalkIn.find({ 
+        registrationId: reg._id,
+        eventId: eventId
+      })
         .populate("scannedBy", "name email staffType")
         .sort({ scannedAt: -1 })
         .lean();
@@ -1970,6 +1984,8 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
         isoCode: reg.isoCode,
         company: reg.company,
         customFields: reg.customFields || {},
+        printCount: reg.printCount || 0,
+        printTimestamp: reg.printTimestamp || null,
         walkIns: walkIns.map((w) => ({
           scannedAt: w.scannedAt,
           scannedBy: w.scannedBy,
@@ -2096,18 +2112,22 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
 
   return response(res, 200, "Registration verified and walk-in recorded", {
     ...normalized,
+    registrationId: registration._id,
     customFields: cf,
     eventName: registration.eventId?.name || "Unknown Event",
     eventId: registration.eventId?._id,
     showQrOnBadge: registration.eventId?.showQrOnBadge,
     requiresApproval: registration.eventId?.requiresApproval || false,
     createdAt: registration.createdAt,
+    printCount: registration.printCount || 0,
+    printTimestamp: registration.printTimestamp || null,
     walkinId: walkin._id,
     scannedAt: walkin.scannedAt,
     scannedBy: { name: staffUser.name || staffUser.email },
     zpl,
     eventDetails: {
       customizations: registration.eventId?.customizations || {},
+      allowMultipleBadgePrinting: registration.eventId?.allowMultipleBadgePrinting ?? true,
     },
   });
 });
@@ -2173,6 +2193,56 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
       id: adminUser.id,
     },
     businessId: registration.eventId?.businessId || null,
+  });
+});
+
+// Track badge print — increments printCount, updates printTimestamp, and optionally creates a check-in record on first print
+exports.trackBadgePrint = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return response(res, 400, "Invalid registration ID");
+  }
+
+  const registration = await Registration.findByIdAndUpdate(
+    id,
+    { $inc: { printCount: 1 }, $set: { printTimestamp: new Date() } },
+    { new: true }
+  ).select("printCount printTimestamp eventId");
+
+  if (!registration) return response(res, 404, "Registration not found");
+
+  emitBadgePrinted(
+    registration.eventId?.toString(),
+    id,
+    registration.printCount,
+    registration.printTimestamp
+  );
+
+  // Create a check-in record on the first badge print if the event has this enabled
+  let checkinCreated = false;
+  if (registration.printCount === 1) {
+    const event = await Event.findById(registration.eventId).select("createCheckinOnFirstPrint businessId");
+    if (event?.createCheckinOnFirstPrint) {
+      const walkin = new WalkIn({
+        registrationId: id,
+        eventId: registration.eventId,
+        scannedBy: req.user.id,
+      });
+      walkin.setAuditUser(req.user);
+      await walkin.save();
+      checkinCreated = true;
+
+      recomputeAndEmit(event.businessId || null).catch((err) =>
+        console.error("Background recompute failed:", err.message)
+      );
+    }
+  }
+
+  return response(res, 200, "Print tracked", {
+    printCount: registration.printCount,
+    printTimestamp: registration.printTimestamp,
+    checkinCreated,
   });
 });
 

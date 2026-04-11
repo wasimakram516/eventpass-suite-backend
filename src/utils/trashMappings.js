@@ -37,7 +37,9 @@ const pvpGameController = require("../controllers/eventduel/pvpGameController");
 const pvpGameSessionController = require("../controllers/eventduel/pvpGameSessionController");
 const pvpQuestionController = require("../controllers/eventduel/pvpQuestionController");
 const tmGameController = require("../controllers/tapmatch/TMgameController");
- 
+const czGameController = require("../controllers/crosszero/CZgameController");
+const czGameSessionController = require("../controllers/crosszero/CZgameSessionController");
+
 // -------------------
 // SINGLE SOURCE OF TRUTH
 // -------------------
@@ -271,6 +273,31 @@ const moduleMapping = {
     },
     condition: { mode: "pvp", type: "quiz" },
     customAggregation: true,
+  },
+
+  // -------------------
+  // CROSSZERO (type: "xo")
+  // -------------------
+  "game-crosszero": {
+    model: Game,
+    controller: {
+      restore: czGameController.restoreGame,
+      permanentDelete: czGameController.permanentDeleteGame,
+      restoreAll: czGameController.restoreAllGames,
+      permanentDeleteAll: czGameController.permanentDeleteAllGames,
+    },
+    condition: { type: "xo" },
+  },
+
+  "gamesession-crosszero": {
+    model: GameSession,
+    controller: {
+      restore: czGameSessionController.restoreGameSession,
+      permanentDelete: czGameSessionController.permanentDeleteGameSession,
+      restoreAll: czGameSessionController.restoreAllGameSessions,
+      permanentDeleteAll: czGameSessionController.permanentDeleteAllGameSessions,
+    },
+    condition: { "gameId.type": "xo" },
   },
 
   // StageQ

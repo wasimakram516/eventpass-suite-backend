@@ -12,8 +12,8 @@ const MODEL_TO_ITEM_TYPE = {
   Poll: "Poll",
   SpinWheel: "SpinWheel",
   SpinWheelParticipant: "WheelSpin",
-  DisplayMedia: "MosaicWall",
-  WallConfig: "MosaicWall",
+  DisplayMedia: "MemoryWall",
+  WallConfig: "MemoryWall",
   GlobalConfig: null,
   Game: "Game",
   GameSession: "Game",
@@ -34,8 +34,8 @@ function mapModuleName(moduleKey = "") {
   if (key.includes("survey")) return "SurveyGuru";
   if (key.includes("stageq") || key === "question") return "StageQ";
   if (key.includes("spinwheel") || key.includes("wheel")) return "EventWheel";
-  if (key.includes("wall") || key.includes("media") || key.includes("mosaic"))
-    return "MosaicWall";
+  if (key.includes("wall") || key.includes("media"))
+    return "MemoryWall";
   if (key === "user" || key.includes("business")) return "User";
   return "Other";
 }

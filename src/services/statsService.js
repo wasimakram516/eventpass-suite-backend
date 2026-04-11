@@ -321,6 +321,84 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
   ]);
   const trashtapMatchPlayers = trashTapMatchPlayerAgg[0]?.count || 0;
   // -------------------------------------------------------------------------
+  // CROSSZERO (solo + pvp, type: "xo")
+  // -------------------------------------------------------------------------
+  const [czSoloGames, trashCzSoloGames, czPvpGames, trashCzPvpGames] = await Promise.all([
+    Game.countDocuments(
+      isAdmin ? { type: "xo", mode: "solo", isDeleted: { $ne: true } } : { type: "xo", mode: "solo", isDeleted: { $ne: true }, businessId }
+    ),
+    Game.countDocuments(
+      isAdmin ? { type: "xo", mode: "solo", isDeleted: true } : { type: "xo", mode: "solo", isDeleted: true, businessId }
+    ),
+    Game.countDocuments(
+      isAdmin ? { type: "xo", mode: "pvp", isDeleted: { $ne: true } } : { type: "xo", mode: "pvp", isDeleted: { $ne: true }, businessId }
+    ),
+    Game.countDocuments(
+      isAdmin ? { type: "xo", mode: "pvp", isDeleted: true } : { type: "xo", mode: "pvp", isDeleted: true, businessId }
+    ),
+  ]);
+
+  const czSoloPlayerAgg = await GameSession.aggregate([
+    { $lookup: { from: "games", localField: "gameId", foreignField: "_id", as: "game" } },
+    { $unwind: "$game" },
+    {
+      $match: {
+        "game.type": "xo",
+        "game.mode": "solo",
+        ...(isAdmin ? { isDeleted: { $ne: true } } : { isDeleted: { $ne: true }, "game.businessId": businessId }),
+      },
+    },
+    { $unwind: "$players" },
+    { $count: "count" },
+  ]);
+  const czSoloPlayers = czSoloPlayerAgg[0]?.count || 0;
+
+  const trashCzSoloPlayerAgg = await GameSession.aggregate([
+    { $lookup: { from: "games", localField: "gameId", foreignField: "_id", as: "game" } },
+    { $unwind: "$game" },
+    {
+      $match: {
+        "game.type": "xo",
+        "game.mode": "solo",
+        isDeleted: true,
+        ...(isAdmin ? {} : { "game.businessId": businessId }),
+      },
+    },
+    { $unwind: "$players" },
+    { $count: "count" },
+  ]);
+  const trashCzSoloPlayers = trashCzSoloPlayerAgg[0]?.count || 0;
+
+  const czPvpSessionAgg = await GameSession.aggregate([
+    { $lookup: { from: "games", localField: "gameId", foreignField: "_id", as: "game" } },
+    { $unwind: "$game" },
+    {
+      $match: {
+        "game.type": "xo",
+        "game.mode": "pvp",
+        ...(isAdmin ? { isDeleted: { $ne: true } } : { isDeleted: { $ne: true }, "game.businessId": businessId }),
+      },
+    },
+    { $count: "count" },
+  ]);
+  const czPvpSessions = czPvpSessionAgg[0]?.count || 0;
+
+  const trashCzPvpSessionAgg = await GameSession.aggregate([
+    { $lookup: { from: "games", localField: "gameId", foreignField: "_id", as: "game" } },
+    { $unwind: "$game" },
+    {
+      $match: {
+        "game.type": "xo",
+        "game.mode": "pvp",
+        isDeleted: true,
+        ...(isAdmin ? {} : { "game.businessId": businessId }),
+      },
+    },
+    { $count: "count" },
+  ]);
+  const trashCzPvpSessions = trashCzPvpSessionAgg[0]?.count || 0;
+
+  // -------------------------------------------------------------------------
   // POLLS
   // -------------------------------------------------------------------------
   const [totalPolls, trashPolls] = await Promise.all([
@@ -576,6 +654,21 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
       },
     },
 
+    crosszero: {
+      totals: {
+        soloGames: czSoloGames,
+        pvpGames: czPvpGames,
+        soloPlayers: czSoloPlayers,
+        pvpSessions: czPvpSessions,
+      },
+      trash: {
+        soloGames: trashCzSoloGames,
+        pvpGames: trashCzPvpGames,
+        soloPlayers: trashCzSoloPlayers,
+        pvpSessions: trashCzPvpSessions,
+      },
+    },
+
     eventduel: {
       totals: { games: pvpGames, sessions: pvpSessions },
       trash: { games: trashPvpGames, sessions: trashPvpSessions },
@@ -632,7 +725,7 @@ async function recalcMetrics(scope = "superadmin", businessId = null) {
       },
     },
 
-    mosaicwall: {
+    memorywall: {
       totals: { configs: totalWallConfigs, media: totalDisplayMedia },
       trash: { configs: trashWallConfigs, media: trashDisplayMedia },
     },

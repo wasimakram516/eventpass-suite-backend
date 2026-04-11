@@ -42,6 +42,10 @@ exports.joinGame = asyncHandler(async (req, res) => {
   player.sessionId = session._id;
   await player.save();
 
+  recomputeAndEmit(game.businessId || null).catch((err) =>
+    console.error("Background recompute failed:", err.message)
+  );
+
   return response(res, 201, "CrossZero AI session started", {
     playerId: player._id,
     sessionId: session._id,
