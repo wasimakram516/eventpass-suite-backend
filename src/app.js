@@ -4,6 +4,8 @@ const cookieParser = require("cookie-parser");
 const morgan = require("morgan");
 const connectDB = require("./config/db");
 const seedAdmin = require("./seeder/adminSeeder");
+const { recalcMetrics } = require("./services/statsService");
+const Business = require("./models/Business");
 const errorHandler = require("./middlewares/errorHandler");
 const response = require("./utils/response");
 
@@ -44,10 +46,25 @@ app.use(cookieParser());
   try {
     await connectDB();
     await seedAdmin();
+    // Fire and forget — doesn't block the server from accepting requests
+    warmDashboardCache();
   } catch (err) {
     console.error("Error initializing app:", err);
   }
 })();
+
+async function warmDashboardCache() {
+  try {
+    const businesses = await Business.find({ isDeleted: { $ne: true } }).select("_id").lean();
+    await Promise.all([
+      recalcMetrics("superadmin"),
+      ...businesses.map((biz) => recalcMetrics("business", biz._id)),
+    ]);
+    console.log(`Dashboard cache warmed (${businesses.length} businesses)`);
+  } catch (err) {
+    console.error("Dashboard cache warm-up failed:", err.message);
+  }
+}
 
 // ------------------ Centralized Routes ------------------
 app.use("/api", allRoutes);
