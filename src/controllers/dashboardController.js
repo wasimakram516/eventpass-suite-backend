@@ -13,16 +13,10 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
   const scope = isAdmin ? "superadmin" : "business";
   const businessId = isAdmin ? null : req.user.business;
 
-  let metrics = await Metrics.findOne({ scope, businessId });
+  const metrics = await Metrics.findOne({ scope, businessId });
 
   if (!metrics) {
-    // Cache miss — warm-up hasn't run yet for this scope, compute on demand
-    const fresh = await recalcMetrics(scope, businessId);
-    return response(res, 200, "Fetched dashboard metrics", {
-      scope: fresh.scope,
-      modules: fresh.modules,
-      lastUpdated: fresh.lastUpdated,
-    });
+    return response(res, 404, "No metrics found. Try recalculating first.");
   }
 
   return response(res, 200, "Fetched dashboard metrics", {

@@ -46,8 +46,7 @@ app.use(cookieParser());
   try {
     await connectDB();
     await seedAdmin();
-    // Fire and forget — doesn't block the server from accepting requests
-    warmDashboardCache();
+    await warmDashboardCache();
   } catch (err) {
     console.error("Error initializing app:", err);
   }
