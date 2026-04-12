@@ -25,6 +25,7 @@ const EventQuestionSchema = new mongoose.Schema(
       ref: "Registration",
       default: null,
     },
+    visibleAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

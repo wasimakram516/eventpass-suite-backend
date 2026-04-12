@@ -7,6 +7,12 @@ const StageQSessionSchema = new mongoose.Schema({
   slug: { type: String, required: true },
   description: { type: String, default: '' },
   primaryField: { type: String, default: null },
+  bufferTime: { type: Number, default: 30 },
+  logoUrl: { type: String, default: null },
+  background: {
+    en: { url: { type: String, default: null }, fileType: { type: String, enum: ['image', 'video'], default: null } },
+    ar: { url: { type: String, default: null }, fileType: { type: String, enum: ['image', 'video'], default: null } },
+  },
 }, { timestamps: true });
 
 StageQSessionSchema.index({ business: 1 });

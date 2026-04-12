@@ -246,7 +246,7 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
       return response(res, 404, "Option not found");
     }
 
-    if (req.body.pollId && mediaType === "optionImage" && mongoose.Types.ObjectId.isValid(req.body.pollId)) {
+    if (req.body.pollId && mongoose.Types.ObjectId.isValid(req.body.pollId)) {
       const Poll = require("../../models/Poll");
       const poll = await Poll.findById(req.body.pollId);
 
@@ -254,16 +254,65 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
         return response(res, 404, "Poll not found");
       }
 
-      const optionIndex = parseInt(req.body.optionIndex);
-
-      if (poll.options && poll.options[optionIndex]) {
-        poll.options[optionIndex].imageUrl = null;
+      if (mediaType === "logo") {
+        poll.logoUrl = null;
         if (poll.setAuditUser && req.user) poll.setAuditUser(req.user);
         await poll.save();
         return response(res, 200, "Media deleted successfully", poll);
+      } else if (mediaType === "backgroundEn") {
+        if (!poll.background) poll.background = {};
+        poll.background.en = null;
+        poll.markModified("background");
+        if (poll.setAuditUser && req.user) poll.setAuditUser(req.user);
+        await poll.save();
+        return response(res, 200, "Media deleted successfully", poll);
+      } else if (mediaType === "backgroundAr") {
+        if (!poll.background) poll.background = {};
+        poll.background.ar = null;
+        poll.markModified("background");
+        if (poll.setAuditUser && req.user) poll.setAuditUser(req.user);
+        await poll.save();
+        return response(res, 200, "Media deleted successfully", poll);
+      } else if (mediaType === "optionImage") {
+        const optionIndex = parseInt(req.body.optionIndex);
+        if (poll.options && poll.options[optionIndex]) {
+          poll.options[optionIndex].imageUrl = null;
+          if (poll.setAuditUser && req.user) poll.setAuditUser(req.user);
+          await poll.save();
+          return response(res, 200, "Media deleted successfully", poll);
+        }
+        return response(res, 404, "Option not found");
+      }
+    }
+
+    if (req.body.sessionId && mongoose.Types.ObjectId.isValid(req.body.sessionId)) {
+      const StageQSession = require("../../models/StageQSession");
+      const session = await StageQSession.findById(req.body.sessionId);
+
+      if (!session) {
+        return response(res, 404, "Session not found");
       }
 
-      return response(res, 404, "Option not found");
+      if (mediaType === "logo") {
+        session.logoUrl = null;
+        if (session.setAuditUser && req.user) session.setAuditUser(req.user);
+        await session.save();
+        return response(res, 200, "Media deleted successfully", session);
+      } else if (mediaType === "backgroundEn") {
+        if (!session.background) session.background = {};
+        session.background.en = null;
+        session.markModified("background");
+        if (session.setAuditUser && req.user) session.setAuditUser(req.user);
+        await session.save();
+        return response(res, 200, "Media deleted successfully", session);
+      } else if (mediaType === "backgroundAr") {
+        if (!session.background) session.background = {};
+        session.background.ar = null;
+        session.markModified("background");
+        if (session.setAuditUser && req.user) session.setAuditUser(req.user);
+        await session.save();
+        return response(res, 200, "Media deleted successfully", session);
+      }
     }
 
     if (req.body.spinWheelId && mediaType && mongoose.Types.ObjectId.isValid(req.body.spinWheelId)) {
