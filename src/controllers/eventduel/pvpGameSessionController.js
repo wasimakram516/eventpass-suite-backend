@@ -521,7 +521,7 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
       const populatedSession = await GameSession.findById(session._id).populate(
         "players.playerId winner gameId"
       );
-      emitToRoom(game.slug, "pvpCurrentSession", populatedSession);
+      emitToRoom(game.slug, "pvpCurrentSession", { populatedSession });
     } else {
       const mapIndexesToQuestions = (indexes) =>
         (indexes || []).map((i) => game.questions[i]);
@@ -706,7 +706,12 @@ exports.endGameSession = asyncHandler(async (req, res) => {
       "players.playerId winner gameId"
     );
 
-    emitToRoom(game.slug, "pvpCurrentSession", populatedSession);
+    const allSessionsPvP = await GameSession.find({ gameId: session.gameId })
+      .populate("players.playerId winner gameId")
+      .sort({ createdAt: -1 })
+      .limit(5);
+    emitToRoom(game.slug, "pvpAllSessions", allSessionsPvP);
+    emitToRoom(game.slug, "pvpCurrentSession", { populatedSession });
     return response(res, 200, "Session completed", populatedSession);
   }
 
@@ -734,7 +739,12 @@ exports.endGameSession = asyncHandler(async (req, res) => {
       { path: "gameId" },
     ]);
 
-    emitToRoom(game.slug, "pvpCurrentSession", populatedSession);
+    const allSessionsTie = await GameSession.find({ gameId: session.gameId })
+      .populate("players.playerId winner gameId")
+      .sort({ createdAt: -1 })
+      .limit(5);
+    emitToRoom(game.slug, "pvpAllSessions", allSessionsTie);
+    emitToRoom(game.slug, "pvpCurrentSession", { populatedSession });
 
     return response(
       res,
@@ -777,7 +787,12 @@ exports.endGameSession = asyncHandler(async (req, res) => {
     { path: "gameId" },
   ]);
 
-  emitToRoom(game.slug, "pvpCurrentSession", populatedSession);
+  const allSessionsTeam = await GameSession.find({ gameId: session.gameId })
+    .populate("players.playerId winner gameId")
+    .sort({ createdAt: -1 })
+    .limit(5);
+  emitToRoom(game.slug, "pvpAllSessions", allSessionsTeam);
+  emitToRoom(game.slug, "pvpCurrentSession", { populatedSession });
 
   if (!winnerTeamId) {
     return response(
