@@ -18,6 +18,7 @@ exports.createGame = asyncHandler(async (req, res) => {
     slug,
     mode,
     moveTimer,
+    pvpScreenMode,
     coverImage,
     nameImage,
     backgroundImage,
@@ -58,6 +59,7 @@ exports.createGame = asyncHandler(async (req, res) => {
       mode,
       moveTimer: Number(moveTimer) || 0,
       gameSessionTimer: 0,
+      pvpScreenMode: mode === "pvp" && pvpScreenMode === "single" ? "single" : "dual",
       xImage: xImage || null,
       oImage: oImage || null,
     },
@@ -81,7 +83,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
   const game = await Game.findOne({ _id: req.params.id, ...CZ_FILTER });
   if (!game) return response(res, 404, "CrossZero game not found");
 
-  const { title, slug, mode, moveTimer, coverImage, nameImage, backgroundImage, xImage, oImage } = req.body;
+  const { title, slug, mode, moveTimer, pvpScreenMode, coverImage, nameImage, backgroundImage, xImage, oImage } = req.body;
 
   if (slug && slug !== game.slug) {
     game.slug = await generateUniqueSlug(Game, "slug", slug);
@@ -89,6 +91,7 @@ exports.updateGame = asyncHandler(async (req, res) => {
   if (title) game.title = title;
   if (mode && ["solo", "pvp"].includes(mode)) game.mode = mode;
   if (moveTimer !== undefined) game.moveTimer = Number(moveTimer) || 0;
+  if (pvpScreenMode && ["single", "dual"].includes(pvpScreenMode)) game.pvpScreenMode = pvpScreenMode;
 
   for (const [field, val] of [
     ["coverImage", coverImage],

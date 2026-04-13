@@ -8,7 +8,7 @@ function populateSession(query) {
     { path: "winner", select: "name company" },
     {
       path: "gameId",
-      select: "title slug mode type moveTimer countdownTimer gameSessionTimer xImage oImage",
+      select: "title slug mode type moveTimer countdownTimer gameSessionTimer xImage oImage pvpScreenMode",
     },
   ]);
 }

@@ -14,7 +14,7 @@ const {
 } = require("../../utils/crosszeroExport");
 
 const CZ_FILTER = { type: "xo", mode: "pvp" };
-const PLAYER_MARKS = { p1: "X", p2: "O" };
+const PLAYER_MARKS = { p1: "O", p2: "X" };
 
 const WINNING_LINES = [
   [0, 1, 2],
@@ -44,7 +44,7 @@ function populateSession(query) {
   return query.populate([
     { path: "players.playerId", select: "name company department" },
     { path: "winner", select: "name company department" },
-    { path: "gameId", select: "title slug mode type moveTimer countdownTimer gameSessionTimer xImage oImage" },
+    { path: "gameId", select: "title slug mode type moveTimer countdownTimer gameSessionTimer xImage oImage pvpScreenMode" },
   ]);
 }
 
@@ -128,7 +128,7 @@ exports.startGameSession = asyncHandler(async (req, res) => {
     players: [],
     xoStats: {
       board: Array(9).fill(null),
-      currentTurn: "X",
+      currentTurn: "O",
       moves: 0,
       result: null,
     },
@@ -182,7 +182,7 @@ exports.joinGameSession = asyncHandler(async (req, res) => {
 
   const slotTaken = session.players.some((player) => player.playerType === playerType);
   if (slotTaken) {
-    const slotLabel = playerType === "p1" ? "Player 1 (X)" : "Player 2 (O)";
+    const slotLabel = playerType === "p1" ? "Player 1 (O)" : "Player 2 (X)";
     return response(res, 400, `${slotLabel} slot is already taken. Please choose the other side.`);
   }
 
@@ -242,7 +242,7 @@ exports.activateGameSession = asyncHandler(async (req, res) => {
   session.startTime = new Date();
   session.xoStats = {
     board: Array(9).fill(null),
-    currentTurn: "X",
+    currentTurn: "O",
     moves: 0,
     result: null,
   };
@@ -504,8 +504,8 @@ exports.exportResults = asyncHandler(async (req, res) => {
   }
 
   const metadataRows = buildMetadataRows(game, "CrossZero PvP", sessions.length, [
-    ["Player 1 Mark", "X"],
-    ["Player 2 Mark", "O"],
+    ["Player 1 Mark", "O"],
+    ["Player 2 Mark", "X"],
   ]);
 
   const headers = [
@@ -538,11 +538,11 @@ exports.exportResults = asyncHandler(async (req, res) => {
       p1?.playerId?.name || "-",
       p1?.playerId?.company || "-",
       p1?.playerId?.department || "-",
-      "X",
+      "O",
       p2?.playerId?.name || "-",
       p2?.playerId?.company || "-",
       p2?.playerId?.department || "-",
-      "O",
+      "X",
       getPvpOutcomeLabel(session.xoStats?.result),
       winnerName,
       session.xoStats?.moves || 0,
