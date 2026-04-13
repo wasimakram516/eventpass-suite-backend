@@ -12,7 +12,7 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const recountEventRegistrations = require("../../utils/recountEventRegistrations");
 const { emitTaskCompletedUpdate, emitNewRegistration, emitWalkInNew, emitLoadingProgress } = require("../../socket/modules/digipass/digiPassSocket");
 const { formatLocalDateTime } = require("../../utils/dateUtils");
-const { pickFullName, pickEmail, pickPhone } = require("../../utils/customFieldUtils");
+const { pickFullName, pickEmail } = require("../../utils/customFieldUtils");
 const { normalizePhone } = require("../../utils/whatsappProcessorUtils");
 const { validatePhoneNumberByCountry } = require("../../utils/phoneValidation");
 const {
@@ -1042,6 +1042,20 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
         scannedBy,
     });
 
+    // Build participant info using the customFieldUtils pickers — same approach as EventReg.
+    // Pickers fuzzy-match field names so they work whether the event uses classic fields
+    // or custom fields named anything (e.g. "Full Name", "E-mail", "Mobile Number").
+    const cf = registration.customFields
+        ? (registration.customFields instanceof Map
+            ? Object.fromEntries(registration.customFields)
+            : registration.customFields)
+        : {};
+
+    const participantInfo = {
+        fullName: registration.fullName || pickFullName(cf) || "",
+        email:    registration.email    || pickEmail(cf)    || "",
+    };
+
     if (existingWalkIn) {
         return response(res, 200, "Registration already scanned by this scanner", {
             alreadyScanned: true,
@@ -1049,6 +1063,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
             scannedAt: existingWalkIn.scannedAt,
             tasksCompleted: registration.tasksCompleted,
             maxTasksPerUser: maxTasksLimit ?? null,
+            participantInfo,
         });
     }
     if (maxTasksLimit !== null && maxTasksLimit !== undefined) {
@@ -1117,6 +1132,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
         },
         tasksCompleted: registration.tasksCompleted,
         maxTasksPerUser: maxTasksLimit ?? null,
+        participantInfo,
     });
 });
 
