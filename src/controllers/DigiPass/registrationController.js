@@ -975,16 +975,35 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
     // Handle Linked EventReg Registration
     if (registration.eventId?.eventType !== ALLOWED_EVENT_TYPE) {
         // Look for participation log for this registration
-        const participation = await DigiPassParticipationLog.findOne({
+        let participation = await DigiPassParticipationLog.findOne({
             eventRegRegistrationId: registrationId,
         }).populate("digipassEventId");
 
+        // Fallback: if no participation log exists yet, find the DigiPass event
+        // linked to this EventReg event and auto-create the log
         if (!participation || !participation.digipassEventId) {
-            return response(
-                res,
-                404,
-                "This registration is not signed into any DigiPass event"
+            const linkedDigipassEvent = await Event.findOne({
+                linkedEventRegId: registration.eventId._id,
+                eventType: ALLOWED_EVENT_TYPE,
+                isDeleted: { $ne: true },
+            });
+
+            if (!linkedDigipassEvent) {
+                return response(
+                    res,
+                    404,
+                    "No DigiPass event is linked to this registration's event"
+                );
+            }
+
+            // Auto-create the participation log so future lookups work
+            await DigiPassParticipationLog.findOneAndUpdate(
+                { digipassEventId: linkedDigipassEvent._id, eventRegRegistrationId: registrationId },
+                {},
+                { upsert: true, new: true, setDefaultsOnInsert: true }
             );
+
+            participation = { digipassEventId: linkedDigipassEvent };
         }
 
         // Verify business match for the DigiPass event
@@ -1010,6 +1029,13 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
         }
     }
 
+    // Resolve the DigiPass event for task limit and response metadata
+    const targetEvent = registration.eventId?.eventType === ALLOWED_EVENT_TYPE
+        ? registration.eventId
+        : (await Event.findById(eventId));
+
+    const maxTasksLimit = targetEvent?.maxTasksPerUser;
+
     const existingWalkIn = await WalkIn.findOne({
         registrationId,
         eventId,
@@ -1022,15 +1048,9 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
             walkinId: existingWalkIn._id,
             scannedAt: existingWalkIn.scannedAt,
             tasksCompleted: registration.tasksCompleted,
+            maxTasksPerUser: maxTasksLimit ?? null,
         });
     }
-
-    // Check task limit from the resolved event if possible
-    const targetEvent = registration.eventId?.eventType === ALLOWED_EVENT_TYPE 
-        ? registration.eventId 
-        : (await Event.findById(eventId));
-
-    const maxTasksLimit = targetEvent?.maxTasksPerUser;
     if (maxTasksLimit !== null && maxTasksLimit !== undefined) {
         const currentTasks = registration.tasksCompleted || 0;
         if (currentTasks >= maxTasksLimit) {
@@ -1096,6 +1116,7 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
             id: staffUser.id,
         },
         tasksCompleted: registration.tasksCompleted,
+        maxTasksPerUser: maxTasksLimit ?? null,
     });
 });
 
