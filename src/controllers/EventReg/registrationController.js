@@ -233,7 +233,7 @@ async function validateAllRows(event, rows) {
       eventId: event._id,
       isDeleted: { $ne: true },
       $or: [
-        emailsInFile.length ? { email: { $in: emailsInFile } } : null,
+        emailsInFile.length ? { email: { $in: emailsInFile.map(e => new RegExp(`^${e}$`, "i")) } } : null,
         phonesInFile.length ? { phone: { $in: phonesInFile } } : null,
       ].filter(Boolean),
     }).select("email phone");
