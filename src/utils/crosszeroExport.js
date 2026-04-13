@@ -8,10 +8,10 @@ function formatDateTime(value) {
 
 function getAiOutcomeLabel(result) {
   switch (result) {
-    case "X_wins":
-      return "Player Won (X)";
     case "O_wins":
-      return "AI Won (O)";
+      return "Player Won (O)";
+    case "X_wins":
+      return "AI Won (X)";
     case "draw":
       return "Draw";
     default:
@@ -21,10 +21,10 @@ function getAiOutcomeLabel(result) {
 
 function getPvpOutcomeLabel(result) {
   switch (result) {
-    case "X_wins":
-      return "Player 1 (X) Won";
     case "O_wins":
-      return "Player 2 (O) Won";
+      return "Player 1 (O) Won";
+    case "X_wins":
+      return "Player 2 (X) Won";
     case "draw":
       return "Draw";
     default:

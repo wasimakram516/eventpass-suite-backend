@@ -31,7 +31,7 @@ exports.joinGame = asyncHandler(async (req, res) => {
     players: [{ playerId: player._id, playerType: "solo", score: 0, timeTaken: 0 }],
     xoStats: {
       board: Array(9).fill(null),
-      currentTurn: "X",
+      currentTurn: "O",
       moves: 0,
       result: null,
     },
@@ -49,7 +49,7 @@ exports.joinGame = asyncHandler(async (req, res) => {
   return response(res, 201, "CrossZero AI session started", {
     playerId: player._id,
     sessionId: session._id,
-    mark: "X", // player always plays as X; AI plays as O
+    mark: "O", // player always plays as O; AI plays as X
   });
 });
 
@@ -81,7 +81,7 @@ exports.submitResult = asyncHandler(async (req, res) => {
   session.xoStats.timeTaken = timeTaken || 0;
   session.xoStats.difficulty = difficulty || "easy";
 
-  playerData.score = result === "X_wins" ? 1 : 0;
+  playerData.score = result === "O_wins" ? 1 : 0;
   playerData.timeTaken = timeTaken || 0;
 
   session.status = "completed";
@@ -133,8 +133,8 @@ exports.exportResults = asyncHandler(async (req, res) => {
   if (!sessions.length) return response(res, 404, "No sessions to export");
 
   const metadataRows = buildMetadataRows(game, "CrossZero AI", sessions.length, [
-    ["Player Mark", "X"],
-    ["AI Mark", "O"],
+    ["Player Mark", "O"],
+    ["AI Mark", "X"],
   ]);
 
   const headers = [

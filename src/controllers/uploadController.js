@@ -20,6 +20,7 @@ const MODULE_CONFIGS = {
   surveyguru: { folderName: "SurveyGuru", permissionKey: "surveyguru" },
   tapmatch: { folderName: "TapMatch", permissionKey: "tapmatch" },
   votecast: { folderName: "VoteCast", permissionKey: "votecast" },
+  stageq: { folderName: "StageQ", permissionKey: "stageq" },
   crosszero: { folderName: "CrossZero", permissionKey: "crosszero" },
 };
 

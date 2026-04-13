@@ -37,6 +37,7 @@ const gameSchema = new mongoose.Schema(
     moveTimer: { type: Number, default: 0 }, // CrossZero: seconds per move (0 = no timer)
     xImage: { type: String, default: null }, // CrossZero: optional custom image for X player
     oImage: { type: String, default: null }, // CrossZero: optional custom image for O player
+    pvpScreenMode: { type: String, enum: ["single", "dual"], default: "dual" }, // CrossZero PvP: single = one device, dual = separate devices
     mode: { type: String, enum: ["solo", "pvp"], required: true }, // Solo = QuizNest, TapMatch, CrossZero(AI) | pvp = EventDuel, CrossZero(PvP)
     questions: [questionSchema],
 

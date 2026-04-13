@@ -77,7 +77,7 @@ exports.getPollMeta = asyncHandler(async (req, res) => {
 
 // POST create poll
 exports.createPoll = asyncHandler(async (req, res) => {
-  const { title, slug, description, linkedEventRegId, businessSlug, type, primaryField } = req.body;
+  const { title, slug, description, linkedEventRegId, businessSlug, type, primaryField, logoUrl, background } = req.body;
   const user = req.user;
 
   if (!title) return response(res, 400, "Title is required");
@@ -111,6 +111,8 @@ exports.createPoll = asyncHandler(async (req, res) => {
     linkedEventRegId: linkedEventRegId || null,
     type: type || "options",
     primaryField: primaryField || null,
+    logoUrl: logoUrl || null,
+    background: background || {},
     questions: [],
   }, req.user);
 
@@ -126,7 +128,7 @@ exports.createPoll = asyncHandler(async (req, res) => {
 // PUT update poll metadata
 exports.updatePoll = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { title, slug, description, type, primaryField, linkedEventRegId } = req.body;
+  const { title, slug, description, type, primaryField, linkedEventRegId, logoUrl, background } = req.body;
   const user = req.user;
 
   const poll = await Poll.findById(id);
@@ -145,6 +147,8 @@ exports.updatePoll = asyncHandler(async (req, res) => {
   }
   if (primaryField !== undefined) poll.primaryField = primaryField || null;
   if (linkedEventRegId !== undefined) poll.linkedEventRegId = linkedEventRegId || null;
+  if (logoUrl !== undefined) poll.logoUrl = logoUrl || null;
+  if (background !== undefined) poll.background = background || {};
 
   if (slug !== undefined && slug !== poll.slug) {
     const existing = await Poll.findOne({ slug, _id: { $ne: id } });
@@ -447,11 +451,13 @@ exports.verifyAttendeeByPoll = asyncHandler(async (req, res) => {
   if (!linkedEvent) return response(res, 404, "Linked EventReg event not found");
 
   const isCustomField = linkedEvent.formFields?.some(f => f.inputName === primaryField);
+  const safeValue = fieldValue.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const caseInsensitive = { $regex: new RegExp(`^${safeValue}$`, 'i') };
   const query = { eventId: poll.linkedEventRegId, deletedAt: { $exists: false } };
   if (isCustomField) {
-    query[`customFields.${primaryField}`] = fieldValue;
+    query[`customFields.${primaryField}`] = caseInsensitive;
   } else {
-    query[primaryField] = fieldValue;
+    query[primaryField] = caseInsensitive;
   }
 
   const registration = await Registration.findOne(query).select("_id fullName customFields").lean();

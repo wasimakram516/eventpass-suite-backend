@@ -319,11 +319,15 @@ exports.submitQuestionToSession = asyncHandler(async (req, res) => {
     return response(res, 400, "Registration verification is required for this session");
   }
 
+  const bufferTime = session.bufferTime ?? 30;
+  const visibleAt = new Date(Date.now() + bufferTime * 1000);
+
   const question = await EventQuestion.create({
     business: session.business,
     sessionId: session._id,
     registrationId: registrationId || null,
     text,
+    visibleAt,
   });
 
   recomputeAndEmit(session.business || null).catch(err =>
@@ -348,7 +352,19 @@ exports.submitQuestionToSession = asyncHandler(async (req, res) => {
     obj.submitterIsoCode = reg.isoCode || null;
   }
 
-  emitToRoom(roomKey(sessionSlug), "newQuestion", obj);
+  // Immediately notify admin panel
+  emitToRoom(roomKey(sessionSlug), "newQuestionAdmin", obj);
+
+  // Emit to big screen after buffer window; skip if deleted by then
+  setTimeout(async () => {
+    try {
+      const check = await EventQuestion.findById(question._id).select("deletedAt").lean();
+      if (!check || check.deletedAt) return;
+      emitToRoom(roomKey(sessionSlug), "newQuestion", obj);
+    } catch (err) {
+      console.error("Buffer emit failed:", err.message);
+    }
+  }, bufferTime * 1000);
 
   return response(res, 201, "Question submitted", obj);
 });

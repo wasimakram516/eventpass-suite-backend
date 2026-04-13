@@ -47,7 +47,7 @@ exports.getSessionBySlug = asyncHandler(async (req, res) => {
 
 // POST create session
 exports.createSession = asyncHandler(async (req, res) => {
-  const { title, slug, description, linkedEventRegId, businessSlug, primaryField } = req.body;
+  const { title, slug, description, linkedEventRegId, businessSlug, primaryField, bufferTime, logoUrl, background } = req.body;
   const user = req.user;
 
   if (!title) return response(res, 400, "Title is required");
@@ -78,6 +78,9 @@ exports.createSession = asyncHandler(async (req, res) => {
     business: businessId,
     linkedEventRegId: linkedEventRegId || null,
     primaryField: primaryField || null,
+    bufferTime: (bufferTime !== undefined && bufferTime !== null) ? Number(bufferTime) : 30,
+    logoUrl: logoUrl || null,
+    background: background || {},
   }, req.user);
 
   recomputeAndEmit(businessId || null).catch(err => console.error("Background recompute failed:", err.message));
@@ -92,7 +95,7 @@ exports.createSession = asyncHandler(async (req, res) => {
 // PUT update session
 exports.updateSession = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { title, slug, description, primaryField, linkedEventRegId } = req.body;
+  const { title, slug, description, primaryField, linkedEventRegId, bufferTime, logoUrl, background } = req.body;
   const user = req.user;
 
   const session = await StageQSession.findById(id);
@@ -106,6 +109,9 @@ exports.updateSession = asyncHandler(async (req, res) => {
   if (description !== undefined) session.description = description;
   if (primaryField !== undefined) session.primaryField = primaryField || null;
   if (linkedEventRegId !== undefined) session.linkedEventRegId = linkedEventRegId || null;
+  if (bufferTime !== undefined && bufferTime !== null) session.bufferTime = Number(bufferTime);
+  if (logoUrl !== undefined) session.logoUrl = logoUrl || null;
+  if (background !== undefined) session.background = background || {};
 
   if (slug !== undefined && slug !== session.slug) {
     const existing = await StageQSession.findOne({ slug, _id: { $ne: id } });
@@ -162,11 +168,13 @@ exports.verifyAttendeeBySession = asyncHandler(async (req, res) => {
   if (!linkedEvent) return response(res, 404, "Linked EventReg event not found");
 
   const isCustomField = linkedEvent.formFields?.some(f => f.inputName === primaryField);
+  const safeValue = fieldValue.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const caseInsensitive = { $regex: new RegExp(`^${safeValue}$`, 'i') };
   const query = { eventId: session.linkedEventRegId, deletedAt: { $exists: false } };
   if (isCustomField) {
-    query[`customFields.${primaryField}`] = fieldValue;
+    query[`customFields.${primaryField}`] = caseInsensitive;
   } else {
-    query[primaryField] = fieldValue;
+    query[primaryField] = caseInsensitive;
   }
 
   const registration = await Registration.findOne(query)

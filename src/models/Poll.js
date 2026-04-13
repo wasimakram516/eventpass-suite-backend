@@ -24,6 +24,11 @@ const PollSchema = new mongoose.Schema({
   description: { type: String, default: '' },
   type: { type: String, enum: ['options', 'slider'], default: 'options' },
   primaryField: { type: String, default: null },
+  logoUrl: { type: String, default: null },
+  background: {
+    en: { url: { type: String, default: null }, fileType: { type: String, enum: ['image', 'video'], default: null } },
+    ar: { url: { type: String, default: null }, fileType: { type: String, enum: ['image', 'video'], default: null } },
+  },
   questions: [QuestionSchema],
 }, { timestamps: true });
 
