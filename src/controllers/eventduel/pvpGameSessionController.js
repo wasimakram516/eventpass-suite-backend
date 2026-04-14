@@ -587,11 +587,11 @@ exports.submitPvPResult = asyncHandler(async (req, res) => {
   await session.save();
 
   const totalQuestions = game.questions.length;
-  const allTeamsDone = session.teams.every((team) =>
-    (team.players || []).every(
-      (p) => (p.attemptedQuestions || 0) >= totalQuestions
-    )
-  );
+  const allTeamsDone = session.teams.every((team) => {
+    const players = team.players || [];
+    if (players.length === 0) return false; // empty team is never "done"
+    return players.every((p) => (p.attemptedQuestions || 0) >= totalQuestions);
+  });
 
   // finalize if all teams done
   if (session.status === "active" && allTeamsDone) {
@@ -740,7 +740,13 @@ exports.endGameSession = asyncHandler(async (req, res) => {
     ]);
 
     const allSessionsTie = await GameSession.find({ gameId: session.gameId })
-      .populate("players.playerId winner gameId")
+      .populate([
+        { path: "players.playerId" },
+        { path: "winner" },
+        { path: "gameId" },
+        { path: "winnerTeamId" },
+        { path: "teams.teamId" },
+      ])
       .sort({ createdAt: -1 })
       .limit(5);
     emitToRoom(game.slug, "pvpAllSessions", allSessionsTie);
@@ -788,7 +794,13 @@ exports.endGameSession = asyncHandler(async (req, res) => {
   ]);
 
   const allSessionsTeam = await GameSession.find({ gameId: session.gameId })
-    .populate("players.playerId winner gameId")
+    .populate([
+      { path: "players.playerId" },
+      { path: "winner" },
+      { path: "gameId" },
+      { path: "winnerTeamId" },
+      { path: "teams.teamId" },
+    ])
     .sort({ createdAt: -1 })
     .limit(5);
   emitToRoom(game.slug, "pvpAllSessions", allSessionsTeam);
