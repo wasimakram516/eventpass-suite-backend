@@ -767,7 +767,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   // -------------------------
   lines.push("=== Registrations ===");
 
-  const regHeaders = [...dynamicFields, "Token", "Registered At"];
+  const regHeaders = [...dynamicFields, "Token", "Registered At", "Print Count", "Last Printed At"];
   lines.push(regHeaders.join(","));
 
   regs.forEach((reg) => {
@@ -781,6 +781,8 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
     row.push(`"${reg.token}"`);
     row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
+    row.push(`"${reg.printCount || 0}"`);
+    row.push(`"${reg.printTimestamp ? formatLocalDateTime(reg.printTimestamp, timezone || null) : "—"}"`);
 
     lines.push(row.join(","));
   });
@@ -824,39 +826,6 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
       row.push(`"${formatLocalDateTime(w.scannedAt, timezone || null)}"`);
       row.push(`"${w.scannedBy?.name || w.scannedBy?.email || ""}"`);
       row.push(`"${w.scannedBy?.staffType || ""}"`);
-
-      lines.push(row.join(","));
-    });
-  }
-
-  // -------------------------
-  // PRINT RECORDS SECTION
-  // -------------------------
-  const printedRegs = regs.filter((r) => r.printCount > 0);
-
-  if (printedRegs.length > 0) {
-    lines.push("");
-    lines.push("=== Print Records ===");
-
-    const printHeaders = [
-      ...dynamicFields,
-      "Token",
-      "Registered At",
-      "Print Count",
-      "Last Printed At",
-    ];
-    lines.push(printHeaders.join(","));
-
-    printedRegs.forEach((reg) => {
-      const row = dynamicFields.map(
-        (f) =>
-          `"${((reg.customFields?.[f] ?? reg[f] ?? "") + "").replace(/"/g, '""')}"`,
-      );
-
-      row.push(`"${reg.token}"`);
-      row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
-      row.push(`"${reg.printCount || 0}"`);
-      row.push(`"${reg.printTimestamp ? formatLocalDateTime(reg.printTimestamp, timezone || null) : "—"}"`);
 
       lines.push(row.join(","));
     });
