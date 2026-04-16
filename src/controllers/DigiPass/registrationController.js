@@ -1898,34 +1898,57 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     }
 
     const eventId = event._id;
-    const hasCustomFields = event.formFields && event.formFields.length > 0;
+    const isLinked = !!event.linkedEventRegId;
+    const hasCustomFields = !isLinked && event.formFields && event.formFields.length > 0;
 
-    const mongoQuery = {
-        eventId,
-        isDeleted: { $ne: true },
-    };
+    let regs;
 
-    if (token) mongoQuery.token = new RegExp(token, "i");
+    if (isLinked) {
+        // For linked events, registrations live under the EventReg event.
+        // Resolve them via DigiPassParticipationLog.
+        const logs = await DigiPassParticipationLog.find({ digipassEventId: eventId }).lean();
+        const linkedRegIds = logs.map((l) => l.eventRegRegistrationId);
 
-    const dynamicFilters = Object.entries(dynamicFiltersRaw)
-        .filter(([key]) => key.startsWith("field_"))
-        .reduce((acc, [key, val]) => {
-            const fieldName = key.replace("field_", "");
+        const mongoQuery = {
+            _id: { $in: linkedRegIds },
+            isDeleted: { $ne: true },
+        };
 
-            if (hasCustomFields) {
-                acc[`customFields.${fieldName}`] = new RegExp(val, "i");
-            }
-            return acc;
-        }, {});
-    Object.assign(mongoQuery, dynamicFilters);
+        if (token) mongoQuery.token = new RegExp(token, "i");
+        if (createdFrom || createdTo) {
+            mongoQuery.createdAt = {};
+            if (createdFrom) mongoQuery.createdAt.$gte = new Date(Number(createdFrom));
+            if (createdTo) mongoQuery.createdAt.$lte = new Date(Number(createdTo));
+        }
 
-    if (createdFrom || createdTo) {
-        mongoQuery.createdAt = {};
-        if (createdFrom) mongoQuery.createdAt.$gte = new Date(Number(createdFrom));
-        if (createdTo) mongoQuery.createdAt.$lte = new Date(Number(createdTo));
+        regs = await Registration.find(mongoQuery).lean();
+    } else {
+        const mongoQuery = {
+            eventId,
+            isDeleted: { $ne: true },
+        };
+
+        if (token) mongoQuery.token = new RegExp(token, "i");
+
+        const dynamicFilters = Object.entries(dynamicFiltersRaw)
+            .filter(([key]) => key.startsWith("field_"))
+            .reduce((acc, [key, val]) => {
+                const fieldName = key.replace("field_", "");
+                if (hasCustomFields) {
+                    acc[`customFields.${fieldName}`] = new RegExp(val, "i");
+                }
+                return acc;
+            }, {});
+        Object.assign(mongoQuery, dynamicFilters);
+
+        if (createdFrom || createdTo) {
+            mongoQuery.createdAt = {};
+            if (createdFrom) mongoQuery.createdAt.$gte = new Date(Number(createdFrom));
+            if (createdTo) mongoQuery.createdAt.$lte = new Date(Number(createdTo));
+        }
+
+        regs = await Registration.find(mongoQuery).lean();
     }
-
-    let regs = await Registration.find(mongoQuery).lean();
 
     if (search) {
         const s = search.toLowerCase();
@@ -1995,9 +2018,16 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
     regs = filteredRegs;
 
-    const dynamicFields = event.formFields?.length
-        ? event.formFields.map((f) => f.inputName)
-        : [];
+    // For linked events, fetch the EventReg event's formFields for columns.
+    // For standalone, use the DigiPass event's own formFields.
+    const isLinkedExport = !!event.linkedEventRegId;
+    let sourceFormFields = event.formFields || [];
+    if (isLinkedExport) {
+        const linkedEventReg = await Event.findById(event.linkedEventRegId).lean();
+        sourceFormFields = linkedEventReg?.formFields || [];
+    }
+    const dynamicFields = sourceFormFields.map((f) => f.inputName);
+    const classicColumns = [];
 
     const lines = [];
 
@@ -2044,17 +2074,30 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
     lines.push("=== Registrations ===");
 
-    const regHeaders = [...dynamicFields, "Token", "Registered At", "Completed Activities"];
+    const regHeaders = [
+        ...dynamicFields,
+        ...(dynamicFields.length === 0 ? ["Full Name", "Email"] : []),
+        "Token", "Registered At", "Completed Activities",
+    ];
     lines.push(regHeaders.join(","));
 
     regs.forEach((reg) => {
-        const row = dynamicFields.map(
-            (f) =>
-                `"${((reg.customFields?.[f] ?? "") + "").replace(
-                    /"/g,
-                    '""'
-                )}"`
-        );
+        const row = [];
+        const cf = reg.customFields instanceof Map
+            ? Object.fromEntries(reg.customFields)
+            : (reg.customFields || {});
+
+        dynamicFields.forEach((f) => {
+            // Try customFields first, then fall back to classic field or picker
+            const val = cf[f] ?? reg[f] ?? "";
+            row.push(`"${(val + "").replace(/"/g, '""')}"`);
+        });
+
+        // If no formFields at all, fall back to pickers so we always show something
+        if (dynamicFields.length === 0) {
+            row.push(`"${(reg.fullName || pickFullName(cf) || "").replace(/"/g, '""')}"`);
+            row.push(`"${(reg.email || pickEmail(cf) || "").replace(/"/g, '""')}"`);
+        }
 
         row.push(`"${reg.token}"`);
         row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
@@ -2073,6 +2116,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
 
         const wiHeaders = [
             ...dynamicFields,
+            ...(dynamicFields.length === 0 ? ["Full Name", "Email"] : []),
             "Token",
             "Registered At",
             "Scanned At",
@@ -2086,16 +2130,23 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
                 (r) => r._id.toString() === w.registrationId.toString()
             );
 
-            const row = dynamicFields.map(
-                (f) =>
-                    `"${((reg?.customFields?.[f] ?? "") + "").replace(
-                        /"/g,
-                        '""'
-                    )}"`
-            );
+            const row = [];
+            const cf = reg?.customFields instanceof Map
+                ? Object.fromEntries(reg.customFields)
+                : (reg?.customFields || {});
 
-            row.push(`"${reg.token}"`);
-            row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
+            dynamicFields.forEach((f) => {
+                const val = cf[f] ?? reg?.[f] ?? "";
+                row.push(`"${(val + "").replace(/"/g, '""')}"`);
+            });
+
+            if (dynamicFields.length === 0) {
+                row.push(`"${(reg?.fullName || pickFullName(cf) || "").replace(/"/g, '""')}"`);
+                row.push(`"${(reg?.email || pickEmail(cf) || "").replace(/"/g, '""')}"`);
+            }
+
+            row.push(`"${reg?.token || ""}"`);
+            row.push(`"${formatLocalDateTime(reg?.createdAt, timezone || null)}"`);
             row.push(`"${formatLocalDateTime(w.scannedAt, timezone || null)}"`);
             row.push(`"${w.scannedBy?.name || w.scannedBy?.email || ""}"`);
             row.push(`"${w.scannedBy?.staffType || ""}"`);
