@@ -830,6 +830,39 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   }
 
   // -------------------------
+  // PRINT RECORDS SECTION
+  // -------------------------
+  const printedRegs = regs.filter((r) => r.printCount > 0);
+
+  if (printedRegs.length > 0) {
+    lines.push("");
+    lines.push("=== Print Records ===");
+
+    const printHeaders = [
+      ...dynamicFields,
+      "Token",
+      "Registered At",
+      "Print Count",
+      "Last Printed At",
+    ];
+    lines.push(printHeaders.join(","));
+
+    printedRegs.forEach((reg) => {
+      const row = dynamicFields.map(
+        (f) =>
+          `"${((reg.customFields?.[f] ?? reg[f] ?? "") + "").replace(/"/g, '""')}"`,
+      );
+
+      row.push(`"${reg.token}"`);
+      row.push(`"${formatLocalDateTime(reg.createdAt, timezone || null)}"`);
+      row.push(`"${reg.printCount || 0}"`);
+      row.push(`"${reg.printTimestamp ? formatLocalDateTime(reg.printTimestamp, timezone || null) : "—"}"`);
+
+      lines.push(row.join(","));
+    });
+  }
+
+  // -------------------------
   // SEND CSV
   // -------------------------
   const csv = "\uFEFF" + lines.join("\n");
