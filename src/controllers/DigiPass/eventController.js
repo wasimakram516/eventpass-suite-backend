@@ -52,7 +52,7 @@ exports.getEventBySlug = asyncHandler(async (req, res) => {
     const { slug } = req.params;
     const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE })
         .select("_id name slug defaultLanguage logoUrl progressImageUrl description background maxTasksPerUser minTasksPerUser linkedEventRegId primaryField formFields registrations")
-        .populate("linkedEventRegId", "formFields");
+        .populate("linkedEventRegId", "formFields startDate endDate venue");
 
     if (!event) {
         return response(res, 404, "DigiPass event not found");

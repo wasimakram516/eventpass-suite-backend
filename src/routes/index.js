@@ -55,6 +55,7 @@ const checkInRegistrationRoutes = require("./CheckIn/registrationRoutes");
 // DigiPass
 const digiPassEventRoutes = require("./DigiPass/eventRoutes");
 const digiPassRegistrationRoutes = require("./DigiPass/registrationRoutes");
+const digiPassInsightsRoutes = require("./DigiPass/insightsRoutes");
 
 // StageQ
 const stageqQuestionRoutes = require("./stageq/questionRoutes");
@@ -136,6 +137,7 @@ router.use("/checkin/registrations", checkInRegistrationRoutes);
 // ------------------ DigiPass ------------------
 router.use("/digipass/events", digiPassEventRoutes);
 router.use("/digipass/registrations", digiPassRegistrationRoutes);
+router.use("/digipass/insights", digiPassInsightsRoutes);
 
 // ------------------ StageQ ------------------
 router.use("/stageq/questions", stageqQuestionRoutes);
