@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const XLSX = require("xlsx");
-const { formatLocalDateTime } = require("../../utils/dateUtils");
+const { formatLocalDateTime, getTimezoneLabel } = require("../../utils/dateUtils");
 const Business = require("../../models/Business");
 const Registration = require("../../models/Registration");
 const WalkIn = require("../../models/WalkIn");
@@ -760,6 +760,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   lines.push(`Exported Registrations,${regs.length}`);
   lines.push(`Exported At,"${exportedAt}"`);
   lines.push(`Applied Filters,"${filtersString}"`);
+  lines.push(`Timezone,"${timezone ? getTimezoneLabel(timezone) : "UTC"}"`);
   lines.push(""); // spacer
 
   // -------------------------

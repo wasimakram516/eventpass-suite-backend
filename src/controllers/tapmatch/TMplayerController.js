@@ -5,7 +5,7 @@ const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const XLSX = require("xlsx");
 const mongoose = require("mongoose");
-const moment = require("moment");
+const { formatLocalDateTime, getTimezoneLabel } = require("../../utils/dateUtils");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // ---------------------------------------------------------
@@ -13,6 +13,7 @@ const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 // ---------------------------------------------------------
 exports.exportResults = asyncHandler(async (req, res) => {
   const { gameId } = req.params;
+  const { timezone } = req.query;
 
   if (!mongoose.Types.ObjectId.isValid(gameId))
     return response(res, 400, "Invalid game ID");
@@ -28,7 +29,7 @@ exports.exportResults = asyncHandler(async (req, res) => {
   if (!game) return response(res, 404, "TapMatch game not found");
 
   const sessions = await GameSession.find({ gameId })
-    
+
     .populate("players.playerId");
 
   if (!sessions.length)
@@ -44,7 +45,7 @@ exports.exportResults = asyncHandler(async (req, res) => {
       Misses: session.memoryStats?.misses || 0,
       Accuracy: `${session.memoryStats?.accuracy || 0}%`,
       TotalTime: `${session.memoryStats?.totalTime || 0} sec`,
-      SubmittedAt: moment(session.updatedAt).format("YYYY-MM-DD hh:mm A"),
+      SubmittedAt: formatLocalDateTime(session.updatedAt, timezone || null),
     }))
   );
 
@@ -53,14 +54,15 @@ exports.exportResults = asyncHandler(async (req, res) => {
     { A: "Game Title:", B: game.title },
     { A: "Game Type:", B: "TapMatch (Memory Game)" },
     { A: "Total Players:", B: exportData.length },
-    { A: "Export Date:", B: moment().format("YYYY-MM-DD hh:mm A") },
+    { A: "Export Date:", B: formatLocalDateTime(Date.now(), timezone || null) },
+    { A: "Timezone:", B: timezone ? getTimezoneLabel(timezone) : "UTC" },
     {},
   ];
 
   const metadataSheet = XLSX.utils.json_to_sheet(metadata, {
     skipHeader: true,
   });
-  const resultsSheet = XLSX.utils.json_to_sheet(exportData, { origin: "A7" });
+  const resultsSheet = XLSX.utils.json_to_sheet(exportData, { origin: "A9" });
 
   const worksheet = { ...metadataSheet, ...resultsSheet };
 

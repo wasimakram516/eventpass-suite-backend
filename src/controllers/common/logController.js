@@ -1,4 +1,5 @@
 const asyncHandler = require("../../middlewares/asyncHandler");
+const { getTimezoneLabel } = require("../../utils/dateUtils");
 const Log = require("../../models/Log");
 const Event = require("../../models/Event");
 const Registration = require("../../models/Registration");
@@ -391,6 +392,10 @@ exports.exportLogs = asyncHandler(async (req, res) => {
     lines.push([
         escapeCsvValue("Applied Filters"),
         escapeCsvValue(activeFilters.length ? activeFilters.join("; ") : "None"),
+    ].join(","));
+    lines.push([
+        escapeCsvValue("Timezone"),
+        escapeCsvValue(timezone ? getTimezoneLabel(timezone) : "UTC"),
     ].join(","));
     lines.push(""); // blank line before header
 

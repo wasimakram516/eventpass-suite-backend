@@ -5,12 +5,13 @@ const response = require("../../utils/response");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const XLSX = require("xlsx");
 const mongoose = require("mongoose");
-const moment = require("moment");
+const { formatLocalDateTime, getTimezoneLabel } = require("../../utils/dateUtils");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 
 // Export all player results to Excel
 exports.exportResults = asyncHandler(async (req, res) => {
   const gameId = req.params.gameId;
+  const { timezone } = req.query;
 
   if (!mongoose.Types.ObjectId.isValid(gameId)) {
     return response(res, 400, "Invalid game ID");
@@ -29,7 +30,7 @@ exports.exportResults = asyncHandler(async (req, res) => {
   const sessions = await GameSession.find({
     gameId,
   })
-    
+
     .populate("players.playerId");
 
   const exportData = sessions.flatMap((session) =>
@@ -39,7 +40,7 @@ exports.exportResults = asyncHandler(async (req, res) => {
       Score: p.score,
       TimeTaken: p.timeTaken,
       AttemptedQuestions: p.attemptedQuestions,
-      SubmittedAt: moment(session.updatedAt).format("YYYY-MM-DD hh:mm A"),
+      SubmittedAt: formatLocalDateTime(session.updatedAt, timezone || null),
     }))
   );
 
@@ -47,7 +48,20 @@ exports.exportResults = asyncHandler(async (req, res) => {
     return response(res, 404, "No Game sessions to export");
   }
 
-  const worksheet = XLSX.utils.json_to_sheet(exportData);
+  const metadata = [
+    { A: "Business Name:", B: game.businessId?.name || "-" },
+    { A: "Game Title:", B: game.title },
+    { A: "Game Type:", B: "QuizNest (Solo Quiz)" },
+    { A: "Total Players:", B: exportData.length },
+    { A: "Export Date:", B: formatLocalDateTime(Date.now(), timezone || null) },
+    { A: "Timezone:", B: timezone ? getTimezoneLabel(timezone) : "UTC" },
+    {},
+  ];
+
+  const metadataSheet = XLSX.utils.json_to_sheet(metadata, { skipHeader: true });
+  const resultsSheet = XLSX.utils.json_to_sheet(exportData, { origin: "A9" });
+  const worksheet = { ...metadataSheet, ...resultsSheet };
+
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Results");
 

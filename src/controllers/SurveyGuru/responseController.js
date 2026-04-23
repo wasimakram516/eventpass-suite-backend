@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const XLSX = require("xlsx");
+const { getTimezoneLabel } = require("../../utils/dateUtils");
 
 const SurveyResponse = require("../../models/SurveyResponse");
 const SurveyRecipient = require("../../models/SurveyRecipient");
@@ -214,7 +215,8 @@ exports.exportResponsesCsv = asyncHandler(async (req, res) => {
     ["Mode", form.isAnonymous ? "Anonymous" : "Identified"],
     ["Total Responses", rowsRaw.length],
     ["Exported At", formatLocal(new Date())],
-    [],
+    ["Timezone", timezone ? getTimezoneLabel(timezone) : "UTC"],
+    [""], // blank row before table — [""] extends !ref so origin:-1 appends after it
   ];
 
   const summarySheet = XLSX.utils.aoa_to_sheet(summary);
