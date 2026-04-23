@@ -1796,6 +1796,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const page = Number(req.query.page) || 1;
   const limit = Number(req.query.limit) || 10;
+  const sort = Number(req.query.sort) || -1;
 
   const event = await Event.findOne({ slug, eventType: "public" });
   if (!event) return response(res, 404, "Event not found");
@@ -1815,9 +1816,11 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 
   const registrations = await Registration.find({ eventId })
-    
+    .where("isDeleted")
+    .ne(true)
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
+    .sort({ createdAt: sort })
     .skip((page - 1) * limit)
     .limit(limit);
 
@@ -1866,7 +1869,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   });
 });
 
-async function loadRemainingRecords(eventId, total) {
+async function loadRemainingRecords(eventId, total, sort = -1) {
   try {
     const BATCH_SIZE = 50;
     const startFrom = 50;
@@ -1879,7 +1882,7 @@ async function loadRemainingRecords(eventId, total) {
         .ne(true)
         .populate("createdBy", "name")
         .populate("updatedBy", "name")
-        .sort({ createdAt: 1, _id: 1 })
+        .sort({ createdAt: sort, _id: sort })
         .skip(skip)
         .limit(limit)
         .lean();
@@ -1936,6 +1939,7 @@ async function loadRemainingRecords(eventId, total) {
 // GET all registrations by event using slug - initial load only
 exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
+  const sort = Number(req.query.sort) || -1;
 
   const event = await Event.findOne({ slug, eventType: "public" });
   if (!event) return response(res, 404, "Event not found");
@@ -1956,7 +1960,7 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
     .ne(true)
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
-    .sort({ createdAt: 1 })
+    .sort({ createdAt: sort })
     .limit(50)
     .lean();
 
@@ -1999,7 +2003,7 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
   // Start background loading if more records exist
   if (totalCount > 50) {
     setImmediate(() => {
-      loadRemainingRecords(eventId, totalCount);
+      loadRemainingRecords(eventId, totalCount, sort);
     });
   }
 
