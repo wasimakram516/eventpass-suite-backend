@@ -38,6 +38,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
     const { slug } = req.params;
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
+    const sort = Number(req.query.sort) || -1;
 
     const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE });
     if (!event) {
@@ -61,6 +62,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
                     { path: "updatedBy", select: "name" }
                 ]
             })
+            .sort({ createdAt: sort })
             .skip((page - 1) * limit)
             .limit(limit);
             
@@ -74,6 +76,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
         registrations = await Registration.find({ eventId })
             .populate("createdBy", "name")
             .populate("updatedBy", "name")
+            .sort({ createdAt: sort })
             .skip((page - 1) * limit)
             .limit(limit);
     }
@@ -120,7 +123,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
     });
 });
 
-async function loadRemainingRecords(eventId, total) {
+async function loadRemainingRecords(eventId, total, sort = -1) {
     try {
         const event = await Event.findById(eventId);
         const BATCH_SIZE = 50;
@@ -132,7 +135,7 @@ async function loadRemainingRecords(eventId, total) {
 
             if (event && event.linkedEventRegId) {
                 const logs = await DigiPassParticipationLog.find({ digipassEventId: eventId })
-                    .sort({ createdAt: 1, _id: 1 })
+                    .sort({ createdAt: sort, _id: sort })
                     .skip(skip)
                     .limit(limit)
                     .populate({
@@ -148,7 +151,7 @@ async function loadRemainingRecords(eventId, total) {
                 registrations = await Registration.find({ eventId })
                     .where("isDeleted")
                     .ne(true)
-                    .sort({ createdAt: 1, _id: 1 })
+                    .sort({ createdAt: sort, _id: sort })
                     .skip(skip)
                     .limit(limit)
                     .populate("createdBy", "name")
@@ -204,6 +207,7 @@ async function loadRemainingRecords(eventId, total) {
 // GET all registrations by event using slug - initial load only
 exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
     const { slug } = req.params;
+    const sort = Number(req.query.sort) || -1;
 
     const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE });
     if (!event) {
@@ -219,7 +223,7 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
     if (event.linkedEventRegId) {
         totalCount = await DigiPassParticipationLog.countDocuments({ digipassEventId: eventId });
         const logs = await DigiPassParticipationLog.find({ digipassEventId: eventId })
-            .sort({ createdAt: 1 })
+            .sort({ createdAt: sort })
             .limit(50)
             .populate({
                 path: "eventRegRegistrationId",
@@ -240,7 +244,7 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
         registrations = await Registration.find({ eventId })
             .where("isDeleted")
             .ne(true)
-            .sort({ createdAt: 1 })
+            .sort({ createdAt: sort })
             .limit(50)
             .populate("createdBy", "name")
             .populate("updatedBy", "name")
@@ -280,7 +284,7 @@ exports.getAllPublicRegistrationsByEvent = asyncHandler(async (req, res) => {
 
     if (totalCount > 50) {
         setImmediate(() => {
-            loadRemainingRecords(eventId, totalCount);
+            loadRemainingRecords(eventId, totalCount, sort);
         });
     }
 
