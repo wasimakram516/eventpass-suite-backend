@@ -1,5 +1,5 @@
 const XLSX = require("xlsx");
-const moment = require("moment");
+const { formatLocalDateTime, getTimezoneLabel } = require("../../utils/dateUtils");
 const Game = require("../../models/Game");
 const GameSession = require("../../models/GameSession");
 const Player = require("../../models/Player");
@@ -1125,6 +1125,7 @@ exports.permanentDeleteAllGameSessions = asyncHandler(async (req, res) => {
 // Export all results (PvP or Team Mode) to Excel
 exports.exportResults = asyncHandler(async (req, res) => {
   const gameSlug = req.params.gameSlug;
+  const { timezone } = req.query;
 
   const game = await Game.findOne({
     slug: gameSlug,
@@ -1157,7 +1158,7 @@ exports.exportResults = asyncHandler(async (req, res) => {
 
       return {
         "Session ID": session._id.toString(),
-        "Submitted At": moment(session.updatedAt).format("YYYY-MM-DD hh:mm A"),
+        "Submitted At": formatLocalDateTime(session.updatedAt, timezone || null),
 
         "Player 1 Name": p1?.playerId?.name || "Unknown",
         "Player 1 Company": p1?.playerId?.company || "-",
@@ -1177,7 +1178,8 @@ exports.exportResults = asyncHandler(async (req, res) => {
       ["Game Title", game.title],
       ["Business Name", game.businessId.name],
       ["Total PvP Sessions", sessions.length],
-      ["Exported At", moment().format("YYYY-MM-DD hh:mm A")],
+      ["Exported At", formatLocalDateTime(Date.now(), timezone || null)],
+      ["Timezone", timezone ? getTimezoneLabel(timezone) : "UTC"],
       [],
     ];
 
@@ -1224,9 +1226,7 @@ exports.exportResults = asyncHandler(async (req, res) => {
 
         return {
           "Session ID": session._id.toString(),
-          "Submitted At": moment(session.updatedAt).format(
-            "YYYY-MM-DD hh:mm A"
-          ),
+          "Submitted At": formatLocalDateTime(session.updatedAt, timezone || null),
           "Team Name": t.teamId?.name || "Unknown",
           "Total Score": t.totalScore ?? "-",
           "Average Time (sec)": t.avgTimeTaken ?? "-",
@@ -1246,7 +1246,8 @@ exports.exportResults = asyncHandler(async (req, res) => {
     ["Game Title", game.title],
     ["Business Name", game.businessId.name],
     ["Total Team Sessions", sessions.length],
-    ["Exported At", moment().format("YYYY-MM-DD hh:mm A")],
+    ["Exported At", formatLocalDateTime(Date.now(), timezone || null)],
+    ["Timezone", timezone ? getTimezoneLabel(timezone) : "UTC"],
     [],
   ];
 

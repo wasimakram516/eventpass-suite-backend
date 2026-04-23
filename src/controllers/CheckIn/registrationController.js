@@ -28,7 +28,7 @@ const {
 const uploadProcessor = require("../../processors/checkin/uploadProcessor");
 const emailProcessor = require("../../processors/checkin/emailProcessor");
 const whatsappProcessor = require("../../processors/checkin/whatsappProcessor");
-const { formatLocalDateTime } = require("../../utils/dateUtils");
+const { formatLocalDateTime, getTimezoneLabel } = require("../../utils/dateUtils");
 const { uploadToS3 } = require("../../utils/s3Storage");
 const {
   normalizePhone,
@@ -797,6 +797,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
   lines.push(`Exported Registrations,${regs.length}`);
   lines.push(`Exported At,"${exportedAt}"`);
   lines.push(`Applied Filters,"${filtersString}"`);
+  lines.push(`Timezone,"${timezone ? getTimezoneLabel(timezone) : "UTC"}"`);
   lines.push("");
 
   lines.push("=== Registrations ===");

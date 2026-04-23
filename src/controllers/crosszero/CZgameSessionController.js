@@ -488,6 +488,7 @@ exports.permanentDeleteAllGameSessions = asyncHandler(async (req, res) => {
 });
 
 exports.exportResults = asyncHandler(async (req, res) => {
+  const { timezone } = req.query;
   const game = await Game.findOne({
     slug: req.params.gameSlug,
     ...CZ_FILTER,
@@ -503,7 +504,7 @@ exports.exportResults = asyncHandler(async (req, res) => {
     return response(res, 404, "No completed sessions to export");
   }
 
-  const metadataRows = buildMetadataRows(game, "CrossZero PvP", sessions.length, [
+  const metadataRows = buildMetadataRows(game, "CrossZero PvP", sessions.length, timezone || null, [
     ["Player 1 Mark", "O"],
     ["Player 2 Mark", "X"],
   ]);
@@ -547,8 +548,8 @@ exports.exportResults = asyncHandler(async (req, res) => {
       winnerName,
       session.xoStats?.moves || 0,
       session.xoStats?.timeTaken || 0,
-      formatDateTime(session.startTime),
-      formatDateTime(session.endTime),
+      formatDateTime(session.startTime, timezone || null),
+      formatDateTime(session.endTime, timezone || null),
     ];
   });
 

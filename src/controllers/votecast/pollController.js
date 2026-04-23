@@ -9,6 +9,7 @@ const response = require("../../utils/response");
 const XLSX = require("xlsx");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const { deleteFromS3 } = require("../../utils/s3Storage");
+const { getTimezoneLabel } = require("../../utils/dateUtils");
 
 // Helper: resolve owning business for a poll
 async function resolveBusinessId(poll) {
@@ -540,6 +541,7 @@ exports.getPollResults = asyncHandler(async (req, res) => {
 // GET export questions for a poll as XLSX
 exports.exportQuestions = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const { timezone } = req.query;
   const poll = await Poll.findById(id).lean();
   if (!poll) return res.status(404).json({ message: "Poll not found" });
 
@@ -549,6 +551,13 @@ exports.exportQuestions = asyncHandler(async (req, res) => {
   const maxOptions = questions.reduce((max, q) => Math.max(max, (q.options || []).length), 0);
 
   const wb = XLSX.utils.book_new();
+
+  // Metadata rows at the top
+  const metaRows = [
+    ["Timezone", timezone ? getTimezoneLabel(timezone) : "UTC"],
+    [],
+  ];
+  const metaOffset = metaRows.length;
 
   // Row 1: "Question" + "Option N" headers (each spanning 3 cols: Text, Votes, %)
   const row1 = ["Question"];
@@ -578,13 +587,13 @@ exports.exportQuestions = asyncHandler(async (req, res) => {
     return row;
   });
 
-  const ws = XLSX.utils.aoa_to_sheet([row1, row2, ...dataRows]);
+  const ws = XLSX.utils.aoa_to_sheet([...metaRows, row1, row2, ...dataRows]);
 
-  // Merge "Option N" cells across 3 columns each
+  // Merge "Option N" cells across 3 columns each (offset by metaRows length)
   ws["!merges"] = [];
   for (let i = 0; i < maxOptions; i++) {
     const startCol = 1 + i * 3;
-    ws["!merges"].push({ s: { r: 0, c: startCol }, e: { r: 0, c: startCol + 2 } });
+    ws["!merges"].push({ s: { r: metaOffset, c: startCol }, e: { r: metaOffset, c: startCol + 2 } });
   }
 
   // Column widths: Question col wide, then 3 cols per option

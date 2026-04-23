@@ -8,6 +8,7 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const User = require("../../models/User");
 const Event = require("../../models/Event");
 const Registration = require("../../models/Registration");
+const { getTimezoneLabel } = require("../../utils/dateUtils");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const { runSpinWheelSync } = require("../../processors/eventwheel/spinWheelSyncProcessor");
 const uploadProcessor = require("../../processors/eventwheel/uploadProcessor");
@@ -490,6 +491,7 @@ exports.permanentDeleteAllParticipants = asyncHandler(async (req, res) => {
 
 exports.exportSpinWheelParticipantsXlsx = asyncHandler(async (req, res) => {
   const { spinWheelId } = req.params;
+  const { timezone } = req.query;
 
   const wheel = await SpinWheel.findById(spinWheelId).lean();
   if (!wheel) return response(res, 404, "SpinWheel not found");
@@ -530,6 +532,7 @@ exports.exportSpinWheelParticipantsXlsx = asyncHandler(async (req, res) => {
     rows.push([`Type: ${wheel.type}`]);
   }
 
+  rows.push([`Timezone: ${timezone ? getTimezoneLabel(timezone) : "UTC"}`]);
   rows.push([]); // spacer
 
   /* ===============================

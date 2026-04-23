@@ -1,9 +1,9 @@
 const XLSX = require("xlsx");
-const moment = require("moment");
+const { formatLocalDateTime, getTimezoneLabel } = require("./dateUtils");
 
-function formatDateTime(value) {
+function formatDateTime(value, timezone = null) {
   if (!value) return "-";
-  return moment(value).format("YYYY-MM-DD hh:mm A");
+  return formatLocalDateTime(value, timezone);
 }
 
 function getAiOutcomeLabel(result) {
@@ -32,7 +32,7 @@ function getPvpOutcomeLabel(result) {
   }
 }
 
-function buildMetadataRows(game, modeLabel, totalSessions, extraRows = []) {
+function buildMetadataRows(game, modeLabel, totalSessions, timezone = null, extraRows = []) {
   return [
     ["Business Name", game.businessId?.name || "-"],
     ["Game Title", game.title || "-"],
@@ -41,7 +41,8 @@ function buildMetadataRows(game, modeLabel, totalSessions, extraRows = []) {
     ["Move Timer (sec)", game.moveTimer || 0],
     ["Total Sessions", totalSessions],
     ...extraRows,
-    ["Exported At", formatDateTime(new Date())],
+    ["Exported At", formatDateTime(new Date(), timezone)],
+    ["Timezone", timezone ? getTimezoneLabel(timezone) : "UTC"],
   ];
 }
 

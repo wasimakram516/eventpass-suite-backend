@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const env = require("../../config/env");
 const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
+const { getTimezoneLabel } = require("../../utils/dateUtils");
 const Event = require("../../models/Event");
 const Registration = require("../../models/Registration");
 const SurveyForm = require("../../models/SurveyForm");
@@ -272,14 +273,12 @@ exports.exportRecipients = asyncHandler(async (req, res) => {
     ["Form Slug", form.slug],
     ["Total Recipients", recipients.length],
     ["Anonymous Form", form.isAnonymous ? "Yes" : "No"],
-    form.isAnonymous
-      ? [
-        "Note",
-        "This is an anonymous survey. Personal details are not collected.",
-      ]
-      : [],
+    ...(form.isAnonymous
+      ? [["Note", "This is an anonymous survey. Personal details are not collected."]]
+      : []),
     ["Exported At", formatLocalLong(new Date())],
-    [], // blank row before table
+    ["Timezone", timezone ? getTimezoneLabel(timezone) : "UTC"],
+    [""], // blank row before table — [""] extends !ref so origin:-1 appends after it
   ];
 
   const summarySheet = XLSX.utils.aoa_to_sheet(summary);

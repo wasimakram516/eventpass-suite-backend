@@ -11,7 +11,7 @@ const response = require("../../utils/response");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const recountEventRegistrations = require("../../utils/recountEventRegistrations");
 const { emitTaskCompletedUpdate, emitNewRegistration, emitWalkInNew, emitLoadingProgress } = require("../../socket/modules/digipass/digiPassSocket");
-const { formatLocalDateTime } = require("../../utils/dateUtils");
+const { formatLocalDateTime, getTimezoneLabel } = require("../../utils/dateUtils");
 const { pickFullName, pickEmail } = require("../../utils/customFieldUtils");
 const { normalizePhone } = require("../../utils/whatsappProcessorUtils");
 const { validatePhoneNumberByCountry } = require("../../utils/phoneValidation");
@@ -2074,6 +2074,7 @@ exports.exportRegistrations = asyncHandler(async (req, res) => {
     lines.push(`Exported Registrations,${regs.length}`);
     lines.push(`Exported At,"${exportedAt}"`);
     lines.push(`Applied Filters,"${filtersString}"`);
+    lines.push(`Timezone,"${timezone ? getTimezoneLabel(timezone) : "UTC"}"`);
     lines.push("");
 
     lines.push("=== Registrations ===");

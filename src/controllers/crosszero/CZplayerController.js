@@ -125,6 +125,7 @@ exports.getSessionHistory = asyncHandler(async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 exports.exportResults = asyncHandler(async (req, res) => {
   const { gameId } = req.params;
+  const { timezone } = req.query;
 
   const game = await Game.findOne({ _id: gameId, type: "xo", mode: "solo" }).populate("businessId", "name");
   if (!game) return response(res, 404, "CrossZero AI game not found");
@@ -132,7 +133,7 @@ exports.exportResults = asyncHandler(async (req, res) => {
   const sessions = await GameSession.find({ gameId, status: "completed" }).populate("players.playerId");
   if (!sessions.length) return response(res, 404, "No sessions to export");
 
-  const metadataRows = buildMetadataRows(game, "CrossZero AI", sessions.length, [
+  const metadataRows = buildMetadataRows(game, "CrossZero AI", sessions.length, timezone || null, [
     ["Player Mark", "O"],
     ["AI Mark", "X"],
   ]);
@@ -163,8 +164,8 @@ exports.exportResults = asyncHandler(async (req, res) => {
       s.xoStats?.difficulty || "-",
       s.xoStats?.moves || 0,
       s.xoStats?.timeTaken || 0,
-      formatDateTime(s.startTime),
-      formatDateTime(s.endTime),
+      formatDateTime(s.startTime, timezone || null),
+      formatDateTime(s.endTime, timezone || null),
     ];
   });
 

@@ -19,3 +19,26 @@ exports.formatLocalDateTime = (date, timezone = null) => {
   }
   return dateObj.toLocaleString("en-US", options);
 };
+
+exports.getTimezoneLabel = (timezone) => {
+  try {
+    const now = new Date();
+    const longName = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      timeZoneName: "long",
+    })
+      .formatToParts(now)
+      .find((p) => p.type === "timeZoneName")?.value || timezone;
+
+    const shortOffset = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      timeZoneName: "shortOffset",
+    })
+      .formatToParts(now)
+      .find((p) => p.type === "timeZoneName")?.value || "";
+
+    return shortOffset ? `${longName} (${shortOffset})` : longName;
+  } catch {
+    return timezone || "UTC";
+  }
+};
