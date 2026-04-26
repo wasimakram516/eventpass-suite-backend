@@ -440,6 +440,7 @@ exports.uploadRegistrations = asyncHandler(async (req, res) => {
 // GET initial registrations (first 50) and start background loading
 exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
+  const sort = Number(req.query.sort) || -1;
 
   const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE });
   if (!event || event.eventType !== ALLOWED_EVENT_TYPE) {
@@ -450,7 +451,7 @@ exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
 
   const initialRegs = await Registration.find({ eventId })
     
-    .sort({ createdAt: -1 })
+    .sort({ createdAt: sort })
     .limit(50)
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
@@ -491,7 +492,7 @@ exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
     for (let skip = 0; skip < total; skip += batchSize) {
       const regs = await Registration.find({ eventId })
         
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: sort })
         .skip(skip)
         .limit(batchSize)
         .populate("createdBy", "name")
@@ -533,7 +534,7 @@ exports.getAllCheckInRegistrationsByEvent = asyncHandler(async (req, res) => {
 // GET paginated registrations by event using slug
 exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const { page = 1, limit = 10 } = req.query;
+  const { page = 1, limit = 10, sort = -1 } = req.query;
 
   const event = await Event.findOne({ slug, eventType: ALLOWED_EVENT_TYPE });
   if (!event || event.eventType !== ALLOWED_EVENT_TYPE) {
@@ -551,7 +552,7 @@ exports.getRegistrationsByEvent = asyncHandler(async (req, res) => {
     
     .populate("createdBy", "name")
     .populate("updatedBy", "name")
-    .sort({ createdAt: -1 })
+    .sort({ createdAt: Number(sort) })
     .skip((page - 1) * limit)
     .limit(Number(limit));
 
