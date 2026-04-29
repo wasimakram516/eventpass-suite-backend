@@ -8,6 +8,7 @@ const {
   getInsightsSummary,
   getScannedByTypeDistribution,
   getScannedByUserDistribution,
+  getActivitiesPerParticipantDistribution,
 } = require("../../controllers/DigiPass/insightsController");
 
 const { protect, checkPermission } = require("../../middlewares/auth");
@@ -30,5 +31,8 @@ router.get("/:slug/scanned-by-type", digiPassAccess, getScannedByTypeDistributio
 
 // Get scanned-by user distribution (individual users)
 router.get("/:slug/scanned-by-users", digiPassAccess, getScannedByUserDistribution);
+
+// Get activities per participant distribution
+router.get("/:slug/activities-per-participant", digiPassAccess, getActivitiesPerParticipantDistribution);
 
 module.exports = router;

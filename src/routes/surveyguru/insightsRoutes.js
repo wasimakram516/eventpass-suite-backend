@@ -5,6 +5,7 @@ const {
   getAvailableQuestions,
   getQuestionDistribution,
   getTimeDistribution,
+  getSegmentedDistribution,
   getInsightsSummary,
 } = require("../../controllers/SurveyGuru/insightsController");
 
@@ -19,6 +20,9 @@ router.get("/forms/:slug/distribution", surveyGuruAccess, getQuestionDistributio
 
 // Get time-based distribution for line charts
 router.get("/forms/:slug/time-distribution", surveyGuruAccess, getTimeDistribution);
+
+// Get segmented distribution for grouped bar charts
+router.get("/forms/:slug/segmented-distribution", surveyGuruAccess, getSegmentedDistribution);
 
 // Get summary statistics
 router.get("/forms/:slug/summary", surveyGuruAccess, getInsightsSummary);

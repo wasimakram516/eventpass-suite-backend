@@ -9,7 +9,7 @@ const response = require("../../utils/response");
 // Get field distribution for pie charts (categorical fields)
 exports.getFieldDistribution = asyncHandler(async (req, res) => {
     const { slug } = req.params;
-    const { fieldName, topN } = req.query;
+    const { fieldName, topN, mode } = req.query;
 
     if (!fieldName) return response(res, 400, "Field name is required");
 
@@ -67,8 +67,9 @@ exports.getFieldDistribution = asyncHandler(async (req, res) => {
             groupId = `$reg.${fieldName}`;
         }
 
+        const sumValue = mode === "completions" ? "$reg.tasksCompleted" : 1;
         pipeline.push(
-            { $group: { _id: groupId, count: { $sum: 1 } } },
+            { $group: { _id: groupId, count: { $sum: sumValue } } },
             { $sort: { count: -1 } }
         );
 
@@ -100,8 +101,9 @@ exports.getFieldDistribution = asyncHandler(async (req, res) => {
             groupId = `$${fieldName}`;
         }
 
+        const sumValue = mode === "completions" ? "$tasksCompleted" : 1;
         pipeline.push(
-            { $group: { _id: groupId, count: { $sum: 1 } } },
+            { $group: { _id: groupId, count: { $sum: sumValue } } },
             { $sort: { count: -1 } }
         );
     }
@@ -118,11 +120,11 @@ exports.getFieldDistribution = asyncHandler(async (req, res) => {
     }
 
     const chartData = distribution.map(item => ({
-        label: fieldName === 'tasksCompleted' ? `${item._id} Task(s)` : String(item._id || "Unknown"),
+        label: fieldName === 'tasksCompleted' && mode !== 'completions' ? `${item._id} Task(s)` : String(item._id || "Unknown"),
         value: item.count
     }));
 
-    return response(res, 200, "Field distribution fetched", {
+    return response(res, 200, mode === "completions" ? "Completions breakdown fetched" : "Field distribution fetched", {
         fieldName,
         data: chartData,
         total: chartData.reduce((sum, d) => sum + d.value, 0)
@@ -285,7 +287,8 @@ exports.getAvailableFields = asyncHandler(async (req, res) => {
         { name: "scannedAt", label: "Scanned At", type: "time" }
     ];
     const specialFields = [
-        { name: "scannedBy", label: "Scanned By", type: "special", requiresLookup: true }
+        { name: "scannedBy", label: "Scanned By", type: "special", requiresLookup: true },
+        { name: "activitiesPerParticipant", label: "Activities Completed per Participant", type: "special", chartType: "bar" }
     ];
 
     if (formFields.length) {
@@ -338,31 +341,46 @@ exports.getInsightsSummary = asyncHandler(async (req, res) => {
     const event = await Event.findOne({ slug }).lean();
     if (!event) return response(res, 404, "Event not found");
 
-    let totalRegistrations = 0;
+    // Total participants joined this DigiPass event
+    let totalParticipants;
     if (event.linkedEventRegId) {
-        totalRegistrations = await DigiPassParticipationLog.countDocuments({ digipassEventId: event._id });
+        totalParticipants = await DigiPassParticipationLog.countDocuments({ 
+            digipassEventId: event._id 
+        });
     } else {
-        totalRegistrations = await Registration.countDocuments({
-            eventId: event._id,
-            deletedAt: { $exists: false }
+        totalParticipants = await Registration.countDocuments({
+            eventId: event._id
         });
     }
 
-    const totalScans = await WalkIn.countDocuments({
+    // Total activity completions (every scan is a completion)
+    const totalActivityCompletions = await WalkIn.countDocuments({
         eventId: event._id
     });
 
-    const uniqueScannedRegs = await WalkIn.distinct("registrationId", {
-        eventId: event._id
-    });
+    // Average activities per participant
+    const avgActivitiesPerParticipant = totalParticipants > 0 
+        ? (totalActivityCompletions / totalParticipants).toFixed(2) 
+        : 0;
+
+    let scanRate = 0;
+    let totalLinkedRegistrations = 0;
+    if (event.linkedEventRegId) {
+        totalLinkedRegistrations = await Registration.countDocuments({
+            eventId: event.linkedEventRegId,
+            deletedAt: { $exists: false }
+        });
+        scanRate = totalLinkedRegistrations > 0 
+            ? ((totalParticipants / totalLinkedRegistrations) * 100).toFixed(2)
+            : 0;
+    }
 
     return response(res, 200, "Insights summary fetched", {
-        totalRegistrations,
-        totalScans,
-        uniqueScanned: uniqueScannedRegs.length,
-        scanRate: totalRegistrations > 0
-            ? ((uniqueScannedRegs.length / totalRegistrations) * 100).toFixed(2)
-            : 0
+        totalParticipants,
+        totalActivityCompletions,
+        avgActivitiesPerParticipant: Number(avgActivitiesPerParticipant),
+        scanRate: Number(scanRate),
+        totalRegistrations: totalParticipants // backward compatibility
     });
 });
 
@@ -480,6 +498,45 @@ exports.getScannedByUserDistribution = asyncHandler(async (req, res) => {
         ? `Scanned-by ${staffType} users distribution fetched`
         : "Scanned-by all users distribution fetched", {
         staffType: staffType || "all",
+        data: chartData,
+        total: chartData.reduce((sum, d) => sum + d.value, 0)
+    });
+});
+
+// Get activities per participant distribution
+exports.getActivitiesPerParticipantDistribution = asyncHandler(async (req, res) => {
+    const { slug } = req.params;
+
+    const event = await Event.findOne({ slug }).lean();
+    if (!event) return response(res, 404, "Event not found");
+
+    const pipeline = [
+        { $match: { eventId: event._id, deletedAt: { $exists: false } } },
+        {
+            $group: {
+                _id: "$registrationId",
+                count: { $sum: 1 }
+            }
+        },
+        {
+            $group: {
+                _id: "$count",
+                participantCount: { $sum: 1 }
+            }
+        },
+        { $sort: { _id: 1 } }
+    ];
+
+    const distribution = await WalkIn.aggregate(pipeline);
+
+    const chartData = distribution.map(item => ({
+        label: `${item._id} ${item._id === 1 ? 'Activity' : 'Activities'}`,
+        value: item.participantCount,
+        completionCount: item._id,
+        participantCount: item.participantCount
+    }));
+
+    return response(res, 200, "Activities per participant distribution fetched", {
         data: chartData,
         total: chartData.reduce((sum, d) => sum + d.value, 0)
     });

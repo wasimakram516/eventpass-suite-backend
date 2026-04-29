@@ -2,20 +2,39 @@ function normalize(str = "") {
   return String(str).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function pick(customFields, matchKey, extraKeys = []) {
-  if (!customFields || typeof customFields !== "object") return null;
+function pick(fields, matchKey, extraKeys = []) {
+  if (!fields || typeof fields !== "object") return null;
 
   const target = normalize(matchKey);
   const candidates = new Set([target, ...extraKeys.map(normalize)]);
 
+  for (const key of Object.keys(fields)) {
+    if (key !== 'customFields' && candidates.has(normalize(key))) {
+      const val = fields[key];
+      if (val !== undefined && val !== null && String(val).trim() !== "") {
+        return val;
+      }
+    }
+  }
+
+  // If fields has a customFields property
+  const source = fields.customFields || fields;
+  if (!source) return null;
+
   const entries =
-    customFields instanceof Map
-      ? Array.from(customFields.entries())
-      : Object.entries(customFields);
+    source instanceof Map
+      ? Array.from(source.entries())
+      : typeof source.entries === 'function' 
+        ? Array.from(source.entries()) 
+        : Object.entries(source);
 
   for (const [origKey, val] of entries) {
     const nk = normalize(origKey);
-    if (candidates.has(nk)) return val;
+    if (candidates.has(nk)) {
+      if (val !== undefined && val !== null && String(val).trim() !== "") {
+        return val;
+      }
+    }
   }
   return null;
 }
@@ -90,6 +109,9 @@ const pickRegistrationType = (f) =>
     "badge type",
   ]);
 
+const pickDepartment = (f) =>
+  pick(f, "department", ["dept", "division", "unit", "sector", "function"]);
+
 module.exports = {
   pickCustomFieldPairs,
   pickFullName,
@@ -100,4 +122,6 @@ module.exports = {
   pickBadgeIdentifier,
   pickWing,
   pickRegistrationType,
+  pickDepartment,
+  pick,
 };

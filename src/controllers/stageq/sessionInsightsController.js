@@ -37,11 +37,20 @@ exports.getSummary = asyncHandler(async (req, res) => {
         : 0;
   }
 
+  const topQuestion = await EventQuestion.findOne({
+    sessionId: session._id,
+    deletedAt: { $exists: false },
+  })
+    .select("text votes")
+    .sort({ votes: -1, createdAt: 1 })
+    .lean();
+
   return response(res, 200, "Session insights summary", {
     totalRegistrations,
     uniqueSubmitters: uniqueSubmitterIds.length,
     participationRate,
     totalQuestions,
+    topQuestion: topQuestion ? { text: topQuestion.text, voteCount: topQuestion.votes || 0 } : null,
   });
 });
 
