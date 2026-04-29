@@ -10,6 +10,28 @@ const XLSX = require("xlsx");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
 const { deleteFromS3 } = require("../../utils/s3Storage");
 const { getTimezoneLabel } = require("../../utils/dateUtils");
+const { getCountryByIsoCode } = require("../../utils/countryCodes");
+
+// Matches any custom field key that represents a person's name.
+// Kept in sync with the frontend iconMapper.js name pattern.
+const NAME_FIELD_RE = /^(full[\s_-]?name|name|attendee|participant|voter|first[\s_-]?name|last[\s_-]?name|firstname|lastname)$/i;
+
+// Returns { name, sourceKey } so the caller can strip the source key from
+// customFields to avoid showing the name twice (header + details section).
+function resolveDisplayName(reg) {
+  if (reg.fullName?.trim()) return { name: reg.fullName.trim(), sourceKey: null };
+  if (reg.customFields) {
+    const entries = reg.customFields instanceof Map
+      ? [...reg.customFields.entries()]
+      : Object.entries(reg.customFields);
+    for (const [key, val] of entries) {
+      if (NAME_FIELD_RE.test(key) && String(val ?? "").trim()) {
+        return { name: String(val).trim(), sourceKey: key };
+      }
+    }
+  }
+  return { name: null, sourceKey: null };
+}
 
 // Helper: resolve owning business for a poll
 async function resolveBusinessId(poll) {
@@ -428,6 +450,13 @@ exports.voteOnPoll = asyncHandler(async (req, res) => {
     const existing = await PollVote.findOne({ pollId: id, questionId, registrationId });
     if (existing) return response(res, 409, "You have already voted on this question");
     await PollVote.create({ pollId: poll._id, questionId, registrationId, optionIndex });
+  } else {
+    const { sessionToken } = req.body;
+    if (sessionToken) {
+      const existingSession = await PollVote.findOne({ pollId: id, questionId, sessionToken });
+      if (existingSession) return response(res, 409, "You have already voted on this question");
+      await PollVote.create({ pollId: poll._id, questionId, sessionToken, optionIndex });
+    }
   }
 
   question.options[optionIndex].votes += 1;
@@ -513,6 +542,89 @@ exports.verifyAttendee = asyncHandler(async (req, res) => {
     registrationId: registration._id,
     fullName: registration.fullName,
   });
+});
+
+// GET voter-level results for a linked poll (CMS)
+exports.getPollVoterResults = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const poll = await Poll.findById(id).lean();
+  if (!poll) return response(res, 404, "Poll not found");
+
+  const votes = await PollVote.find({ pollId: id }).lean();
+
+  // Always resolve registrations for any vote that has a registrationId,
+  // regardless of whether the poll is currently linked — votes cast while linked
+  // must still show voter details even if the poll is later unlinked.
+  const regIds = [...new Set(votes.map(v => v.registrationId?.toString()).filter(Boolean))];
+  let regMap = {};
+  if (regIds.length > 0) {
+    const registrations = await Registration.find({ _id: { $in: regIds } })
+      .select("fullName email phone isoCode customFields")
+      .lean();
+    for (const reg of registrations) {
+      regMap[reg._id.toString()] = reg;
+    }
+  }
+
+  const isLinked = Boolean(poll.linkedEventRegId);
+
+  const questions = (poll.questions || []).map((q) => {
+    const totalVotes = (q.options || []).reduce((sum, o) => sum + (o.votes || 0), 0);
+    return {
+      _id: q._id,
+      question: q.question,
+      options: (q.options || []).map((o, optIdx) => {
+        const optionVotes = votes.filter(
+          v => String(v.questionId) === String(q._id) && v.optionIndex === optIdx
+        );
+        const voters = optionVotes.reduce((acc, v) => {
+          if (v.registrationId) {
+            // Vote was cast by a registered voter (poll was linked at time of voting)
+            const reg = regMap[v.registrationId?.toString()];
+            if (!reg) return acc;
+            const { name: displayName, sourceKey: nameSourceKey } = resolveDisplayName(reg);
+            const cf = reg.customFields
+              ? (reg.customFields instanceof Map ? Object.fromEntries(reg.customFields) : { ...reg.customFields })
+              : {};
+            if (nameSourceKey) delete cf[nameSourceKey];
+            const country = reg.isoCode ? getCountryByIsoCode(reg.isoCode) : null;
+            acc.push({
+              _id: v.registrationId,
+              fullName: displayName,
+              email: reg.email || null,
+              phone: reg.phone || null,
+              phoneCode: country?.code || null,
+              votedAt: v.votedAt,
+              customFields: cf,
+              isAnonymous: false,
+            });
+          } else {
+            // Anonymous vote cast without a registration (sessionToken only)
+            if (!v.sessionToken) return acc;
+            acc.push({
+              _id: v.sessionToken,
+              fullName: null,
+              email: null,
+              phone: null,
+              votedAt: v.votedAt,
+              customFields: {},
+              isAnonymous: true,
+            });
+          }
+          return acc;
+        }, []);
+        return {
+          text: o.text || "",
+          votes: o.votes || 0,
+          percentage: totalVotes > 0 ? parseFloat(((o.votes || 0) / totalVotes * 100).toFixed(2)) : 0,
+          imageUrl: o.imageUrl || null,
+          voters,
+        };
+      }),
+    };
+  });
+
+  return response(res, 200, "Voter results fetched", { isLinked, questions });
 });
 
 // GET results for a single poll (CMS)

@@ -34,6 +34,9 @@ router.get("/:id/questions/export", votecastAccess, pollController.exportQuestio
 // GET results for a single poll (protected)
 router.get("/:id/results", votecastAccess, pollController.getPollResults);
 
+// GET voter-level results for a linked poll (protected)
+router.get("/:id/voter-results", votecastAccess, pollController.getPollVoterResults);
+
 // POST create poll (protected)
 router.post(
   "/",
