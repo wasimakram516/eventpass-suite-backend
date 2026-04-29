@@ -8,6 +8,7 @@ const asyncHandler = require("../../middlewares/asyncHandler");
 const response = require("../../utils/response");
 const XLSX = require("xlsx");
 const { recomputeAndEmit } = require("../../socket/dashboardSocket");
+const { emitVoteCast, emitPollQuestionCountChanged } = require("../../socket/modules/votecast/votecastSocket");
 const { deleteFromS3 } = require("../../utils/s3Storage");
 const { getTimezoneLabel } = require("../../utils/dateUtils");
 const { getCountryByIsoCode } = require("../../utils/countryCodes");
@@ -314,6 +315,7 @@ exports.addQuestion = asyncHandler(async (req, res) => {
     .populate("questions.updatedBy", "name")
     .select("questions");
   const newQuestion = populated.questions[populated.questions.length - 1];
+  emitPollQuestionCountChanged(poll._id.toString(), poll.questions.length);
   return response(res, 201, "Question added", newQuestion);
 });
 
@@ -386,6 +388,7 @@ exports.deleteQuestion = asyncHandler(async (req, res) => {
   q.deleteOne();
   poll.setAuditUser(req.user);
   await poll.save();
+  emitPollQuestionCountChanged(poll._id.toString(), poll.questions.length);
   return response(res, 200, "Question deleted");
 });
 
@@ -423,6 +426,7 @@ exports.cloneQuestion = asyncHandler(async (req, res) => {
     .populate("questions.updatedBy", "name")
     .select("questions");
   const newQuestion = populatedPoll.questions[populatedPoll.questions.length - 1];
+  emitPollQuestionCountChanged(poll._id.toString(), poll.questions.length);
   return response(res, 201, "Question cloned", newQuestion);
 });
 
@@ -443,24 +447,28 @@ exports.voteOnPoll = asyncHandler(async (req, res) => {
     return response(res, 400, "Invalid option index");
   }
 
+  let isNewVoter = false;
   if (poll.linkedEventRegId) {
     if (!registrationId || !mongoose.Types.ObjectId.isValid(registrationId)) {
       return response(res, 400, "registrationId is required for this poll");
     }
     const existing = await PollVote.findOne({ pollId: id, questionId, registrationId });
     if (existing) return response(res, 409, "You have already voted on this question");
+    isNewVoter = !(await PollVote.exists({ pollId: poll._id, registrationId }));
     await PollVote.create({ pollId: poll._id, questionId, registrationId, optionIndex });
   } else {
     const { sessionToken } = req.body;
     if (sessionToken) {
       const existingSession = await PollVote.findOne({ pollId: id, questionId, sessionToken });
       if (existingSession) return response(res, 409, "You have already voted on this question");
+      isNewVoter = !(await PollVote.exists({ pollId: poll._id, sessionToken }));
       await PollVote.create({ pollId: poll._id, questionId, sessionToken, optionIndex });
     }
   }
 
   question.options[optionIndex].votes += 1;
   await poll.save();
+  emitVoteCast(poll._id.toString(), isNewVoter, poll.questions.length);
   return response(res, 200, "Vote submitted");
 });
 

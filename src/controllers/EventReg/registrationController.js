@@ -25,6 +25,7 @@ const {
   emitLoadingProgress,
   emitNewRegistration,
   emitBadgePrinted,
+  emitWalkinCreated,
 } = require("../../socket/modules/eventreg/eventRegSocket");
 
 const { normalizePhone } = require("../../utils/whatsappProcessorUtils");
@@ -2090,6 +2091,8 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   walkin.setAuditUser(req.user);
   await walkin.save();
 
+  emitWalkinCreated(registration.eventId._id.toString(), registration._id.toString());
+
   const cf = registration.customFields
     ? Object.fromEntries(registration.customFields)
     : {};
@@ -2187,6 +2190,8 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
   });
   walkin.setAuditUser(req.user);
   await walkin.save();
+
+  emitWalkinCreated(registration.eventId._id.toString(), registration._id.toString());
 
   recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message),

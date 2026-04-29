@@ -18,6 +18,7 @@ router.get("/insights/:slug/summary", votecastAccess, pollInsightsController.get
 router.get("/insights/:slug/fields", votecastAccess, pollInsightsController.getAvailableFields);
 router.get("/insights/:slug/distribution", votecastAccess, pollInsightsController.getFieldDistribution);
 router.get("/insights/:slug/time-distribution", votecastAccess, pollInsightsController.getTimeDistribution);
+router.get("/insights/:slug/cross-breakdown", votecastAccess, pollInsightsController.getCrossBreakdown);
 
 // GET all polls (protected)
 router.get("/", votecastAccess, pollController.getPolls);

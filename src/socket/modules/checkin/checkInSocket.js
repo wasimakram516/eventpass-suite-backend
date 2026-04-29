@@ -55,6 +55,10 @@ function emitBadgePrinted(eventId, registrationId, printCount, printTimestamp) {
     });
 }
 
+function emitScanConfirmed(eventId, registrationId) {
+    emitUpdate("checkinRegistrationScanned", { eventId, registrationId });
+}
+
 module.exports = {
     emitUploadProgress,
     emitEmailProgress,
@@ -63,5 +67,6 @@ module.exports = {
     emitPresenceConfirmed,
     emitUploadComplete,
     emitBadgePrinted,
+    emitScanConfirmed,
 };
 

@@ -24,6 +24,7 @@ const {
   emitNewRegistration,
   emitPresenceConfirmed,
   emitBadgePrinted,
+  emitScanConfirmed,
 } = require("../../socket/modules/checkin/checkInSocket");
 const uploadProcessor = require("../../processors/checkin/uploadProcessor");
 const emailProcessor = require("../../processors/checkin/emailProcessor");
@@ -1275,6 +1276,8 @@ exports.verifyRegistrationByToken = asyncHandler(async (req, res) => {
   walkin.setAuditUser(req.user);
   await walkin.save();
 
+  emitScanConfirmed(reg.eventId._id.toString(), reg._id.toString());
+
   const zpl = buildBadgeZpl({
     fullName:
       pickFullName(reg.customFields) ||
@@ -1361,6 +1364,8 @@ exports.createWalkIn = asyncHandler(async (req, res) => {
   });
   walkin.setAuditUser(req.user);
   await walkin.save();
+
+  emitScanConfirmed(registration.eventId._id.toString(), registration._id.toString());
 
   recomputeAndEmit(registration.eventId.businessId || null).catch((err) =>
     console.error("Background recompute failed:", err.message)

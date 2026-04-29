@@ -13,11 +13,15 @@ exports.getSummary = asyncHandler(async (req, res) => {
   if (!poll) return response(res, 404, "Poll not found");
 
   const totalVotes = await PollVote.countDocuments({ pollId: poll._id });
-  const uniqueVoterIds = await PollVote.distinct("registrationId", { pollId: poll._id });
+  const voterField = poll.linkedEventRegId ? "registrationId" : "sessionToken";
+  const voterFilter = poll.linkedEventRegId
+    ? { pollId: poll._id, registrationId: { $exists: true, $ne: null } }
+    : { pollId: poll._id, sessionToken: { $exists: true, $ne: null } };
+  const uniqueVoterIds = await PollVote.distinct(voterField, voterFilter);
   const questionCount = poll.questions?.length || 0;
 
-  let totalRegistrations = 0;
-  let participationRate = 0;
+  let totalRegistrations = null;
+  let participationRate = null;
 
   if (poll.linkedEventRegId) {
     totalRegistrations = await Registration.countDocuments({
@@ -206,5 +210,91 @@ exports.getTimeDistribution = asyncHandler(async (req, res) => {
     intervalMinutes: interval,
     data: filledData,
     total: filledData.reduce((sum, d) => sum + d.count, 0),
+  });
+});
+
+// GET /votecast/polls/insights/:slug/cross-breakdown?fieldName=&questionId=
+exports.getCrossBreakdown = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+  const { fieldName, questionId } = req.query;
+
+  if (!fieldName) return response(res, 400, "fieldName is required");
+  if (!questionId) return response(res, 400, "questionId is required");
+
+  const poll = await Poll.findOne({ slug }).select("_id questions linkedEventRegId").lean();
+  if (!poll) return response(res, 404, "Poll not found");
+  if (!poll.linkedEventRegId) return response(res, 400, "Poll is not linked to an event registration");
+
+  let qId;
+  try {
+    qId = new mongoose.Types.ObjectId(questionId);
+  } catch {
+    return response(res, 400, "Invalid questionId");
+  }
+
+  const question = poll.questions.find((q) => String(q._id) === questionId);
+  if (!question) return response(res, 404, "Question not found");
+
+  const linkedEvent = await Event.findById(poll.linkedEventRegId).select("formFields").lean();
+  const isCustomField = linkedEvent?.formFields?.some((f) => f.inputName === fieldName);
+  const fieldPath = isCustomField ? `customFields.${fieldName}` : fieldName;
+
+  const pipeline = [
+    {
+      $match: {
+        pollId: poll._id,
+        questionId: qId,
+        registrationId: { $exists: true, $ne: null },
+      },
+    },
+    {
+      $lookup: {
+        from: "registrations",
+        localField: "registrationId",
+        foreignField: "_id",
+        as: "registration",
+      },
+    },
+    { $unwind: { path: "$registration", preserveNullAndEmptyArrays: true } },
+    {
+      $group: {
+        _id: {
+          fieldValue: `$registration.${fieldPath}`,
+          optionIndex: "$optionIndex",
+        },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { "_id.fieldValue": 1, "_id.optionIndex": 1 } },
+  ];
+
+  const rawData = await PollVote.aggregate(pipeline);
+
+  const normalizeFieldValue = (val) =>
+    val == null || val === "" ? "Unknown" : String(val);
+
+  const fieldValuesSet = new Set(rawData.map((d) => normalizeFieldValue(d._id.fieldValue)));
+  const fieldValues = [...fieldValuesSet].sort();
+
+  const options = (question.options || []).map((o, idx) => ({
+    index: idx,
+    text: o.text || `Option ${idx + 1}`,
+  }));
+
+  const segments = fieldValues.map((fv) => ({
+    fieldValue: fv,
+    distribution: options.map((opt) => {
+      const match = rawData.find(
+        (d) => normalizeFieldValue(d._id.fieldValue) === fv && d._id.optionIndex === opt.index
+      );
+      return { optionIndex: opt.index, optionText: opt.text, count: match ? match.count : 0 };
+    }),
+  }));
+
+  return response(res, 200, "Cross breakdown data", {
+    questionId,
+    questionText: question.question,
+    options,
+    segments,
   });
 });

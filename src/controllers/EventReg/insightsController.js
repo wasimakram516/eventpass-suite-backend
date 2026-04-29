@@ -4,6 +4,13 @@ const Event = require("../../models/Event");
 const Registration = require("../../models/Registration");
 const WalkIn = require("../../models/WalkIn");
 const response = require("../../utils/response");
+const { COUNTRY_CODES } = require("../../utils/countryCodes");
+
+const getDialCode = (isoCode) => {
+    if (!isoCode) return "";
+    const country = COUNTRY_CODES.find(c => c.isoCode === isoCode.toLowerCase());
+    return country ? country.code : "";
+};
 
 // Get field distribution for pie charts (categorical fields)
 exports.getFieldDistribution = asyncHandler(async (req, res) => {
@@ -46,15 +53,32 @@ exports.getFieldDistribution = asyncHandler(async (req, res) => {
         groupId = `$${fieldName}`;
     }
 
-    pipeline.push(
-        {
-            $group: {
-                _id: groupId,
-                count: { $sum: 1 }
-            }
-        },
-        { $sort: { count: -1 } }
-    );
+    // Detect phone fields to include country code in label
+    const isPhoneField =
+        (!isCustomField && fieldName === "phone") ||
+        (isCustomField && event.formFields?.some(f => f.inputName === fieldName && f.inputType === "phone"));
+
+    if (isPhoneField) {
+        pipeline.push(
+            {
+                $group: {
+                    _id: { phone: groupId, isoCode: "$isoCode" },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { count: -1 } }
+        );
+    } else {
+        pipeline.push(
+            {
+                $group: {
+                    _id: groupId,
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { count: -1 } }
+        );
+    }
 
     if (topLimit && topLimit > 0) {
         pipeline.push({ $limit: topLimit });
@@ -62,10 +86,20 @@ exports.getFieldDistribution = asyncHandler(async (req, res) => {
 
     const distribution = await Registration.aggregate(pipeline);
 
-    const chartData = distribution.map(item => ({
-        label: String(item._id || "Unknown"),
-        value: item.count
-    }));
+    let chartData;
+    if (isPhoneField) {
+        chartData = distribution.map(item => {
+            const dialCode = getDialCode(item._id?.isoCode);
+            const phoneNum = item._id?.phone || "";
+            const label = dialCode ? `${dialCode}${phoneNum}` : (phoneNum || "Unknown");
+            return { label, value: item.count };
+        });
+    } else {
+        chartData = distribution.map(item => ({
+            label: String(item._id || "Unknown"),
+            value: item.count
+        }));
+    }
 
     return response(res, 200, "Field distribution fetched", {
         fieldName,
@@ -224,11 +258,18 @@ exports.getAvailableFields = asyncHandler(async (req, res) => {
 
     if (event.formFields?.length) {
         event.formFields.forEach(f => {
-            if (f.inputType === "text" || f.inputType === "number") {
+            if (f.inputType === "text" || f.inputType === "number" || f.inputType === "email") {
                 categoricalFields.push({
                     name: f.inputName,
                     label: f.inputName,
-                    type: f.inputType,
+                    type: "text",
+                    allowTopN: true
+                });
+            } else if (f.inputType === "phone") {
+                categoricalFields.push({
+                    name: f.inputName,
+                    label: f.inputName,
+                    type: "text",
                     allowTopN: true
                 });
             } else if (f.inputType === "radio" || f.inputType === "list") {

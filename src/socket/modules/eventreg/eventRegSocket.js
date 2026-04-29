@@ -45,4 +45,9 @@ function emitBadgePrinted(eventId, registrationId, printCount, printTimestamp) {
   });
 }
 
-module.exports = { emitUploadProgress, emitEmailProgress, emitLoadingProgress, emitNewRegistration, emitBadgePrinted };
+// Emit when a walkin (scan) is recorded for a registration
+function emitWalkinCreated(eventId, registrationId) {
+  emitUpdate("registrationWalkinCreated", { eventId, registrationId });
+}
+
+module.exports = { emitUploadProgress, emitEmailProgress, emitLoadingProgress, emitNewRegistration, emitBadgePrinted, emitWalkinCreated };
