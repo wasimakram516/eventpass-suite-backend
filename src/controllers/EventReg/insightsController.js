@@ -271,18 +271,30 @@ exports.getInsightsSummary = asyncHandler(async (req, res) => {
     const event = await Event.findOne({ slug }).lean();
     if (!event) return response(res, 404, "Event not found");
 
-    const totalRegistrations = await Registration.countDocuments({
-        eventId: event._id,
-        deletedAt: { $exists: false }
-    });
+    const [registrationStats, totalScans, uniqueScannedRegs] = await Promise.all([
+        Registration.aggregate([
+            { $match: { eventId: event._id, deletedAt: { $exists: false } } },
+            {
+                $group: {
+                    _id: null,
+                    totalRegistrations: { $sum: 1 },
+                    totalPrints: { $sum: { $ifNull: ["$printCount", 0] } },
+                    noPrintCount: { $sum: { $cond: [{ $lte: [{ $ifNull: ["$printCount", 0] }, 0] }, 1, 0] } },
+                    onePrintCount: { $sum: { $cond: [{ $eq: [{ $ifNull: ["$printCount", 0] }, 1] }, 1, 0] } },
+                    multiPrintCount: { $sum: { $cond: [{ $gte: [{ $ifNull: ["$printCount", 0] }, 2] }, 1, 0] } }
+                }
+            }
+        ]),
+        WalkIn.countDocuments({ eventId: event._id }),
+        WalkIn.distinct("registrationId", { eventId: event._id })
+    ]);
 
-    const totalScans = await WalkIn.countDocuments({
-        eventId: event._id
-    });
-
-    const uniqueScannedRegs = await WalkIn.distinct("registrationId", {
-        eventId: event._id
-    });
+    const stats = registrationStats[0] ?? {};
+    const totalRegistrations = stats.totalRegistrations ?? 0;
+    const totalPrints = stats.totalPrints ?? 0;
+    const noPrintCount = stats.noPrintCount ?? 0;
+    const onePrintCount = stats.onePrintCount ?? 0;
+    const multiPrintCount = stats.multiPrintCount ?? 0;
 
     return response(res, 200, "Insights summary fetched", {
         totalRegistrations,
@@ -290,6 +302,13 @@ exports.getInsightsSummary = asyncHandler(async (req, res) => {
         uniqueScanned: uniqueScannedRegs.length,
         scanRate: totalRegistrations > 0
             ? ((uniqueScannedRegs.length / totalRegistrations) * 100).toFixed(2)
+            : 0,
+        totalPrints,
+        noPrintCount,
+        onePrintCount,
+        multiPrintCount,
+        multiPrintRate: totalRegistrations > 0
+            ? ((multiPrintCount / totalRegistrations) * 100).toFixed(2)
             : 0
     });
 });
